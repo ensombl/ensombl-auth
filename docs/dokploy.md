@@ -4,8 +4,9 @@
 
 These are deliberate external gates; the repository cannot safely invent them:
 
-1. Create the private GitHub repository `Ensombl/ensombl-auth` and let Dokploy
-   clone the reviewed revision. Do not configure any registry publication.
+1. Grant Dokploy read access to the private GitHub repository
+   `Ensombl/ensombl-auth` and configure it to clone the reviewed revision. Do
+   not configure any registry publication.
 2. Create DNS for `auth.ensombl.io` and attach that domain to the Dokploy
    `gateway` service on port `8080`. TLS must be valid before any user import.
 3. Create the Bitwarden Secrets Manager project `ensombl-auth-prod` and a
