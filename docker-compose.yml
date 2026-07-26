@@ -1,0 +1,323 @@
+name: ensombl-auth-local
+
+x-postgres-reconcile-environment: &postgres-reconcile-environment
+  POSTGRES_USER: postgres
+  POSTGRES_DB: postgres
+  POSTGRES_SUPERUSER_PASSWORD: auth-local-superuser
+  KRATOS_DB_PASSWORD: kratos_local
+  HYDRA_DB_PASSWORD: hydra_local
+  KETO_DB_PASSWORD: keto_local
+  AUTH_CONTROL_MIGRATOR_DB_PASSWORD: auth_control_migrator_dev
+  AUTH_CONTROL_RUNTIME_DB_PASSWORD: auth_control_runtime_dev
+  IDENTITY_IMPORT_DB_PASSWORD: auth_identity_import_dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: auth-local-superuser
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:25432:5432"
+    volumes:
+      - auth-postgres:/var/lib/postgresql/data
+      - auth-postgres-socket:/var/run/postgresql
+    networks:
+      - db-kratos
+      - db-hydra
+      - db-keto
+      - db-control
+      - dev-host
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  postgres-reconcile:
+    image: postgres:16-alpine
+    user: postgres
+    network_mode: none
+    environment:
+      <<: *postgres-reconcile-environment
+      PGHOST: /var/run/postgresql
+    entrypoint: ["/bin/sh", "/reconcile/reconcile-databases.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - auth-postgres-socket:/var/run/postgresql
+      - ./deploy/postgres/reconcile-databases.sh:/reconcile/reconcile-databases.sh:ro
+    restart: "no"
+
+  auth-control-grants:
+    image: postgres:16-alpine
+    profiles: ["database-admin"]
+    user: postgres
+    network_mode: none
+    environment:
+      POSTGRES_USER: postgres
+      PGHOST: /var/run/postgresql
+    entrypoint: ["/bin/sh", "/reconcile/reconcile-auth-control-privileges.sh"]
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    volumes:
+      - auth-postgres-socket:/var/run/postgresql
+      - ./deploy/postgres/reconcile-auth-control-privileges.sh:/reconcile/reconcile-auth-control-privileges.sh:ro
+    restart: "no"
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "127.0.0.1:21025:1025"
+      - "127.0.0.1:28025:8025"
+    networks:
+      - mailer
+      - dev-host
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0
+    command: ["migrate", "sql", "-e", "--yes"]
+    environment:
+      DSN: postgres://kratos:kratos_local@postgres:5432/kratos?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    networks:
+      - db-kratos
+    restart: "no"
+
+  kratos:
+    image: oryd/kratos:v26.2.0
+    restart: unless-stopped
+    command:
+      - serve
+      - --watch-courier
+      - --config
+      - /etc/config/kratos/kratos.yml
+      - --config
+      - /etc/config/local/kratos.yml
+      - --dev
+    environment:
+      DSN: postgres://kratos:kratos_local@postgres:5432/kratos?sslmode=disable
+      SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_URL: http://host.docker.internal:3400/internal/hooks/password-changed
+      SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_URL: http://host.docker.internal:3400/internal/hooks/invitation-activated
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+      mailpit:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:24433:4433"
+      - "127.0.0.1:24434:4434"
+    volumes:
+      - ./deploy/ory/kratos:/etc/config/kratos:ro
+      - ./deploy/local:/etc/config/local:ro
+    networks:
+      - edge
+      - db-kratos
+      - kratos-admin
+      - mailer
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    command: ["migrate", "sql", "-e", "--yes"]
+    environment:
+      DSN: postgres://hydra:hydra_local@postgres:5432/hydra?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    networks:
+      - db-hydra
+    restart: "no"
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    restart: unless-stopped
+    command:
+      - serve
+      - all
+      - --config
+      - /etc/config/hydra/hydra.yml
+      - --config
+      - /etc/config/local/hydra.yml
+      - --dev
+    environment:
+      DSN: postgres://hydra:hydra_local@postgres:5432/hydra?sslmode=disable
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:24444:4444"
+      - "127.0.0.1:24445:4445"
+    volumes:
+      - ./deploy/ory/hydra:/etc/config/hydra:ro
+      - ./deploy/local:/etc/config/local:ro
+    networks:
+      - edge
+      - db-hydra
+      - hydra-admin
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4445/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  hydra-client:
+    image: oryd/hydra:v26.2.0
+    profiles: ["bootstrap"]
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-client.sh"]
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+      HYDRA_CLIENT_ID: freightclaims-local-web
+      HYDRA_CLIENT_SECRET: local-only-freightclaims-secret-32
+      FREIGHTCLAIMS_BASE_URL: http://localhost:4200
+    depends_on:
+      hydra:
+        condition: service_healthy
+    volumes:
+      - ./deploy/ory/hydra/bootstrap-client.sh:/bootstrap/bootstrap-client.sh:ro
+    networks:
+      - hydra-admin
+    restart: "no"
+
+  keto-migrate:
+    image: oryd/keto:v26.2.0
+    command: ["migrate", "up", "-y", "--config", "/home/ory/keto.yml"]
+    environment:
+      DSN: postgres://keto:keto_local@postgres:5432/keto?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    volumes:
+      - ./deploy/ory/keto/keto.yml:/home/ory/keto.yml:ro
+      - ./deploy/ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
+    networks:
+      - db-keto
+    restart: "no"
+
+  keto:
+    image: oryd/keto:v26.2.0
+    restart: unless-stopped
+    command: ["serve", "--config", "/home/ory/keto.yml", "all"]
+    environment:
+      DSN: postgres://keto:keto_local@postgres:5432/keto?sslmode=disable
+    depends_on:
+      keto-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:24466:4466"
+      - "127.0.0.1:24467:4467"
+    volumes:
+      - ./deploy/ory/keto/keto.yml:/home/ory/keto.yml:ro
+      - ./deploy/ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
+    networks:
+      - db-keto
+      - authorization
+      - dev-host
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4466/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  identity-import:
+    profiles: ["identity-import"]
+    build:
+      context: .
+      dockerfile: deploy/identity-import/Dockerfile
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: auth_control
+      PGUSER: auth_identity_import
+      PGPASSWORD: auth_identity_import_dev
+      KRATOS_ADMIN_URL: http://kratos:4434
+      KETO_WRITE_URL: http://keto:4467
+      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-stage
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /work:rw,noexec,nosuid,nodev,mode=0700,uid=70,gid=70,size=4m
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    memswap_limit: 256m
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+      kratos:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+    networks:
+      - db-control
+      - kratos-admin
+      - authorization
+    restart: "no"
+
+  gateway:
+    image: caddy:2.10-alpine
+    depends_on:
+      kratos:
+        condition: service_healthy
+      hydra:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:24455:8080"
+    volumes:
+      - ./deploy/gateway/Caddyfile.local:/etc/caddy/Caddyfile:ro
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/gateway-healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  auth-postgres:
+  auth-postgres-socket:
+
+networks:
+  edge:
+  dev-host:
+  db-kratos:
+    internal: true
+  db-hydra:
+    internal: true
+  db-keto:
+    internal: true
+  db-control:
+    internal: true
+  kratos-admin:
+    internal: true
+  hydra-admin:
+    internal: true
+  authorization:
+    internal: true
+  mailer:
+    internal: true

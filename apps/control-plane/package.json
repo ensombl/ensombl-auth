@@ -1,0 +1,35 @@
+{
+  "name": "@ensombl/auth-control",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "vite build",
+    "start": "node build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "lint": "biome check .",
+    "test": "vitest run",
+    "migrate": "tsx scripts/migrate.ts",
+    "identity:seed:dev": "node scripts/seed-dev-identity.mjs",
+    "reconcile:invitations": "node scripts/reconcile-invitations.mjs",
+    "reconcile:invitations:worker": "node scripts/reconcile-invitations-worker.mjs",
+    "reconcile:invitations:health": "node scripts/reconcile-invitations-health.mjs"
+  },
+  "dependencies": {
+    "postgres": "3.4.9",
+    "tsx": "4.20.6",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "5.5.7",
+    "@sveltejs/kit": "2.70.1",
+    "@sveltejs/vite-plugin-svelte": "7.1.2",
+    "@types/node": "24.10.1",
+    "svelte": "5.56.8",
+    "svelte-check": "4.4.8",
+    "typescript": "5.9.3",
+    "vite": "8.1.5",
+    "vitest": "4.1.7"
+  }
+}

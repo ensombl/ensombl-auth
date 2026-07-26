@@ -1,0 +1,47 @@
+# Local configuration and runtime secrets
+.env*
+**/.env*
+**/secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+
+# Dependency, build, test, and tool caches
+node_modules/
+**/node_modules/
+.svelte-kit/
+**/.svelte-kit/
+build/
+**/build/
+dist/
+**/dist/
+coverage/
+**/coverage/
+.turbo/
+**/.turbo/
+.cache/
+**/.cache/
+.pnpm-store/
+**/.pnpm-store/
+*.tsbuildinfo
+
+# VCS and editor state
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Runtime artifacts
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+tmp/
+**/tmp/
+temp/
+**/temp/

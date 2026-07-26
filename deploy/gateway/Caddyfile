@@ -1,0 +1,69 @@
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	encode zstd gzip
+	header {
+		Content-Security-Policy "frame-ancestors 'none'"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	route {
+		@auth_flows path / /ui/* /self-service/* /sessions/* /oauth2/auth /oauth2/auth/* /oauth2/sessions/* /userinfo
+		header @auth_flows Cache-Control "no-store"
+
+		handle /gateway-healthz {
+			respond 200
+		}
+
+		@private path /internal /internal/* /admin /admin/* /relation-tuples /relation-tuples/* /permissions /permissions/* /clients /clients/* /keys /keys/* /health /health/* /metrics /debug /debug/*
+		handle @private {
+			respond 404
+		}
+
+		handle /self-service/* {
+			reverse_proxy kratos:4433 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle /sessions/* {
+			reverse_proxy kratos:4433 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle /schemas/* {
+			reverse_proxy kratos:4433 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle /oauth2/* {
+			reverse_proxy hydra:4444 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle /.well-known/* {
+			reverse_proxy hydra:4444 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle /userinfo {
+			reverse_proxy hydra:4444 {
+				header_up X-Forwarded-Proto https
+			}
+		}
+
+		handle {
+			reverse_proxy control-plane:3000
+		}
+	}
+}

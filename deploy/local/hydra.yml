@@ -1,0 +1,15 @@
+serve:
+  cookies:
+    secure: false
+
+urls:
+  self:
+    issuer: http://localhost:24455/
+    public: http://localhost:24455/
+  login: http://localhost:24455/ui/oauth2/login
+  consent: http://localhost:24455/ui/oauth2/consent
+  logout: http://localhost:24455/ui/oauth2/logout
+  error: http://localhost:24455/ui/error
+  post_logout_redirect: http://localhost:24455/
+  identity_provider:
+    publicUrl: http://localhost:24455/

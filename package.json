@@ -1,0 +1,38 @@
+{
+  "name": "ensombl-auth",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11 <12"
+  },
+  "packageManager": "pnpm@11.17.0",
+  "scripts": {
+    "dev": "pnpm docker:up && pnpm db:migrate && turbo run dev --filter=\"./apps/*\"",
+    "build": "turbo run build",
+    "check": "turbo run check",
+    "test": "pnpm test:unit && pnpm test:gateway && pnpm test:docker-context && pnpm test:secret-transport && pnpm test:postgres-roles",
+    "test:unit": "turbo run test",
+    "test:gateway": "./scripts/policy/test-gateway-routes.sh",
+    "test:docker-context": "bash ./scripts/policy/test-docker-context.sh",
+    "test:secret-transport": "bash ./scripts/policy/test-secret-transport.sh",
+    "test:postgres-roles": "bash ./scripts/policy/test-postgres-roles.sh",
+    "test:e2e:identity-import": "node ./scripts/e2e/identity-import.mjs",
+    "test:e2e:dev-identity": "node ./scripts/e2e/dev-identity.mjs",
+    "test:e2e:reset": "node ./scripts/e2e/reset-oauth.mjs",
+    "lint": "turbo run lint",
+    "db:migrate": "pnpm --filter @ensombl/auth-control migrate && docker compose --profile database-admin run --rm auth-control-grants",
+    "identity:seed:dev": "pnpm --filter @ensombl/auth-control identity:seed:dev",
+    "docker:up": "docker compose up -d --wait && docker compose run --rm hydra-client",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f",
+    "validate:compose": "docker compose config --quiet && ./scripts/policy/validate-dokploy-compose.sh"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.15",
+    "@types/node": "24.10.1",
+    "turbo": "2.10.7",
+    "typescript": "5.9.3"
+  }
+}

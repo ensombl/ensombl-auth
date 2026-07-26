@@ -1,0 +1,395 @@
+name: ensombl-auth
+
+x-control-build: &control-build
+  context: ../..
+  dockerfile: apps/control-plane/Dockerfile
+
+x-control-environment: &control-environment
+  NODE_ENV: production
+  PUBLIC_AUTH_URL: https://auth.ensombl.io
+  KRATOS_PUBLIC_INTERNAL_URL: http://kratos:4433
+  KRATOS_ADMIN_URL: http://kratos:4434
+  HYDRA_ADMIN_URL: http://hydra:4445
+  KETO_READ_URL: http://keto:4466
+  KETO_WRITE_URL: http://keto:4467
+  DATABASE_URL: postgres://auth_control_runtime:${AUTH_CONTROL_RUNTIME_DB_PASSWORD:?Inject AUTH_CONTROL_RUNTIME_DB_PASSWORD from Bitwarden}@postgres:5432/auth_control?sslmode=disable
+  ORY_HOOK_SECRET: ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
+  MIGRATION_API_SECRET: ${MIGRATION_API_SECRET:?Inject MIGRATION_API_SECRET from Bitwarden}
+  INVITATION_API_SECRET: ${INVITATION_API_SECRET:?Inject INVITATION_API_SECRET from Bitwarden}
+  INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
+  INVITATION_SERVICE_ACTOR: service:freightclaims-invitation-importer
+  FREIGHTCLAIMS_BASE_URL: https://freightclaims.ensombl.io
+  CLIENT_PRODUCT_MAP_JSON: '{"freightclaims-web":"freightclaims"}'
+  TRUSTED_CLIENT_IDS: freightclaims-web
+
+x-postgres-reconcile-environment: &postgres-reconcile-environment
+  POSTGRES_USER: postgres
+  POSTGRES_DB: postgres
+  POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Inject POSTGRES_SUPERUSER_PASSWORD from Bitwarden}
+  KRATOS_DB_PASSWORD: ${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}
+  HYDRA_DB_PASSWORD: ${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}
+  KETO_DB_PASSWORD: ${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}
+  AUTH_CONTROL_MIGRATOR_DB_PASSWORD: ${AUTH_CONTROL_MIGRATOR_DB_PASSWORD:?Inject AUTH_CONTROL_MIGRATOR_DB_PASSWORD from Bitwarden}
+  AUTH_CONTROL_RUNTIME_DB_PASSWORD: ${AUTH_CONTROL_RUNTIME_DB_PASSWORD:?Inject AUTH_CONTROL_RUNTIME_DB_PASSWORD from Bitwarden}
+  IDENTITY_IMPORT_DB_PASSWORD: ${IDENTITY_IMPORT_DB_PASSWORD:?Inject IDENTITY_IMPORT_DB_PASSWORD from Bitwarden}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Inject POSTGRES_SUPERUSER_PASSWORD from Bitwarden}
+      POSTGRES_DB: postgres
+    volumes:
+      - auth-postgres:/var/lib/postgresql/data
+      - auth-postgres-socket:/var/run/postgresql
+    networks:
+      - db-kratos
+      - db-hydra
+      - db-keto
+      - db-control
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  postgres-reconcile:
+    image: postgres:16-alpine
+    user: postgres
+    network_mode: none
+    environment:
+      <<: *postgres-reconcile-environment
+      PGHOST: /var/run/postgresql
+    entrypoint: ["/bin/sh", "/reconcile/reconcile-databases.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - auth-postgres-socket:/var/run/postgresql
+      - ../postgres/reconcile-databases.sh:/reconcile/reconcile-databases.sh:ro
+    restart: "no"
+
+  control-migrate:
+    build: *control-build
+    command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
+    environment:
+      AUTH_CONTROL_MIGRATION_URL: postgres://auth_control_migrator:${AUTH_CONTROL_MIGRATOR_DB_PASSWORD:?Inject AUTH_CONTROL_MIGRATOR_DB_PASSWORD from Bitwarden}@postgres:5432/auth_control?sslmode=disable&options=-c%20role%3Dauth_control_owner
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    networks:
+      - db-control
+    restart: "no"
+
+  auth-control-grants:
+    image: postgres:16-alpine
+    user: postgres
+    network_mode: none
+    environment:
+      POSTGRES_USER: postgres
+      PGHOST: /var/run/postgresql
+    entrypoint: ["/bin/sh", "/reconcile/reconcile-auth-control-privileges.sh"]
+    depends_on:
+      control-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - auth-postgres-socket:/var/run/postgresql
+      - ../postgres/reconcile-auth-control-privileges.sh:/reconcile/reconcile-auth-control-privileges.sh:ro
+    restart: "no"
+
+  kratos-migrate:
+    image: oryd/kratos:v26.2.0
+    command: ["migrate", "sql", "-e", "--yes"]
+    environment:
+      DSN: postgres://kratos:${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}@postgres:5432/kratos?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    networks:
+      - db-kratos
+    restart: "no"
+
+  kratos:
+    image: oryd/kratos:v26.2.0
+    command: ["serve", "--watch-courier", "--config", "/etc/config/kratos/kratos.yml"]
+    restart: unless-stopped
+    environment:
+      DSN: postgres://kratos:${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}@postgres:5432/kratos?sslmode=disable
+      SECRETS_COOKIE_0: ${KRATOS_COOKIE_SECRET:?Inject KRATOS_COOKIE_SECRET from Bitwarden}
+      SECRETS_CIPHER_0: ${KRATOS_CIPHER_SECRET:?Inject KRATOS_CIPHER_SECRET from Bitwarden}
+      COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?Inject SMTP_CONNECTION_URI from Bitwarden}
+      COURIER_SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:?Inject SMTP_FROM_ADDRESS from Bitwarden}
+      COURIER_SMTP_FROM_NAME: ${SMTP_FROM_NAME:?Inject SMTP_FROM_NAME from Bitwarden}
+      SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
+      SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ../ory/kratos:/etc/config/kratos:ro
+    networks:
+      - edge
+      - db-kratos
+      - kratos-admin
+      - control-private
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  hydra-migrate:
+    image: oryd/hydra:v26.2.0
+    command: ["migrate", "sql", "-e", "--yes"]
+    environment:
+      DSN: postgres://hydra:${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}@postgres:5432/hydra?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    networks:
+      - db-hydra
+    restart: "no"
+
+  hydra:
+    image: oryd/hydra:v26.2.0
+    command: ["serve", "all", "--config", "/etc/config/hydra/hydra.yml"]
+    restart: unless-stopped
+    environment:
+      DSN: postgres://hydra:${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}@postgres:5432/hydra?sslmode=disable
+      SECRETS_SYSTEM_0: ${HYDRA_SYSTEM_SECRET:?Inject HYDRA_SYSTEM_SECRET from Bitwarden}
+      OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT: ${HYDRA_PAIRWISE_SALT:?Inject HYDRA_PAIRWISE_SALT from Bitwarden}
+    depends_on:
+      hydra-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ../ory/hydra:/etc/config/hydra:ro
+    networks:
+      - edge
+      - db-hydra
+      - hydra-admin
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4445/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  hydra-client:
+    image: oryd/hydra:v26.2.0
+    entrypoint: ["/bin/sh", "/bootstrap/bootstrap-client.sh"]
+    environment:
+      HYDRA_ADMIN_URL: http://hydra:4445
+      HYDRA_CLIENT_ID: freightclaims-web
+      HYDRA_CLIENT_SECRET: ${FREIGHTCLAIMS_HYDRA_CLIENT_SECRET:?Inject FREIGHTCLAIMS_HYDRA_CLIENT_SECRET from Bitwarden}
+      FREIGHTCLAIMS_BASE_URL: https://freightclaims.ensombl.io
+    depends_on:
+      hydra:
+        condition: service_healthy
+    volumes:
+      - ../ory/hydra/bootstrap-client.sh:/bootstrap/bootstrap-client.sh:ro
+    networks:
+      - hydra-admin
+    restart: "no"
+
+  keto-migrate:
+    image: oryd/keto:v26.2.0
+    command: ["migrate", "up", "-y", "--config", "/home/ory/keto.yml"]
+    environment:
+      DSN: postgres://keto:${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}@postgres:5432/keto?sslmode=disable
+    depends_on:
+      postgres-reconcile:
+        condition: service_completed_successfully
+    volumes:
+      - ../ory/keto/keto.yml:/home/ory/keto.yml:ro
+      - ../ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
+    networks:
+      - db-keto
+    restart: "no"
+
+  keto:
+    image: oryd/keto:v26.2.0
+    command: ["serve", "--config", "/home/ory/keto.yml", "all"]
+    restart: unless-stopped
+    environment:
+      DSN: postgres://keto:${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}@postgres:5432/keto?sslmode=disable
+    depends_on:
+      keto-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ../ory/keto/keto.yml:/home/ory/keto.yml:ro
+      - ../ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
+    networks:
+      - db-keto
+      - authorization
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4466/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  control-plane:
+    build: *control-build
+    restart: unless-stopped
+    environment:
+      <<: *control-environment
+    depends_on:
+      auth-control-grants:
+        condition: service_completed_successfully
+      kratos:
+        condition: service_healthy
+      hydra:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+    networks:
+      - edge
+      - db-control
+      - kratos-admin
+      - hydra-admin
+      - authorization
+      - control-private
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  invitation-reconciler:
+    build: *control-build
+    command: ["node", "scripts/reconcile-invitations-worker.mjs"]
+    restart: unless-stopped
+    environment:
+      CONTROL_PLANE_INTERNAL_URL: http://control-plane:3000
+      INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
+      RECONCILE_LIMIT: "100"
+      RECONCILE_INTERVAL_MS: "30000"
+      RECONCILE_HEARTBEAT_PATH: /tmp/ensombl-invitation-reconciler-heartbeat
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=1m
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    memswap_limit: 256m
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - control-private
+    healthcheck:
+      test: ["CMD", "node", "scripts/reconcile-invitations-health.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+
+  invitation-reconcile:
+    profiles: ["invitation-reconcile"]
+    build: *control-build
+    command: ["node", "scripts/reconcile-invitations.mjs"]
+    environment:
+      CONTROL_PLANE_INTERNAL_URL: http://control-plane:3000
+      INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
+      RECONCILE_LIMIT: "100"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - control-private
+    restart: "no"
+
+  identity-import:
+    profiles: ["identity-import"]
+    build:
+      context: ../..
+      dockerfile: deploy/identity-import/Dockerfile
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: auth_control
+      PGUSER: auth_identity_import
+      PGPASSWORD: ${IDENTITY_IMPORT_DB_PASSWORD:?Inject IDENTITY_IMPORT_DB_PASSWORD from Bitwarden}
+      KRATOS_ADMIN_URL: http://kratos:4434
+      KETO_WRITE_URL: http://keto:4467
+      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-stage
+    stdin_open: true
+    read_only: true
+    tmpfs:
+      - /work:rw,noexec,nosuid,nodev,mode=0700,uid=70,gid=70,size=4m
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    memswap_limit: 256m
+    ulimits:
+      core:
+        soft: 0
+        hard: 0
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      auth-control-grants:
+        condition: service_completed_successfully
+      kratos:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+    networks:
+      - db-control
+      - kratos-admin
+      - authorization
+    restart: "no"
+
+  gateway:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    expose:
+      - "8080"
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    volumes:
+      - ../gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+    networks:
+      - edge
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/gateway-healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  auth-postgres:
+  auth-postgres-socket:
+
+networks:
+  edge:
+  db-kratos:
+    internal: true
+  db-hydra:
+    internal: true
+  db-keto:
+    internal: true
+  db-control:
+    internal: true
+  kratos-admin:
+    internal: true
+  hydra-admin:
+    internal: true
+  authorization:
+    internal: true
+  control-private:
+    internal: true
