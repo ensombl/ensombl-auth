@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { z } from 'zod'
+import { loadProductCatalog } from './product-catalog'
 
 const url = z.string().url()
 
@@ -16,9 +19,11 @@ const localDefaults = {
   INVITATION_API_SECRET: 'local-only-invitation-api-secret',
   INVITATION_RECONCILER_SECRET: 'local-only-invitation-reconciler-secret',
   INVITATION_SERVICE_ACTOR: 'service:local-invitation-api',
-  FREIGHTCLAIMS_BASE_URL: 'http://localhost:4200',
-  CLIENT_PRODUCT_MAP_JSON: '{"freightclaims-local-web":"freightclaims"}',
-  TRUSTED_CLIENT_IDS: 'freightclaims-local-web',
+  PRODUCT_CATALOG_PATH:
+    [
+      resolve(process.cwd(), 'deploy/products/products.local.json'),
+      resolve(process.cwd(), '../../deploy/products/products.local.json'),
+    ].find(existsSync) ?? resolve(process.cwd(), 'deploy/products/products.local.json'),
 } as const
 
 const schema = z.object({
@@ -42,9 +47,7 @@ const schema = z.object({
     .min(1)
     .max(200)
     .default(localDefaults.INVITATION_SERVICE_ACTOR),
-  FREIGHTCLAIMS_BASE_URL: url.default(localDefaults.FREIGHTCLAIMS_BASE_URL),
-  CLIENT_PRODUCT_MAP_JSON: z.string().default(localDefaults.CLIENT_PRODUCT_MAP_JSON),
-  TRUSTED_CLIENT_IDS: z.string().default(localDefaults.TRUSTED_CLIENT_IDS),
+  PRODUCT_CATALOG_PATH: z.string().min(1).default(localDefaults.PRODUCT_CATALOG_PATH),
 })
 
 type ParsedConfig = z.infer<typeof schema>
@@ -52,6 +55,7 @@ type ParsedConfig = z.infer<typeof schema>
 export type AppConfig = ParsedConfig & {
   clientProductMap: ReadonlyMap<string, string>
   trustedClientIds: ReadonlySet<string>
+  returnOrigins: ReadonlySet<string>
 }
 
 let cached: AppConfig | undefined
@@ -69,9 +73,7 @@ const productionRequiredKeys = [
   'INVITATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
   'INVITATION_SERVICE_ACTOR',
-  'FREIGHTCLAIMS_BASE_URL',
-  'CLIENT_PRODUCT_MAP_JSON',
-  'TRUSTED_CLIENT_IDS',
+  'PRODUCT_CATALOG_PATH',
 ] as const satisfies readonly (keyof typeof localDefaults)[]
 
 const internalUrlKeys = [
@@ -109,11 +111,12 @@ function assertProductionConfig(parsed: ParsedConfig, environment: NodeJS.Proces
     if (!environment[key]?.trim()) violations.push(`${key} must be explicitly configured`)
   }
 
-  for (const key of ['PUBLIC_AUTH_URL', 'FREIGHTCLAIMS_BASE_URL'] as const) {
-    const configured = new URL(parsed[key])
-    if (configured.protocol !== 'https:' || isLocalHostname(configured.hostname)) {
-      violations.push(`${key} must be a non-local HTTPS URL`)
-    }
+  const publicAuthUrl = new URL(parsed.PUBLIC_AUTH_URL)
+  if (publicAuthUrl.protocol !== 'https:' || isLocalHostname(publicAuthUrl.hostname)) {
+    violations.push('PUBLIC_AUTH_URL must be a non-local HTTPS URL')
+  }
+  if (!parsed.PRODUCT_CATALOG_PATH.startsWith('/')) {
+    violations.push('PRODUCT_CATALOG_PATH must be absolute in production')
   }
 
   for (const key of internalUrlKeys) {
@@ -156,17 +159,10 @@ export function config(): AppConfig {
 
   const parsed = schema.parse(process.env)
   assertProductionConfig(parsed, process.env)
-  const mapping = z
-    .record(z.string(), z.string().min(1))
-    .parse(JSON.parse(parsed.CLIENT_PRODUCT_MAP_JSON))
+  const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
   cached = {
     ...parsed,
-    clientProductMap: new Map(Object.entries(mapping)),
-    trustedClientIds: new Set(
-      parsed.TRUSTED_CLIENT_IDS.split(',')
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
+    ...productCatalog,
   }
   return cached
 }

@@ -1,7 +1,9 @@
+import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { config, resetConfigForTest } from '../src/lib/server/config'
 
 const originalEnvironment = { ...process.env }
+const productCatalogPath = resolve(process.cwd(), '../../deploy/products/products.json')
 
 function setProductionEnvironment(): void {
   Object.assign(process.env, {
@@ -17,10 +19,8 @@ function setProductionEnvironment(): void {
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
     INVITATION_API_SECRET: 'production-invitation-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
-    INVITATION_SERVICE_ACTOR: 'service:freightclaims-invitation-importer',
-    FREIGHTCLAIMS_BASE_URL: 'https://freightclaims.ensombl.io',
-    CLIENT_PRODUCT_MAP_JSON: '{"freightclaims-web":"freightclaims"}',
-    TRUSTED_CLIENT_IDS: 'freightclaims-web',
+    INVITATION_SERVICE_ACTOR: 'service:ensombl-invitation-api',
+    PRODUCT_CATALOG_PATH: productCatalogPath,
   })
   resetConfigForTest()
 }
@@ -58,9 +58,7 @@ describe('production configuration', () => {
       'INVITATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
       'INVITATION_SERVICE_ACTOR',
-      'FREIGHTCLAIMS_BASE_URL',
-      'CLIENT_PRODUCT_MAP_JSON',
-      'TRUSTED_CLIENT_IDS',
+      'PRODUCT_CATALOG_PATH',
     ]) {
       delete process.env[key]
     }
@@ -73,7 +71,7 @@ describe('production configuration', () => {
 
   it.each([
     ['PUBLIC_AUTH_URL', 'http://auth.ensombl.io', 'PUBLIC_AUTH_URL'],
-    ['FREIGHTCLAIMS_BASE_URL', 'https://localhost:4200', 'FREIGHTCLAIMS_BASE_URL'],
+    ['PRODUCT_CATALOG_PATH', 'deploy/products/products.json', 'PRODUCT_CATALOG_PATH'],
     ['KRATOS_ADMIN_URL', 'http://localhost:24434', 'KRATOS_ADMIN_URL'],
     [
       'DATABASE_URL',

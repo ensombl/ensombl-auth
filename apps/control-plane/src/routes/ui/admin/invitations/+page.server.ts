@@ -37,7 +37,9 @@ function requireKnownProduct(product: string): void {
 }
 
 export const load: PageServerLoad = async ({ url, request }) => {
-  const product = url.searchParams.get('product') ?? 'freightclaims'
+  const defaultProduct = config().clientProductMap.values().next().value
+  if (!defaultProduct) error(503, 'No Ensombl product is configured')
+  const product = url.searchParams.get('product') ?? defaultProduct
   requireKnownProduct(product)
   await authorizeInvitationOperator(cookieHeader(request), product)
   return { product, idempotencyKey: randomUUID() }

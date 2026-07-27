@@ -7,8 +7,9 @@ These are deliberate external gates; the repository cannot safely invent them:
 1. Grant Dokploy read access to the private GitHub repository
    `Ensombl/ensombl-auth` and configure it to clone the reviewed revision. Do
    not configure any registry publication.
-2. Create DNS for `auth.ensombl.io` and attach that domain to the Dokploy
-   `gateway` service on port `8080`. TLS must be valid before any user import.
+2. Create DNS for `auth.ensombl.io`. The checked-in Traefik labels attach the
+   exact public routes to Dokploy's `websecure` entrypoint and `letsencrypt`
+   resolver. TLS must be valid before any user import.
 3. Create the Bitwarden Secrets Manager project `ensombl-auth-prod` and a
    read-only machine account scoped only to that project.
 4. Configure a verified `ensombl.io` SMTP sender. Recovery, verification, and
@@ -38,7 +39,8 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `MIGRATION_API_SECRET` | only the hardened migration workload |
 | `INVITATION_API_SECRET` | only the audited invitation operator/service |
 | `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
-| `FREIGHTCLAIMS_HYDRA_CLIENT_SECRET` | same value in FreightClaims |
+| `FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET` | stage BFF client; distinct from production |
+| `FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET` | production BFF client; distinct from stage |
 | `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |
 
 `SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
@@ -76,15 +78,16 @@ choice is made, hosted deployment is intentionally blocked.
    `deploy/dokploy/compose.yml`.
 2. Inject exactly the keys in `deploy/secrets/manifest.json` using the approved
    Bitwarden-to-Dokploy handoff above.
-3. Expose only `gateway:8080` at `auth.ensombl.io`. Do not publish ports for
-   PostgreSQL, Kratos, Hydra, Keto, or the control application.
+3. Do not create a separate Dokploy domain or port mapping. The Compose labels
+   route only the allowlisted paths on `auth.ensombl.io`; PostgreSQL, Ory admin,
+   Keto, and internal control paths have no public router.
 4. Set persistent storage for the `auth-postgres` volume.
 5. Deploy from source. Dokploy builds `apps/control-plane/Dockerfile` locally;
    there is no `image:` name for the project application and nothing is pushed
    to GHCR or any other registry.
 6. Wait for PostgreSQL role reconciliation, the three Ory migration jobs, the
-   auth-control migration and privilege reconciliation, and the Hydra client
-   bootstrap to complete successfully.
+   auth-control migration and privilege reconciliation, and
+   `product-reconcile` to complete successfully.
 7. Confirm `invitation-reconciler` is healthy. It continuously retries only
    persisted invitation activations; the `invitation-reconcile` profile is the
    operator-triggered one-shot form.
@@ -128,8 +131,12 @@ GET https://auth.ensombl.io/internal/anything          -> 404
 
 - OIDC discovery returns issuer and endpoints on exactly
   `https://auth.ensombl.io`.
-- The Hydra client contains only the exact
-  `https://freightclaims.ensombl.io/auth/callback` redirect.
+- `freightclaims-stage-web` contains only
+  `https://app.staging.freightclaims.ensombl.io/auth/callback` and audience
+  `freightclaims-stage`.
+- `freightclaims-web` contains only
+  `https://app.freightclaims.ensombl.io/auth/callback` and audience
+  `freightclaims-prod`.
 - Recovery email reaches a controlled test mailbox and its code can be used.
 - A reset-gated test identity can authenticate but cannot obtain a Hydra code
   until it chooses a different password.
@@ -142,15 +149,17 @@ GET https://auth.ensombl.io/internal/anything          -> 404
   DENY`, `nosniff`, strict referrer policy, and production HSTS. OIDC discovery
   retains its upstream caching policy.
 
-Do not import `fc-stage` users before these gates pass.
+Do not import `fc-prod` users before these gates pass. `fc-stage` is rehearsed
+only against disposable local auth and is never loaded into this global stack.
 
 ## Audited identity import
 
-Source extraction is intentionally not implemented in this repository. Do not
-prepare a batch until the operator has a `fc-stage` read-replica route and a
-confirmed `SELECT`-only credential, and the legacy schema/mapping has been
-fingerprinted. The prepared manifest must contain only normalized traits, the
-source user key, product grants, and the exact Argon2id PHC migration contract
+Source extraction is intentionally not implemented in this repository. The
+stage reader is used by FreightClaims to rehearse the transform and import
+against disposable local auth. Only after that evidence is accepted may the
+production reader prepare the final `freightclaims-fc-prod` batch for this
+stack. The manifest must contain only normalized traits, the source user key,
+allowlisted product grants, and the exact Argon2id PHC migration contract
 (`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). It must never contain a
 plaintext password or legacy ciphertext.
 
@@ -160,7 +169,7 @@ in place. Pipe the manifest over standard input; never copy it into the
 checkout, a Compose volume, an environment variable, or a command argument:
 
 ```bash
-batch_path=/secure/operator-only/fc-stage-auth-batch.json
+batch_path=/secure/operator-only/fc-prod-auth-batch.json
 batch_sha="$(sha256sum "$batch_path" | awk '{print $1}')"
 docker compose \
   --file deploy/dokploy/compose.yml \

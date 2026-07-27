@@ -2,8 +2,8 @@
 
 ## Public routing
 
-Dokploy terminates TLS and routes `auth.ensombl.io` to `gateway:8080`.
-The gateway exposes only:
+Dokploy's existing Traefik terminates TLS and uses the checked-in Compose labels
+to expose only:
 
 | Path | Destination |
 | --- | --- |
@@ -11,21 +11,19 @@ The gateway exposes only:
 | `/self-service/*`, `/sessions/*`, `/schemas/*` | Kratos public API |
 | `/oauth2/*`, `/.well-known/*`, `/userinfo` | Hydra public API |
 
-`/internal/*` always returns 404 at the public gateway. Kratos admin, Hydra
-admin, and both Keto APIs have no public route. The gateway joins only the edge
-network, never a PostgreSQL or Keto network. Dedicated database, Kratos-admin,
-Hydra-admin, authorization, and control networks limit every one-shot to its
-required raw surfaces. In the current Compose topology Kratos and Hydra each
-expose public and admin listeners from the same edge-attached container, so a
-compromised gateway could address those admin ports. The public Caddy policy
-and lack of an admin route remain an additional boundary, not a claim of
-process-level listener isolation. Kratos' combined server requires a
-proxy/listener-isolation design; Hydra can be split into public/admin server
-processes as a follow-up hardening step.
+There is no catch-all router, so `/internal/*`, `/admin/*`, and Keto APIs do not
+match a public route. Hydra public and admin listeners are separate containers;
+only `hydra-public` joins `dokploy-network`. Kratos v26.2.0 serves public and
+admin listeners from one process, so its container joins both
+`dokploy-network` and the private Kratos-admin network. Traefik routes only
+port 4433 and the public path allowlist, but other workloads on the shared
+Dokploy network remain part of the trusted deployment boundary. Keto and every
+database remain on internal networks.
 
-The gateway emits anti-framing, MIME-sniffing, no-referrer, and production HSTS
-headers. Browser auth/UI paths are forced `no-store`; OIDC discovery is
-deliberately excluded so Hydra's API caching contract is preserved.
+Traefik middleware emits anti-framing, MIME-sniffing, no-referrer, and
+production HSTS headers. Browser auth/UI paths are forced `no-store`; OIDC
+discovery is deliberately excluded so Hydra's API caching contract is
+preserved. The local development stack continues to use its small Caddy router.
 
 ## Interactive OAuth flow
 
@@ -72,9 +70,10 @@ read, clear, or otherwise update an identity gate.
 
 The manifest accepts only the exact Argon2id contract used by the
 FreightClaims migrator: `m=65536,t=3,p=1`, 16-byte salt, and 32-byte hash.
-Plaintext and legacy ciphertext are rejected. Extraction remains gated on a
-confirmed `SELECT`-only `fc-stage` credential and schema fingerprint; the auth
-repository does not invent or widen that source access.
+Plaintext and legacy ciphertext are rejected. `fc-stage` extraction is used
+only for a read-only rehearsal into disposable local auth. The hosted global
+stack accepts only the reviewed `fc-prod` batch at the final migration; the
+auth repository does not invent or widen source access.
 
 The import order is:
 

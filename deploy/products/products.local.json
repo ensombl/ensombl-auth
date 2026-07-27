@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "products": [
+    {
+      "id": "freightclaims",
+      "return_origins": ["http://localhost:4200"],
+      "clients": [
+        {
+          "id": "freightclaims-local-web",
+          "display_name": "FreightClaims local web BFF",
+          "base_url": "http://localhost:4200",
+          "audience": "freightclaims",
+          "secret_environment": "FREIGHTCLAIMS_LOCAL_HYDRA_CLIENT_SECRET",
+          "trusted": true
+        }
+      ]
+    }
+  ]
+}

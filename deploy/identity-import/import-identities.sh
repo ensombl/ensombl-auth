@@ -9,6 +9,7 @@ set -eu
 : "${KRATOS_ADMIN_URL:?KRATOS_ADMIN_URL is required}"
 : "${KETO_WRITE_URL:?KETO_WRITE_URL is required}"
 : "${IDENTITY_IMPORT_ALLOWED_SOURCE:?IDENTITY_IMPORT_ALLOWED_SOURCE is required}"
+: "${IDENTITY_IMPORT_ALLOWED_PRODUCTS:?IDENTITY_IMPORT_ALLOWED_PRODUCTS is required}"
 : "${IDENTITY_IMPORT_EXPECTED_SHA256:?IDENTITY_IMPORT_EXPECTED_SHA256 is required}"
 
 work_dir=/work
@@ -62,6 +63,20 @@ if [ "${#IDENTITY_IMPORT_EXPECTED_SHA256}" -ne 64 ]; then
   fail invalid_expected_sha256
 fi
 
+allowed_products_json="$(
+  printf '%s' "$IDENTITY_IMPORT_ALLOWED_PRODUCTS" |
+    jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))'
+)"
+if ! printf '%s' "$allowed_products_json" |
+  jq -e '
+    . as $products
+    | length >= 1
+    and all(.[]; test("^[a-z][a-z0-9-]{0,63}$"))
+    and (($products | unique | length) == ($products | length))
+  ' >/dev/null; then
+  fail invalid_allowed_products
+fi
+
 umask 077
 head -c 1048577 >"$manifest_path"
 manifest_size="$(wc -c <"$manifest_path" | tr -d ' ')"
@@ -74,7 +89,9 @@ if [ "$manifest_sha256" != "$IDENTITY_IMPORT_EXPECTED_SHA256" ]; then
   fail manifest_sha256_mismatch
 fi
 
-if ! jq -e --arg allowed_source "$IDENTITY_IMPORT_ALLOWED_SOURCE" '
+if ! jq -e \
+  --arg allowed_source "$IDENTITY_IMPORT_ALLOWED_SOURCE" \
+  --argjson allowed_products "$allowed_products_json" '
   def bounded_string($maximum):
     type == "string" and length >= 1 and length <= $maximum;
   def safe_name:
@@ -125,7 +142,7 @@ if ! jq -e --arg allowed_source "$IDENTITY_IMPORT_ALLOWED_SOURCE" '
       and (.products | type == "array" and length >= 1 and length <= 10)
       and (all(.products[]; type == "string" and test("^[a-z][a-z0-9-]{0,63}$")))
       and ((.products | unique | length) == (.products | length))
-      and (.products | index("freightclaims") != null)
+      and ((.products - $allowed_products) | length == 0)
     )
   )
   and (([.identities[].source_user_id] | unique | length) == (.identities | length))

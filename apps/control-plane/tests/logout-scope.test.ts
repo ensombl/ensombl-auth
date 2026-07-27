@@ -17,7 +17,7 @@ beforeEach(() => {
 describe('application logout scope', () => {
   it('accepts only the Hydra application logout and retains the Kratos identity session', async () => {
     ory.acceptLogout.mockResolvedValue({
-      redirect_to: 'https://freightclaims.ensombl.io/',
+      redirect_to: 'https://app.freightclaims.ensombl.io/',
     })
     const request = new Request('https://auth.ensombl.io/ui/oauth2/logout?/confirm', {
       method: 'POST',
@@ -29,7 +29,7 @@ describe('application logout scope', () => {
 
     await expect(confirm({ request } as Parameters<typeof confirm>[0])).rejects.toMatchObject({
       status: 303,
-      location: 'https://freightclaims.ensombl.io/',
+      location: 'https://app.freightclaims.ensombl.io/',
     })
     expect(ory.acceptLogout).toHaveBeenCalledExactlyOnceWith('logout-challenge')
     expect(ory.rejectLogout).not.toHaveBeenCalled()

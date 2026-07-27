@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "products": [
+    {
+      "id": "freightclaims",
+      "return_origins": [
+        "https://app.staging.freightclaims.ensombl.io",
+        "https://app.freightclaims.ensombl.io"
+      ],
+      "clients": [
+        {
+          "id": "freightclaims-stage-web",
+          "display_name": "FreightClaims stage web BFF",
+          "base_url": "https://app.staging.freightclaims.ensombl.io",
+          "audience": "freightclaims-stage",
+          "secret_environment": "FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET",
+          "trusted": true
+        },
+        {
+          "id": "freightclaims-web",
+          "display_name": "FreightClaims production web BFF",
+          "base_url": "https://app.freightclaims.ensombl.io",
+          "audience": "freightclaims-prod",
+          "secret_environment": "FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET",
+          "trusted": true
+        }
+      ]
+    }
+  ]
+}
