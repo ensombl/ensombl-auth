@@ -53,6 +53,7 @@ const schema = z.object({
 type ParsedConfig = z.infer<typeof schema>
 
 export type AppConfig = ParsedConfig & {
+  authorizationDecisionSecrets: ReadonlyMap<string, string>
   clientProductMap: ReadonlyMap<string, string>
   trustedClientIds: ReadonlySet<string>
   returnOrigins: ReadonlySet<string>
@@ -160,9 +161,31 @@ export function config(): AppConfig {
   const parsed = schema.parse(process.env)
   assertProductionConfig(parsed, process.env)
   const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
+  const authorizationDecisionSecrets = new Map<string, string>()
+  for (const [clientId, environmentName] of productCatalog.authorizationSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-authorization-decision-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for authorization decisions`,
+      )
+    }
+    authorizationDecisionSecrets.set(clientId, secret)
+  }
+  if (
+    parsed.NODE_ENV === 'production' &&
+    new Set(authorizationDecisionSecrets.values()).size !== authorizationDecisionSecrets.size
+  ) {
+    throw new Error('Authorization decision secrets must be pairwise unique')
+  }
   cached = {
     ...parsed,
     ...productCatalog,
+    authorizationDecisionSecrets,
   }
   return cached
 }

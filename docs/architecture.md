@@ -20,6 +20,16 @@ port 4433 and the public path allowlist, but other workloads on the shared
 Dokploy network remain part of the trusted deployment boundary. Keto and every
 database remain on internal networks.
 
+Product APIs never receive a raw Keto endpoint. They call the private
+`POST /internal/authorization/check` decision boundary with a client-specific
+bearer secret. The control plane derives the product from the authenticated
+client, constructs a product-namespaced tenant object, and returns only an
+allow/deny result. The route is not exposed by Traefik; dependency failures
+return `503` and product APIs fail closed. A pre-created external Docker
+network named `ensombl-auth-product-decisions` exposes only the control plane
+under alias `ensombl-auth-control` to product API containers; raw Ory services
+never join it.
+
 Traefik middleware emits anti-framing, MIME-sniffing, no-referrer, and
 production HSTS headers. Browser auth/UI paths are forced `no-store`; OIDC
 discovery is deliberately excluded so Hydra's API caching contract is

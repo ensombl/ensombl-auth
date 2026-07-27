@@ -17,6 +17,8 @@ x-control-environment: &control-environment
   MIGRATION_API_SECRET: ${MIGRATION_API_SECRET:?Inject MIGRATION_API_SECRET from Bitwarden}
   INVITATION_API_SECRET: ${INVITATION_API_SECRET:?Inject INVITATION_API_SECRET from Bitwarden}
   INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
+  FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET from Bitwarden}
+  FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET from Bitwarden}
   INVITATION_SERVICE_ACTOR: service:ensombl-invitation-api
   PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
 
@@ -293,12 +295,15 @@ services:
       keto:
         condition: service_healthy
     networks:
-      - dokploy-network
-      - db-control
-      - kratos-admin
-      - hydra-admin
-      - authorization
-      - control-private
+      product-decisions:
+        aliases:
+          - ensombl-auth-control
+      dokploy-network:
+      db-control:
+      kratos-admin:
+      hydra-admin:
+      authorization:
+      control-private:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
@@ -443,3 +448,6 @@ networks:
     internal: true
   control-private:
     internal: true
+  product-decisions:
+    external: true
+    name: ensombl-auth-product-decisions

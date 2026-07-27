@@ -28,6 +28,7 @@ const catalogSchema = z.object({
               display_name: z.string().min(1).max(100),
               base_url: httpsOrLoopbackUrl,
               audience: identifier,
+              authorization_secret_environment: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
               secret_environment: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
               trusted: z.boolean(),
             }),
@@ -39,6 +40,7 @@ const catalogSchema = z.object({
 })
 
 export interface ProductCatalogConfiguration {
+  readonly authorizationSecretEnvironmentByClient: ReadonlyMap<string, string>
   readonly clientProductMap: ReadonlyMap<string, string>
   readonly trustedClientIds: ReadonlySet<string>
   readonly returnOrigins: ReadonlySet<string>
@@ -47,6 +49,7 @@ export interface ProductCatalogConfiguration {
 export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   const catalog = catalogSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
   const clientProductMap = new Map<string, string>()
+  const authorizationSecretEnvironmentByClient = new Map<string, string>()
   const trustedClientIds = new Set<string>()
   const returnOrigins = new Set<string>()
   const audiences = new Set<string>()
@@ -70,10 +73,16 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
         throw new Error(`Client ${client.id} base URL is not an allowed product return origin`)
       }
       clientProductMap.set(client.id, product.id)
+      authorizationSecretEnvironmentByClient.set(client.id, client.authorization_secret_environment)
       audiences.add(client.audience)
       if (client.trusted) trustedClientIds.add(client.id)
     }
   }
 
-  return { clientProductMap, trustedClientIds, returnOrigins }
+  return {
+    authorizationSecretEnvironmentByClient,
+    clientProductMap,
+    trustedClientIds,
+    returnOrigins,
+  }
 }

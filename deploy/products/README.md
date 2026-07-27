@@ -9,8 +9,9 @@ the global `auth.ensombl.io` identity plane. It is applied on every deployment:
   Hydra client;
 - Kratos' checked-in return-origin allowlist must contain the same origins.
 
-Each hosted environment gets a distinct Hydra client ID, client secret, and
-audience even when stage and production share the same global Ory deployment.
+Each hosted environment gets a distinct Hydra client ID, client secret,
+authorization-decision secret, and audience even when stage and production
+share the same global Ory deployment.
 An API must validate its exact environment audience; a stage token must never
 be accepted by production.
 
@@ -26,3 +27,22 @@ change that updates:
 `products.local.json` exists only for this repository's isolated maintainer
 tests. FreightClaims development owns its separate disposable Ory stack and
 does not consume this file or this repository.
+
+## Private product decisions
+
+Before deploying this stack and any product API on the same Docker host, create
+the shared external network once:
+
+```bash
+docker network create ensombl-auth-product-decisions
+```
+
+The auth control container joins it with alias `ensombl-auth-control`.
+FreightClaims stage and production API containers may join this network and
+call only
+`http://ensombl-auth-control:3000/internal/authorization/check`. The matching
+client-specific `*_AUTHORIZATION_DECISION_SECRET` is injected into both
+deployments from Bitwarden. Do not attach Keto, Kratos admin, Hydra admin,
+databases, workers, or migration jobs to this network. The network is private
+application plumbing; it is not a substitute for the per-client bearer or
+Traefik path restrictions.

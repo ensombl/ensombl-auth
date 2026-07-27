@@ -32,6 +32,11 @@ jq -e '
     and ($services.kratos.networks | has("dokploy-network"))
     and ($services["hydra-public"].networks | has("dokploy-network"))
     and ($services["control-plane"].networks | has("dokploy-network"))
+    and ($services["control-plane"].networks | has("product-decisions"))
+    and (
+      $services["control-plane"].networks["product-decisions"].aliases
+      | index("ensombl-auth-control")
+    )
     and ($services["hydra-admin"].networks | has("dokploy-network") | not)
     and (
       $services.kratos.labels["traefik.http.routers.ensombl-auth-kratos.rule"]
@@ -62,6 +67,8 @@ jq -e '
       | contains("/internal")
       | not
     )
+    and (.networks["product-decisions"].name == "ensombl-auth-product-decisions")
+    and (.networks["product-decisions"].external == true)
     and (
       $services["control-plane"].labels
       | has("traefik.http.middlewares.ensombl-auth-security.headers.framedeny")

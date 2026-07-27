@@ -20,6 +20,10 @@ function setProductionEnvironment(): void {
     INVITATION_API_SECRET: 'production-invitation-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
     INVITATION_SERVICE_ACTOR: 'service:ensombl-invitation-api',
+    FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET:
+      'stage-authorization-decision-secret-that-is-long-enough',
+    FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET:
+      'prod-authorization-decision-secret-that-is-long-enough',
     PRODUCT_CATALOG_PATH: productCatalogPath,
   })
   resetConfigForTest()
