@@ -101,8 +101,10 @@ every deployment. `auth_control_owner` is `NOLOGIN`;
 `auth_control_migrator` assumes it only for migrations; and
 `auth_control_runtime` has explicit non-delete DML grants only on the four
 application tables it uses. The import role can append/update its ledger and
-execute a `SECURITY DEFINER` function that can only assert
-`reset_required=true`; it cannot read or update the gate table directly.
+execute one `SECURITY DEFINER` function that can only assert
+`reset_required=true` plus a boolean-only function that validates an exact
+completed Stage/Production counterpart before identity reuse. It cannot read
+or update the gate table directly.
 The control application receives only its runtime `DATABASE_URL`; the migration
 job separately constructs `AUTH_CONTROL_MIGRATION_URL` from the migrator
 credential. The migration script rejects runtime credentials, a different
