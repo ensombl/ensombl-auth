@@ -187,7 +187,7 @@ in place. Pipe the manifest over standard input; never copy it into the
 checkout, a Compose volume, an environment variable, or a command argument:
 
 ```bash
-source_environment=stage # stage or prod
+source_environment=staging # staging or production
 batch_path="/secure/operator-only/fc-${source_environment}-auth-batch.json"
 batch_sha="$(sha256sum "$batch_path" | awk '{print $1}')"
 docker compose \
