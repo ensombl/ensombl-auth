@@ -48,7 +48,7 @@ describe('product-scoped tenant membership management', () => {
     expect(keto.setTenantMembership).toHaveBeenCalledExactlyOnceWith({
       identityId: 'bb86046e-c922-44a3-a85f-ba21042c2897',
       organizationId: '01900000-0000-7000-8000-000000000001',
-      product: 'freightclaims',
+      product: 'freightclaims:local',
       relation: 'members',
       state: 'active',
     })

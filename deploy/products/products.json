@@ -9,23 +9,29 @@
       ],
       "clients": [
         {
-          "id": "freightclaims-stage-web",
-          "display_name": "FreightClaims stage web BFF",
+          "id": "freightclaims-staging-web",
+          "display_name": "FreightClaims staging web BFF",
           "base_url": "https://app.staging.freightclaims.ensombl.io",
-          "audience": "freightclaims-stage",
-          "authorization_secret_environment": "FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET",
-          "identity_management_secret_environment": "FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET",
-          "secret_environment": "FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET",
+          "audience": "freightclaims-staging",
+          "admission_scope": "freightclaims:staging",
+          "authorization_secret_environment": "FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET",
+          "identity_migration_secret_environment": "FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET",
+          "identity_migration_source": "freightclaims-fc-staging",
+          "secret_environment": "FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET",
           "trusted": true
         },
         {
-          "id": "freightclaims-web",
+          "id": "freightclaims-production-web",
           "display_name": "FreightClaims production web BFF",
           "base_url": "https://app.freightclaims.ensombl.io",
-          "audience": "freightclaims-prod",
-          "authorization_secret_environment": "FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET",
-          "identity_management_secret_environment": "FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET",
-          "secret_environment": "FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET",
+          "audience": "freightclaims-production",
+          "admission_scope": "freightclaims:production",
+          "authorization_secret_environment": "FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET",
+          "identity_migration_secret_environment": "FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET",
+          "identity_migration_source": "freightclaims-fc-production",
+          "secret_environment": "FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET",
           "trusted": true
         }
       ]

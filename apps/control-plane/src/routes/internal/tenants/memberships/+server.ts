@@ -20,9 +20,9 @@ export const PUT: RequestHandler = async ({ request }) => {
   if (!parsed.success) return json({ error: 'invalid_request' }, { status: 400 })
 
   const current = config()
-  const product = current.clientProductMap.get(parsed.data.client_id)
+  const admissionScope = current.admissionScopeByClient.get(parsed.data.client_id)
   const expectedSecret = current.identityManagementSecrets.get(parsed.data.client_id)
-  if (!product || !expectedSecret || !hasBearer(request, expectedSecret)) {
+  if (!admissionScope || !expectedSecret || !hasBearer(request, expectedSecret)) {
     return json({ error: 'unauthorized' }, { status: 401 })
   }
 
@@ -30,7 +30,7 @@ export const PUT: RequestHandler = async ({ request }) => {
     await setTenantMembership({
       identityId: parsed.data.identity_id,
       organizationId: parsed.data.organization_id,
-      product,
+      product: admissionScope,
       relation: parsed.data.relation,
       state: parsed.data.state,
     })

@@ -22,7 +22,7 @@ function request(overrides: Record<string, unknown> = {}, bearer = stageSecret):
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      client_id: 'freightclaims-stage-web',
+      client_id: 'freightclaims-staging-web',
       subject_id: 'bb86046e-c922-44a3-a85f-ba21042c2897',
       organization_id: '01900000-0000-7000-8000-000000000001',
       permission: 'access',
@@ -40,8 +40,8 @@ afterEach(() => {
 describe('product-scoped authorization decisions', () => {
   it('binds the client credential to its configured product tenant', async () => {
     process.env.PRODUCT_CATALOG_PATH = productCatalogPath
-    process.env.FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET = stageSecret
-    process.env.FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET =
+    process.env.FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET = stageSecret
+    process.env.FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET =
       'prod-authorization-decision-secret-that-is-long-enough'
     resetConfigForTest()
     keto.hasTenantPermissionStrict.mockResolvedValue(true)
@@ -52,7 +52,7 @@ describe('product-scoped authorization decisions', () => {
     await expect(response.json()).resolves.toEqual({ allowed: true })
     expect(keto.hasTenantPermissionStrict).toHaveBeenCalledExactlyOnceWith(
       'bb86046e-c922-44a3-a85f-ba21042c2897',
-      'freightclaims',
+      'freightclaims:staging',
       '01900000-0000-7000-8000-000000000001',
       'access',
     )
@@ -60,13 +60,13 @@ describe('product-scoped authorization decisions', () => {
 
   it('rejects a credential for another client before consulting Keto', async () => {
     process.env.PRODUCT_CATALOG_PATH = productCatalogPath
-    process.env.FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET = stageSecret
-    process.env.FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET =
+    process.env.FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET = stageSecret
+    process.env.FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET =
       'prod-authorization-decision-secret-that-is-long-enough'
     resetConfigForTest()
 
     const response = await POST({
-      request: request({ client_id: 'freightclaims-web' }),
+      request: request({ client_id: 'freightclaims-production-web' }),
     } as Parameters<typeof POST>[0])
 
     expect(response.status).toBe(401)
@@ -75,8 +75,8 @@ describe('product-scoped authorization decisions', () => {
 
   it('fails closed when the private authorization plane is unavailable', async () => {
     process.env.PRODUCT_CATALOG_PATH = productCatalogPath
-    process.env.FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET = stageSecret
-    process.env.FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET =
+    process.env.FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET = stageSecret
+    process.env.FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET =
       'prod-authorization-decision-secret-that-is-long-enough'
     resetConfigForTest()
     keto.hasTenantPermissionStrict.mockRejectedValue(new Error('keto unavailable'))

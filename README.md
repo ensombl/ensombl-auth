@@ -139,8 +139,8 @@ FreightClaims currently declares two confidential clients:
 
 | Environment | Client | Base origin | Audience |
 | --- | --- | --- | --- |
-| stage | `freightclaims-stage-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-stage` |
-| production/migration | `freightclaims-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-prod` |
+| stage | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
+| production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
 
 Both use Authorization Code, refresh tokens, and
 `openid offline_access email profile`. Their Bitwarden-managed secrets are

@@ -18,14 +18,18 @@ function setProductionEnvironment(): void {
     ORY_HOOK_SECRET: 'production-hook-secret-that-is-not-the-default',
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
-    FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET:
+    FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET:
       'stage-authorization-decision-secret-that-is-long-enough',
-    FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET:
+    FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET:
       'prod-authorization-decision-secret-that-is-long-enough',
-    FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET:
+    FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET:
       'stage-identity-management-secret-that-is-long-enough',
-    FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET:
+    FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET:
       'prod-identity-management-secret-that-is-long-enough',
+    FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET:
+      'stage-identity-migration-secret-that-is-long-enough',
+    FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET:
+      'prod-identity-migration-secret-that-is-long-enough',
     PRODUCT_CATALOG_PATH: productCatalogPath,
   })
   resetConfigForTest()
@@ -125,8 +129,8 @@ describe('production configuration', () => {
 
   it('requires all product capability secrets to be pairwise unique', () => {
     setProductionEnvironment()
-    process.env.FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET =
-      process.env.FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET
+    process.env.FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET =
+      process.env.FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET
     resetConfigForTest()
 
     expect(() => config()).toThrow('Product client capability secrets must be pairwise unique')

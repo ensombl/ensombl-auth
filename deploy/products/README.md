@@ -11,8 +11,8 @@ the global `auth.ensombl.io` identity plane. It is applied on every deployment:
 
 Each hosted environment gets a distinct Hydra client ID, client secret,
 authorization-decision secret, identity-management secret, and audience even
-when stage and production share the same global Ory deployment.
-An API must validate its exact environment audience; a stage token must never
+when staging and production share the same global Ory deployment.
+An API must validate its exact environment audience; a staging token must never
 be accepted by production.
 
 The catalog contains environment-variable names that reference Bitwarden
@@ -38,7 +38,7 @@ docker network create ensombl-auth-product-decisions
 ```
 
 The auth control container joins it with alias `ensombl-auth-control`.
-FreightClaims stage and production API containers may join this network and
+FreightClaims staging and production API containers may join this network and
 call only
 `http://ensombl-auth-control:3000/internal/authorization/check` for decisions,
 `/internal/invitations` for invitations, and

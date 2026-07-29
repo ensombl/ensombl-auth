@@ -29,7 +29,7 @@ describe('machine invitation audit actor', () => {
         id: '5d37e8ce-b12a-49a4-8f0f-3ce90d96a373',
         identityId: null,
         normalizedEmail: 'invitee@example.test',
-        product: 'freightclaims',
+        product: 'freightclaims:local',
         invitedBy: 'service:freightclaims-local-web',
         idempotencyKey: 'machine-invite-request-0001',
         requestFingerprint: 'a'.repeat(64),
@@ -58,7 +58,7 @@ describe('machine invitation audit actor', () => {
     expect(response.status).toBe(201)
     expect(invitations.issueInvitation).toHaveBeenCalledExactlyOnceWith({
       email: 'invitee@example.test',
-      product: 'freightclaims',
+      product: 'freightclaims:local',
       invitedBy: 'service:freightclaims-local-web',
       expiresInHours: 48,
       idempotencyKey: 'machine-invite-request-0001',

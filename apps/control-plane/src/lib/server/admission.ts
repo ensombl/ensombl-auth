@@ -20,16 +20,22 @@ export function productForClient(client: HydraClient): string {
   return mapped
 }
 
+export function admissionScopeForClient(client: HydraClient): string {
+  const scope = config().admissionScopeByClient.get(client.client_id)
+  if (!scope) error(403, 'This OAuth client has no configured admission scope')
+  return scope
+}
+
 export async function evaluateAdmission(
   session: KratosSession,
-  product: string,
+  admissionScope: string,
 ): Promise<'allowed' | 'reset_required' | 'not_admitted'> {
   if (!session.active || session.identity.state === 'inactive') return 'not_admitted'
   if (await isResetRequired(session.identity.id)) return 'reset_required'
-  if (await hasUnactivatedInvitationAdmission(session.identity.id, product)) {
+  if (await hasUnactivatedInvitationAdmission(session.identity.id, admissionScope)) {
     return 'not_admitted'
   }
-  if (!(await hasProductAdmission(session.identity.id, product))) return 'not_admitted'
+  if (!(await hasProductAdmission(session.identity.id, admissionScope))) return 'not_admitted'
   return 'allowed'
 }
 

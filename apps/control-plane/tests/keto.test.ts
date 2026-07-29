@@ -81,7 +81,7 @@ describe('Keto tenant membership desired state', () => {
           relation: 'organization',
           subject_set: {
             namespace: 'Organization',
-            object: '01900000-0000-7000-8000-000000000001',
+            object: 'freightclaims:01900000-0000-7000-8000-000000000001',
             relation: '',
           },
         },
@@ -91,7 +91,7 @@ describe('Keto tenant membership desired state', () => {
         'PUT',
         {
           namespace: 'Organization',
-          object: '01900000-0000-7000-8000-000000000001',
+          object: 'freightclaims:01900000-0000-7000-8000-000000000001',
           relation: 'members',
           subject_id: 'bb86046e-c922-44a3-a85f-ba21042c2897',
         },

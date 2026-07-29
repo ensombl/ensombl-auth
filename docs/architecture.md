@@ -81,8 +81,8 @@ read, clear, or otherwise update an identity gate.
 The manifest accepts only the exact Argon2id contract used by the
 FreightClaims migrator: `m=65536,t=3,p=1`, 16-byte salt, and 32-byte hash.
 Plaintext and legacy ciphertext are rejected. The hosted global stack accepts
-only the two explicitly reviewed sources, `freightclaims-fc-stage` and
-`freightclaims-fc-prod`; the operator must select the matching source gate for
+only the two explicitly reviewed sources, `freightclaims-fc-staging` and
+`freightclaims-fc-production`; the operator must select the matching source gate for
 each batch. If Production contains an identity already completed by the Stage
 import with the same source user ID and normalized email, the importer reuses
 that active global identity. It does not replace the password or reassert a

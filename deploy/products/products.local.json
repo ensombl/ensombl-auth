@@ -10,8 +10,11 @@
           "display_name": "FreightClaims local web BFF",
           "base_url": "http://localhost:4200",
           "audience": "freightclaims",
+          "admission_scope": "freightclaims:local",
           "authorization_secret_environment": "FREIGHTCLAIMS_LOCAL_AUTHORIZATION_DECISION_SECRET",
           "identity_management_secret_environment": "FREIGHTCLAIMS_LOCAL_IDENTITY_MANAGEMENT_SECRET",
+          "identity_migration_secret_environment": "FREIGHTCLAIMS_LOCAL_IDENTITY_MIGRATION_SECRET",
+          "identity_migration_source": "freightclaims-fc-staging",
           "secret_environment": "FREIGHTCLAIMS_LOCAL_HYDRA_CLIENT_SECRET",
           "trusted": true
         }

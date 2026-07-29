@@ -39,12 +39,12 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `ORY_HOOK_SECRET` | settings-hook bearer; same in Kratos and control app |
 | `MIGRATION_API_SECRET` | only the hardened migration workload |
 | `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
-| `FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET` | stage API read-only tenant decisions |
-| `FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
-| `FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET` | stage API invitations and tenant membership desired state |
-| `FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET` | production API invitations and tenant membership desired state |
-| `FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET` | stage BFF client; distinct from production |
-| `FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET` | production BFF client; distinct from stage |
+| `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | stage API read-only tenant decisions |
+| `FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
+| `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | stage API invitations and tenant membership desired state |
+| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET` | production API invitations and tenant membership desired state |
+| `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | stage BFF client; distinct from production |
+| `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from stage |
 | `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |
 
 `SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
@@ -147,12 +147,12 @@ GET https://auth.ensombl.io/internal/anything          -> 404
 
 - OIDC discovery returns issuer and endpoints on exactly
   `https://auth.ensombl.io`.
-- `freightclaims-stage-web` contains only
+- `freightclaims-staging-web` contains only
   `https://app.staging.freightclaims.ensombl.io/auth/callback` and audience
-  `freightclaims-stage`.
-- `freightclaims-web` contains only
+  `freightclaims-staging`.
+- `freightclaims-production-web` contains only
   `https://app.freightclaims.ensombl.io/auth/callback` and audience
-  `freightclaims-prod`.
+  `freightclaims-production`.
 - Recovery email reaches a controlled test mailbox and its code can be used.
 - A reset-gated test identity can authenticate but cannot obtain a Hydra code
   until it chooses a different password.
@@ -173,8 +173,8 @@ only for the approved hosted Stage login test.
 
 Source extraction is intentionally not implemented in this repository.
 FreightClaims first rehearses the selected reader against disposable local
-auth, then prepares the reviewed `freightclaims-fc-stage` or
-`freightclaims-fc-prod` batch. The manifest must contain only normalized
+auth, then prepares the reviewed `freightclaims-fc-staging` or
+`freightclaims-fc-production` batch. The manifest must contain only normalized
 traits, the source user key, allowlisted product grants, exact
 product/organization tenant bindings, and the Argon2id PHC migration contract
 (`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). Tenant bindings allow only the

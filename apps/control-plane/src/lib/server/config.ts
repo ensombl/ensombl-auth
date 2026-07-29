@@ -45,8 +45,11 @@ const schema = z.object({
 type ParsedConfig = z.infer<typeof schema>
 
 export type AppConfig = ParsedConfig & {
+  admissionScopeByClient: ReadonlyMap<string, string>
   authorizationDecisionSecrets: ReadonlyMap<string, string>
   identityManagementSecrets: ReadonlyMap<string, string>
+  identityMigrationSecrets: ReadonlyMap<string, string>
+  identityMigrationSourceByClient: ReadonlyMap<string, string>
   clientProductMap: ReadonlyMap<string, string>
   trustedClientIds: ReadonlySet<string>
   returnOrigins: ReadonlySet<string>
@@ -153,6 +156,7 @@ export function config(): AppConfig {
   const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
   const authorizationDecisionSecrets = new Map<string, string>()
   const identityManagementSecrets = new Map<string, string>()
+  const identityMigrationSecrets = new Map<string, string>()
   for (const [clientId, environmentName] of productCatalog.authorizationSecretEnvironmentByClient) {
     const configured = process.env[environmentName]?.trim()
     const secret =
@@ -184,6 +188,23 @@ export function config(): AppConfig {
     }
     identityManagementSecrets.set(clientId, secret)
   }
+  for (const [
+    clientId,
+    environmentName,
+  ] of productCatalog.identityMigrationSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-identity-migration-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for identity migration`,
+      )
+    }
+    identityMigrationSecrets.set(clientId, secret)
+  }
   if (
     parsed.NODE_ENV === 'production' &&
     new Set(authorizationDecisionSecrets.values()).size !== authorizationDecisionSecrets.size
@@ -193,6 +214,7 @@ export function config(): AppConfig {
   const productClientSecrets = [
     ...authorizationDecisionSecrets.values(),
     ...identityManagementSecrets.values(),
+    ...identityMigrationSecrets.values(),
   ]
   if (
     parsed.NODE_ENV === 'production' &&
@@ -205,6 +227,7 @@ export function config(): AppConfig {
     ...productCatalog,
     authorizationDecisionSecrets,
     identityManagementSecrets,
+    identityMigrationSecrets,
   }
   return cached
 }

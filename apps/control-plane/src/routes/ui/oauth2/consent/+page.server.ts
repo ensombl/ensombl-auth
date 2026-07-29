@@ -1,5 +1,10 @@
 import { error, fail, redirect } from '@sveltejs/kit'
-import { evaluateAdmission, identityClaims, productForClient } from '$lib/server/admission'
+import {
+  admissionScopeForClient,
+  evaluateAdmission,
+  identityClaims,
+  productForClient,
+} from '$lib/server/admission'
 import { config } from '$lib/server/config'
 import { acceptConsent, getConsentRequest, getKratosSession, rejectConsent } from '$lib/server/ory'
 import type { Actions, PageServerLoad } from './$types'
@@ -11,13 +16,14 @@ async function context(challenge: string, cookie: string | null) {
     error(403, 'The active identity does not match this consent request')
   }
   const product = productForClient(consent.client)
-  const admission = await evaluateAdmission(session, product)
+  const admissionScope = admissionScopeForClient(consent.client)
+  const admission = await evaluateAdmission(session, admissionScope)
   if (admission !== 'allowed') error(403, 'Identity admission changed during sign-in')
-  return { consent, session, product }
+  return { admissionScope, consent, session, product }
 }
 
 async function approve(challenge: string, cookie: string | null) {
-  const { consent, session, product } = await context(challenge, cookie)
+  const { admissionScope, consent, session, product } = await context(challenge, cookie)
   return acceptConsent(challenge, {
     grant_scope: consent.requested_scope ?? [],
     grant_access_token_audience: consent.requested_access_token_audience ?? [],
@@ -26,9 +32,11 @@ async function approve(challenge: string, cookie: string | null) {
     session: {
       id_token: {
         ...identityClaims(session),
+        admission_scope: admissionScope,
         product,
       },
       access_token: {
+        admission_scope: admissionScope,
         product,
       },
     },

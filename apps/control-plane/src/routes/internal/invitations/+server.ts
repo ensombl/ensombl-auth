@@ -31,16 +31,16 @@ export const POST: RequestHandler = async ({ request }) => {
   }
 
   const current = config()
-  const product = current.clientProductMap.get(parsed.data.client_id)
+  const admissionScope = current.admissionScopeByClient.get(parsed.data.client_id)
   const expectedSecret = current.identityManagementSecrets.get(parsed.data.client_id)
-  if (!product || !expectedSecret || !hasBearer(request, expectedSecret)) {
+  if (!admissionScope || !expectedSecret || !hasBearer(request, expectedSecret)) {
     return json({ error: 'unauthorized' }, { status: 401 })
   }
 
   try {
     const result = await issueInvitation({
       email: parsed.data.email.trim().toLowerCase(),
-      product,
+      product: admissionScope,
       invitedBy: `service:${parsed.data.client_id}`,
       expiresInHours: parsed.data.expires_in_hours,
       idempotencyKey: idempotencyKey.data,

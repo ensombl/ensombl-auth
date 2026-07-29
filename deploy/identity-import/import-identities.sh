@@ -68,11 +68,11 @@ allowed_products_json="$(
     jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))'
 )"
 case "$IDENTITY_IMPORT_ALLOWED_SOURCE" in
-  freightclaims-fc-stage)
-    counterpart_source=freightclaims-fc-prod
+  freightclaims-fc-staging)
+    counterpart_source=freightclaims-fc-production
     ;;
-  freightclaims-fc-prod)
-    counterpart_source=freightclaims-fc-stage
+  freightclaims-fc-production)
+    counterpart_source=freightclaims-fc-staging
     ;;
   *)
     fail invalid_allowed_source

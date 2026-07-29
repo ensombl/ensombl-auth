@@ -61,8 +61,14 @@ describe('configuration', () => {
     process.env.PRODUCT_CATALOG_PATH = productCatalogPath
     resetConfigForTest()
 
-    expect(config().clientProductMap.get('freightclaims-web')).toBe('freightclaims')
-    expect(config().trustedClientIds.has('freightclaims-web')).toBe(true)
+    expect(config().clientProductMap.get('freightclaims-production-web')).toBe('freightclaims')
+    expect(config().admissionScopeByClient.get('freightclaims-staging-web')).toBe(
+      'freightclaims:staging',
+    )
+    expect(config().admissionScopeByClient.get('freightclaims-production-web')).toBe(
+      'freightclaims:production',
+    )
+    expect(config().trustedClientIds.has('freightclaims-production-web')).toBe(true)
     expect(config().trustedClientIds.has('unknown-client')).toBe(false)
   })
 
@@ -72,7 +78,7 @@ describe('configuration', () => {
 
     expect(
       productForClient({
-        client_id: 'freightclaims-web',
+        client_id: 'freightclaims-production-web',
         metadata: { ensombl_product: 'freightclaims' },
       }),
     ).toBe('freightclaims')
@@ -84,7 +90,7 @@ describe('configuration', () => {
     ).toThrow()
     expect(() =>
       productForClient({
-        client_id: 'freightclaims-web',
+        client_id: 'freightclaims-production-web',
         metadata: { ensombl_product: 'another-product' },
       }),
     ).toThrow()

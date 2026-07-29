@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process'
 const kratosAdminUrl = 'http://127.0.0.1:24434'
 const ketoReadUrl = 'http://127.0.0.1:24466'
 const ketoWriteUrl = 'http://127.0.0.1:24467'
-const source = 'freightclaims-fc-stage'
+const source = 'freightclaims-fc-staging'
 const organizationId = '01900000-0000-7000-8000-000000000001'
 const phc =
   '$argon2id$v=19$m=65536,t=3,p=1$ABEiM0RVZneImaq7zN3u/w$jim7J9d1PKX/dB5E1eecZ7D4dPr1vTwkTf4I+Q3IeMQ'
@@ -309,11 +309,11 @@ try {
         updated_at = now()
     where identity_id = '${stagedIdentity.id}'::uuid;
   `)
-  const productionSource = 'freightclaims-fc-prod'
+  const productionSource = 'freightclaims-fc-production'
   const productionManifest = `${JSON.stringify({
     schema_version: 1,
     source: productionSource,
-    source_snapshot: `synthetic-${runId}-prod-reuse`,
+    source_snapshot: `synthetic-${runId}-production-reuse`,
     identities: [
       {
         source_user_id: staged.sourceUserId,

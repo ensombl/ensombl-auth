@@ -85,6 +85,23 @@ export async function grantProductAdmission(identityId: string, product: string)
   }
 }
 
+export async function revokeProductAdmission(identityId: string, product: string): Promise<void> {
+  const url = new URL('admin/relation-tuples', `${config().KETO_WRITE_URL}/`)
+  url.searchParams.set('namespace', 'Product')
+  url.searchParams.set('object', product)
+  url.searchParams.set('relation', 'members')
+  url.searchParams.set('subject_id', identityId)
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(5_000),
+  })
+  if (![200, 204, 404].includes(response.status)) {
+    console.error('Keto admission revoke failed', { status: response.status })
+    throw new Error('Unable to revoke product admission')
+  }
+}
+
 type RelationTuple = {
   namespace: 'Organization' | 'Tenant'
   object: string
@@ -150,14 +167,10 @@ export async function setTenantMembership(input: {
   relation: 'members' | 'administrators'
   state: 'active' | 'revoked'
 }): Promise<void> {
+  const organization = `${input.product}:${input.organizationId}`
   if (input.state === 'revoked') {
-    await deleteIdentityTuple(
-      'Organization',
-      input.organizationId,
-      'administrators',
-      input.identityId,
-    )
-    await deleteIdentityTuple('Organization', input.organizationId, 'members', input.identityId)
+    await deleteIdentityTuple('Organization', organization, 'administrators', input.identityId)
+    await deleteIdentityTuple('Organization', organization, 'members', input.identityId)
     return
   }
 
@@ -172,19 +185,14 @@ export async function setTenantMembership(input: {
     namespace: 'Tenant',
     object: tenant,
     relation: 'organization',
-    subject_set: { namespace: 'Organization', object: input.organizationId, relation: '' },
+    subject_set: { namespace: 'Organization', object: organization, relation: '' },
   })
 
   if (input.relation === 'members') {
-    await deleteIdentityTuple(
-      'Organization',
-      input.organizationId,
-      'administrators',
-      input.identityId,
-    )
+    await deleteIdentityTuple('Organization', organization, 'administrators', input.identityId)
     await putTuple({
       namespace: 'Organization',
-      object: input.organizationId,
+      object: organization,
       relation: 'members',
       subject_id: input.identityId,
     })
@@ -193,9 +201,9 @@ export async function setTenantMembership(input: {
 
   await putTuple({
     namespace: 'Organization',
-    object: input.organizationId,
+    object: organization,
     relation: 'administrators',
     subject_id: input.identityId,
   })
-  await deleteIdentityTuple('Organization', input.organizationId, 'members', input.identityId)
+  await deleteIdentityTuple('Organization', organization, 'members', input.identityId)
 }
