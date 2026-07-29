@@ -8,6 +8,7 @@ const kratosAdminUrl = 'http://127.0.0.1:24434'
 const ketoReadUrl = 'http://127.0.0.1:24466'
 const ketoWriteUrl = 'http://127.0.0.1:24467'
 const source = 'freightclaims-fc-stage'
+const organizationId = '01900000-0000-7000-8000-000000000001'
 const phc =
   '$argon2id$v=19$m=65536,t=3,p=1$ABEiM0RVZneImaq7zN3u/w$jim7J9d1PKX/dB5E1eecZ7D4dPr1vTwkTf4I+Q3IeMQ'
 const failurePoints = [
@@ -92,6 +93,17 @@ async function hasProduct(identityId) {
   return (await response.json()).allowed === true
 }
 
+async function hasTenant(identityId) {
+  const url = new URL('/relation-tuples/check/openapi', ketoReadUrl)
+  url.searchParams.set('namespace', 'Tenant')
+  url.searchParams.set('object', `freightclaims:${organizationId}`)
+  url.searchParams.set('relation', 'access')
+  url.searchParams.set('subject_id', identityId)
+  const response = await fetch(url, { signal: AbortSignal.timeout(5_000) })
+  if (!response.ok) throw new Error(`Keto tenant relation check failed (${response.status})`)
+  return (await response.json()).allowed === true
+}
+
 async function runImporter(manifest, expectedHash, failurePoint, allowedSource = source) {
   const args = [
     'compose',
@@ -123,6 +135,20 @@ async function cleanupRecord(record) {
     tupleUrl.searchParams.set('relation', 'members')
     tupleUrl.searchParams.set('subject_id', identityId)
     await fetch(tupleUrl, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => undefined)
+    const organizationTupleUrl = new URL('/admin/relation-tuples', ketoWriteUrl)
+    organizationTupleUrl.searchParams.set('namespace', 'Organization')
+    organizationTupleUrl.searchParams.set('object', organizationId)
+    organizationTupleUrl.searchParams.set('relation', 'members')
+    organizationTupleUrl.searchParams.set('subject_id', identityId)
+    await fetch(organizationTupleUrl, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5_000),
+    }).catch(() => undefined)
+    organizationTupleUrl.searchParams.set('relation', 'administrators')
+    await fetch(organizationTupleUrl, {
       method: 'DELETE',
       signal: AbortSignal.timeout(5_000),
     }).catch(() => undefined)
@@ -171,6 +197,13 @@ try {
         password_hash: phc,
         reset_required: true,
         products: ['freightclaims'],
+        tenants: [
+          {
+            product: 'freightclaims',
+            organization_id: organizationId,
+            relation: 'members',
+          },
+        ],
       },
     ],
   })
@@ -196,6 +229,13 @@ try {
           password_hash: phc,
           reset_required: true,
           products: ['freightclaims'],
+          tenants: [
+            {
+              product: 'freightclaims',
+              organization_id: organizationId,
+              relation: 'members',
+            },
+          ],
         },
       ],
     })}\n`
@@ -235,6 +275,9 @@ try {
     }
     if (!(await hasProduct(completedIdentity.id))) {
       throw new Error(`Resumed identity has no Product admission after ${failurePoint}`)
+    }
+    if (!(await hasTenant(completedIdentity.id))) {
+      throw new Error(`Resumed identity has no tenant admission after ${failurePoint}`)
     }
     const completedState = await adminSql(`
       select entry.status || '|' || gate.reset_required::text || '|' || batch.status
@@ -280,6 +323,13 @@ try {
         password_hash: phc,
         reset_required: true,
         products: ['freightclaims'],
+        tenants: [
+          {
+            product: 'freightclaims',
+            organization_id: organizationId,
+            relation: 'members',
+          },
+        ],
       },
     ],
   })}\n`

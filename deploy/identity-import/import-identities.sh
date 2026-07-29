@@ -138,7 +138,8 @@ if ! jq -e \
           "last_name",
           "password_hash",
           "reset_required",
-          "products"
+          "products",
+          "tenants"
         ]) | length == 0
       )
       and (.source_user_id | bounded_string(200))
@@ -154,6 +155,33 @@ if ! jq -e \
       and (all(.products[]; type == "string" and test("^[a-z][a-z0-9-]{0,63}$")))
       and ((.products | unique | length) == (.products | length))
       and ((.products - $allowed_products) | length == 0)
+      and (.tenants | type == "array" and length >= 1 and length <= 20)
+      and (
+        .products as $identity_products
+        | all(.tenants[];
+            type == "object"
+            and ((keys_unsorted - ["product", "organization_id", "relation"]) | length == 0)
+            and (.product | type == "string" and test("^[a-z][a-z0-9-]{0,63}$"))
+            and (
+              .product as $product
+              | ($allowed_products | index($product) != null)
+              and ($identity_products | index($product) != null)
+            )
+            and (
+              .organization_id
+              | type == "string"
+              and test("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+            )
+            and (.relation == "members" or .relation == "administrators")
+          )
+      )
+      and (
+        (
+          [.tenants[] | [.product, .organization_id] | join(":")]
+          | unique
+          | length
+        ) == (.tenants | length)
+      )
     )
   )
   and (([.identities[].source_user_id] | unique | length) == (.identities | length))
@@ -519,6 +547,123 @@ SQL
       *) fail keto_product_grant_failed ;;
     esac
     product_index=$((product_index + 1))
+  done
+
+  tenant_count="$(jq -r ".identities[$index].tenants | length" "$manifest_path")"
+  tenant_index=0
+  while [ "$tenant_index" -lt "$tenant_count" ]; do
+    tenant_product="$(jq -r ".identities[$index].tenants[$tenant_index].product" "$manifest_path")"
+    organization_id="$(
+      jq -r ".identities[$index].tenants[$tenant_index].organization_id" "$manifest_path"
+    )"
+    organization_relation="$(
+      jq -r ".identities[$index].tenants[$tenant_index].relation" "$manifest_path"
+    )"
+    export IMPORT_PRODUCT="$tenant_product"
+    export IMPORT_ORGANIZATION_ID="$organization_id"
+    export IMPORT_ORGANIZATION_RELATION="$organization_relation"
+    if [ "$organization_relation" = members ]; then
+      opposite_organization_relation=administrators
+    else
+      opposite_organization_relation=members
+    fi
+
+    keto_status="$(
+      curl --silent --output "$response_path" --write-out '%{http_code}' \
+        --connect-timeout 5 \
+        --max-time 30 \
+        --request DELETE \
+        --get \
+        --data-urlencode 'namespace=Organization' \
+        --data-urlencode "object=$organization_id" \
+        --data-urlencode "relation=$opposite_organization_relation" \
+        --data-urlencode "subject_id=$identity_id" \
+        "$KETO_WRITE_URL/admin/relation-tuples" 2>/dev/null ||
+        printf '000'
+    )"
+    case "$keto_status" in
+      200 | 204 | 404) ;;
+      *) fail keto_organization_previous_relation_delete_failed ;;
+    esac
+
+    jq -n '
+      {
+        namespace: "Organization",
+        object: env.IMPORT_ORGANIZATION_ID,
+        relation: env.IMPORT_ORGANIZATION_RELATION,
+        subject_id: env.IMPORT_IDENTITY_ID
+      }
+    ' >"$request_path"
+    keto_status="$(
+      curl --silent --output "$response_path" --write-out '%{http_code}' \
+        --connect-timeout 5 \
+        --max-time 30 \
+        --request PUT \
+        --header 'content-type: application/json' \
+        --data-binary "@$request_path" \
+        "$KETO_WRITE_URL/admin/relation-tuples" 2>/dev/null ||
+        printf '000'
+    )"
+    case "$keto_status" in
+      200 | 201 | 204) ;;
+      *) fail keto_organization_grant_failed ;;
+    esac
+
+    jq -n '
+      {
+        namespace: "Tenant",
+        object: (env.IMPORT_PRODUCT + ":" + env.IMPORT_ORGANIZATION_ID),
+        relation: "product",
+        subject_set: {
+          namespace: "Product",
+          object: env.IMPORT_PRODUCT,
+          relation: ""
+        }
+      }
+    ' >"$request_path"
+    keto_status="$(
+      curl --silent --output "$response_path" --write-out '%{http_code}' \
+        --connect-timeout 5 \
+        --max-time 30 \
+        --request PUT \
+        --header 'content-type: application/json' \
+        --data-binary "@$request_path" \
+        "$KETO_WRITE_URL/admin/relation-tuples" 2>/dev/null ||
+        printf '000'
+    )"
+    case "$keto_status" in
+      200 | 201 | 204) ;;
+      *) fail keto_tenant_product_grant_failed ;;
+    esac
+
+    jq -n '
+      {
+        namespace: "Tenant",
+        object: (env.IMPORT_PRODUCT + ":" + env.IMPORT_ORGANIZATION_ID),
+        relation: "organization",
+        subject_set: {
+          namespace: "Organization",
+          object: env.IMPORT_ORGANIZATION_ID,
+          relation: ""
+        }
+      }
+    ' >"$request_path"
+    keto_status="$(
+      curl --silent --output "$response_path" --write-out '%{http_code}' \
+        --connect-timeout 5 \
+        --max-time 30 \
+        --request PUT \
+        --header 'content-type: application/json' \
+        --data-binary "@$request_path" \
+        "$KETO_WRITE_URL/admin/relation-tuples" 2>/dev/null ||
+        printf '000'
+    )"
+    rm -f "$request_path"
+    case "$keto_status" in
+      200 | 201 | 204) ;;
+      *) fail keto_tenant_organization_grant_failed ;;
+    esac
+    tenant_index=$((tenant_index + 1))
   done
 
   psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet <<'SQL'

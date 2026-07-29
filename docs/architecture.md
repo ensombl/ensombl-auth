@@ -94,7 +94,8 @@ The import order is:
 1. Validate the complete batch and open its idempotency ledger.
 2. Create/import the Kratos identity and hash in `inactive` state.
 3. Durably assert the reset gate through the true-only function.
-4. Write explicit Keto `Product` relationships.
+4. Write explicit Keto `Product`, `Organization`, and product/organization
+   `Tenant` relationships.
 5. Activate the Kratos identity.
 6. Commit the identity and batch ledger entries.
 

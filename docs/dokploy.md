@@ -161,9 +161,11 @@ Source extraction is intentionally not implemented in this repository.
 FreightClaims first rehearses the selected reader against disposable local
 auth, then prepares the reviewed `freightclaims-fc-stage` or
 `freightclaims-fc-prod` batch. The manifest must contain only normalized
-traits, the source user key, allowlisted product grants, and the exact Argon2id
-PHC migration contract (`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). It must
-never contain a plaintext password or legacy ciphertext.
+traits, the source user key, allowlisted product grants, exact
+product/organization tenant bindings, and the Argon2id PHC migration contract
+(`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). Tenant bindings allow only the
+`members` or `administrators` organization relation. The manifest must never
+contain a plaintext password or legacy ciphertext.
 
 Run the source-built `identity-import` profile from the Dokploy-managed Compose
 context with the reviewed revision and approved Bitwarden environment already

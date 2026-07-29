@@ -103,6 +103,9 @@ this fixture is separate from the audited Stage and Production importers.
 - Reviewed Stage and Production batches can map the same legacy source user to
   one global identity. A later source never replaces an active password or
   reasserts a reset gate already completed in the earlier environment.
+- Every migrated identity is admitted only to its reviewed product and exact
+  product/organization tenant bindings; product admission alone never grants
+  FreightClaims tenant access.
 - Hydra public and admin listeners run in separate processes and networks.
   Kratos v26 exposes both listeners from one process, but Traefik routes only
   its public paths; the resulting shared-network trust boundary is documented
