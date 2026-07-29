@@ -37,8 +37,11 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `HYDRA_PAIRWISE_SALT` | at least 32 random bytes; never rotate casually |
 | `ORY_HOOK_SECRET` | settings-hook bearer; same in Kratos and control app |
 | `MIGRATION_API_SECRET` | only the hardened migration workload |
-| `INVITATION_API_SECRET` | only the audited invitation operator/service |
 | `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
+| `FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET` | stage API read-only tenant decisions |
+| `FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
+| `FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET` | stage API invitations and tenant membership desired state |
+| `FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET` | production API invitations and tenant membership desired state |
 | `FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET` | stage BFF client; distinct from production |
 | `FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET` | production BFF client; distinct from stage |
 | `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |

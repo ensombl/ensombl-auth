@@ -29,6 +29,7 @@ const catalogSchema = z.object({
               base_url: httpsOrLoopbackUrl,
               audience: identifier,
               authorization_secret_environment: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
+              identity_management_secret_environment: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
               secret_environment: z.string().regex(/^[A-Z][A-Z0-9_]+$/),
               trusted: z.boolean(),
             }),
@@ -41,6 +42,7 @@ const catalogSchema = z.object({
 
 export interface ProductCatalogConfiguration {
   readonly authorizationSecretEnvironmentByClient: ReadonlyMap<string, string>
+  readonly identityManagementSecretEnvironmentByClient: ReadonlyMap<string, string>
   readonly clientProductMap: ReadonlyMap<string, string>
   readonly trustedClientIds: ReadonlySet<string>
   readonly returnOrigins: ReadonlySet<string>
@@ -50,6 +52,7 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   const catalog = catalogSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
   const clientProductMap = new Map<string, string>()
   const authorizationSecretEnvironmentByClient = new Map<string, string>()
+  const identityManagementSecretEnvironmentByClient = new Map<string, string>()
   const trustedClientIds = new Set<string>()
   const returnOrigins = new Set<string>()
   const audiences = new Set<string>()
@@ -74,6 +77,10 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
       }
       clientProductMap.set(client.id, product.id)
       authorizationSecretEnvironmentByClient.set(client.id, client.authorization_secret_environment)
+      identityManagementSecretEnvironmentByClient.set(
+        client.id,
+        client.identity_management_secret_environment,
+      )
       audiences.add(client.audience)
       if (client.trusted) trustedClientIds.add(client.id)
     }
@@ -81,6 +88,7 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
 
   return {
     authorizationSecretEnvironmentByClient,
+    identityManagementSecretEnvironmentByClient,
     clientProductMap,
     trustedClientIds,
     returnOrigins,

@@ -20,8 +20,7 @@ afterEach(() => {
 })
 
 describe('machine invitation audit actor', () => {
-  it('ignores spoofed caller attribution and records the configured service actor', async () => {
-    process.env.INVITATION_SERVICE_ACTOR = 'service:trusted-invitation-importer'
+  it('derives the product and audit actor from the authenticated client', async () => {
     resetConfigForTest()
     invitations.issueInvitation.mockResolvedValue({
       created: true,
@@ -31,7 +30,7 @@ describe('machine invitation audit actor', () => {
         identityId: null,
         normalizedEmail: 'invitee@example.test',
         product: 'freightclaims',
-        invitedBy: 'service:trusted-invitation-importer',
+        invitedBy: 'service:freightclaims-local-web',
         idempotencyKey: 'machine-invite-request-0001',
         requestFingerprint: 'a'.repeat(64),
         state: 'dispatched',
@@ -43,14 +42,13 @@ describe('machine invitation audit actor', () => {
     const request = new Request('http://control-plane/internal/invitations', {
       method: 'POST',
       headers: {
-        authorization: 'Bearer local-only-invitation-api-secret',
+        authorization: 'Bearer local-only-freightclaims-local-web-identity-management-secret',
         'content-type': 'application/json',
         'idempotency-key': 'machine-invite-request-0001',
       },
       body: JSON.stringify({
+        client_id: 'freightclaims-local-web',
         email: 'invitee@example.test',
-        product: 'freightclaims',
-        invited_by: 'attacker-controlled-audit-value',
         expires_in_hours: 48,
       }),
     })
@@ -61,9 +59,30 @@ describe('machine invitation audit actor', () => {
     expect(invitations.issueInvitation).toHaveBeenCalledExactlyOnceWith({
       email: 'invitee@example.test',
       product: 'freightclaims',
-      invitedBy: 'service:trusted-invitation-importer',
+      invitedBy: 'service:freightclaims-local-web',
       expiresInHours: 48,
       idempotencyKey: 'machine-invite-request-0001',
     })
+  })
+
+  it('rejects caller-supplied attribution', async () => {
+    const request = new Request('http://control-plane/internal/invitations', {
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer local-only-freightclaims-local-web-identity-management-secret',
+        'content-type': 'application/json',
+        'idempotency-key': 'machine-invite-request-0002',
+      },
+      body: JSON.stringify({
+        client_id: 'freightclaims-local-web',
+        email: 'invitee@example.test',
+        invited_by: 'attacker-controlled-audit-value',
+      }),
+    })
+
+    const response = await POST({ request } as Parameters<typeof POST>[0])
+
+    expect(response.status).toBe(400)
+    expect(invitations.issueInvitation).not.toHaveBeenCalled()
   })
 })

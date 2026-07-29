@@ -16,9 +16,7 @@ const localDefaults = {
     'postgres://auth_control_runtime:auth_control_runtime_dev@localhost:25432/auth_control',
   ORY_HOOK_SECRET: 'local-only-hook-secret-32-bytes',
   MIGRATION_API_SECRET: 'local-only-migration-api-secret',
-  INVITATION_API_SECRET: 'local-only-invitation-api-secret',
   INVITATION_RECONCILER_SECRET: 'local-only-invitation-reconciler-secret',
-  INVITATION_SERVICE_ACTOR: 'service:local-invitation-api',
   PRODUCT_CATALOG_PATH:
     [
       resolve(process.cwd(), 'deploy/products/products.local.json'),
@@ -37,16 +35,10 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1).default(localDefaults.DATABASE_URL),
   ORY_HOOK_SECRET: z.string().min(24).default(localDefaults.ORY_HOOK_SECRET),
   MIGRATION_API_SECRET: z.string().min(24).default(localDefaults.MIGRATION_API_SECRET),
-  INVITATION_API_SECRET: z.string().min(24).default(localDefaults.INVITATION_API_SECRET),
   INVITATION_RECONCILER_SECRET: z
     .string()
     .min(24)
     .default(localDefaults.INVITATION_RECONCILER_SECRET),
-  INVITATION_SERVICE_ACTOR: z
-    .string()
-    .min(1)
-    .max(200)
-    .default(localDefaults.INVITATION_SERVICE_ACTOR),
   PRODUCT_CATALOG_PATH: z.string().min(1).default(localDefaults.PRODUCT_CATALOG_PATH),
 })
 
@@ -54,6 +46,7 @@ type ParsedConfig = z.infer<typeof schema>
 
 export type AppConfig = ParsedConfig & {
   authorizationDecisionSecrets: ReadonlyMap<string, string>
+  identityManagementSecrets: ReadonlyMap<string, string>
   clientProductMap: ReadonlyMap<string, string>
   trustedClientIds: ReadonlySet<string>
   returnOrigins: ReadonlySet<string>
@@ -71,9 +64,7 @@ const productionRequiredKeys = [
   'DATABASE_URL',
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
-  'INVITATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
-  'INVITATION_SERVICE_ACTOR',
   'PRODUCT_CATALOG_PATH',
 ] as const satisfies readonly (keyof typeof localDefaults)[]
 
@@ -88,7 +79,6 @@ const internalUrlKeys = [
 const bearerSecretKeys = [
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
-  'INVITATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
 ] as const satisfies readonly (keyof ParsedConfig)[]
 
@@ -162,6 +152,7 @@ export function config(): AppConfig {
   assertProductionConfig(parsed, process.env)
   const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
   const authorizationDecisionSecrets = new Map<string, string>()
+  const identityManagementSecrets = new Map<string, string>()
   for (const [clientId, environmentName] of productCatalog.authorizationSecretEnvironmentByClient) {
     const configured = process.env[environmentName]?.trim()
     const secret =
@@ -176,16 +167,44 @@ export function config(): AppConfig {
     }
     authorizationDecisionSecrets.set(clientId, secret)
   }
+  for (const [
+    clientId,
+    environmentName,
+  ] of productCatalog.identityManagementSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-identity-management-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for identity management`,
+      )
+    }
+    identityManagementSecrets.set(clientId, secret)
+  }
   if (
     parsed.NODE_ENV === 'production' &&
     new Set(authorizationDecisionSecrets.values()).size !== authorizationDecisionSecrets.size
   ) {
     throw new Error('Authorization decision secrets must be pairwise unique')
   }
+  const productClientSecrets = [
+    ...authorizationDecisionSecrets.values(),
+    ...identityManagementSecrets.values(),
+  ]
+  if (
+    parsed.NODE_ENV === 'production' &&
+    new Set(productClientSecrets).size !== productClientSecrets.length
+  ) {
+    throw new Error('Product client capability secrets must be pairwise unique')
+  }
   cached = {
     ...parsed,
     ...productCatalog,
     authorizationDecisionSecrets,
+    identityManagementSecrets,
   }
   return cached
 }

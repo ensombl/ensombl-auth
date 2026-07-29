@@ -14,6 +14,7 @@
           "base_url": "https://app.staging.freightclaims.ensombl.io",
           "audience": "freightclaims-stage",
           "authorization_secret_environment": "FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET",
           "secret_environment": "FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET",
           "trusted": true
         },
@@ -23,6 +24,7 @@
           "base_url": "https://app.freightclaims.ensombl.io",
           "audience": "freightclaims-prod",
           "authorization_secret_environment": "FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET",
           "secret_environment": "FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET",
           "trusted": true
         }

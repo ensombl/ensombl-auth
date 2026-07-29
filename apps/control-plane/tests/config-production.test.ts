@@ -17,13 +17,15 @@ function setProductionEnvironment(): void {
     DATABASE_URL: 'postgres://auth_control_runtime:production-password@postgres:5432/auth_control',
     ORY_HOOK_SECRET: 'production-hook-secret-that-is-not-the-default',
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
-    INVITATION_API_SECRET: 'production-invitation-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
-    INVITATION_SERVICE_ACTOR: 'service:ensombl-invitation-api',
     FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET:
       'stage-authorization-decision-secret-that-is-long-enough',
     FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET:
       'prod-authorization-decision-secret-that-is-long-enough',
+    FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET:
+      'stage-identity-management-secret-that-is-long-enough',
+    FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET:
+      'prod-identity-management-secret-that-is-long-enough',
     PRODUCT_CATALOG_PATH: productCatalogPath,
   })
   resetConfigForTest()
@@ -59,9 +61,7 @@ describe('production configuration', () => {
       'DATABASE_URL',
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
-      'INVITATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
-      'INVITATION_SERVICE_ACTOR',
       'PRODUCT_CATALOG_PATH',
     ]) {
       delete process.env[key]
@@ -93,7 +93,6 @@ describe('production configuration', () => {
   it.each([
     ['ORY_HOOK_SECRET', 'local-only-hook-secret-32-bytes'],
     ['MIGRATION_API_SECRET', 'local-only-migration-api-secret'],
-    ['INVITATION_API_SECRET', 'local-only-invitation-api-secret'],
     ['INVITATION_RECONCILER_SECRET', 'local-only-invitation-reconciler-secret'],
   ])('rejects the development value for %s', (key, value) => {
     setProductionEnvironment()
@@ -107,7 +106,6 @@ describe('production configuration', () => {
     const keys = [
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
-      'INVITATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
     ] as const
 
@@ -123,5 +121,14 @@ describe('production configuration', () => {
         expect(() => config()).toThrow(`${rightKey} must differ from ${leftKey}`)
       }
     }
+  })
+
+  it('requires all product capability secrets to be pairwise unique', () => {
+    setProductionEnvironment()
+    process.env.FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET =
+      process.env.FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET
+    resetConfigForTest()
+
+    expect(() => config()).toThrow('Product client capability secrets must be pairwise unique')
   })
 })

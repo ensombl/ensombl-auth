@@ -23,10 +23,11 @@ exec env \
   HYDRA_PAIRWISE_SALT=validation-only-pairwise-subject-salt \
   ORY_HOOK_SECRET=validation-only-hook-secret \
   MIGRATION_API_SECRET=validation-only-migration-secret \
-  INVITATION_API_SECRET=validation-only-invitation-secret \
   INVITATION_RECONCILER_SECRET=validation-only-reconciler-secret \
   FREIGHTCLAIMS_STAGE_AUTHORIZATION_DECISION_SECRET=validation-only-freightclaims-stage-authorization \
   FREIGHTCLAIMS_PROD_AUTHORIZATION_DECISION_SECRET=validation-only-freightclaims-prod-authorization \
+  FREIGHTCLAIMS_STAGE_IDENTITY_MANAGEMENT_SECRET=validation-only-freightclaims-stage-identity-management \
+  FREIGHTCLAIMS_PROD_IDENTITY_MANAGEMENT_SECRET=validation-only-freightclaims-prod-identity-management \
   FREIGHTCLAIMS_STAGE_HYDRA_CLIENT_SECRET=validation-only-freightclaims-stage \
   FREIGHTCLAIMS_PROD_HYDRA_CLIENT_SECRET=validation-only-freightclaims-prod \
   SMTP_CONNECTION_URI=smtps://validation:validation@example.invalid:465/ \
