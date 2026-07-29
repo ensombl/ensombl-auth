@@ -39,12 +39,14 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `ORY_HOOK_SECRET` | settings-hook bearer; same in Kratos and control app |
 | `MIGRATION_API_SECRET` | only the hardened migration workload |
 | `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
-| `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | stage API read-only tenant decisions |
+| `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | staging API read-only tenant decisions |
 | `FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
-| `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | stage API invitations and tenant membership desired state |
+| `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | staging API invitations and tenant membership desired state |
 | `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET` | production API invitations and tenant membership desired state |
-| `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | stage BFF client; distinct from production |
-| `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from stage |
+| `FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET` | staging migration worker identity synchronization |
+| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production migration worker identity synchronization |
+| `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF client; distinct from production |
+| `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from staging |
 | `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |
 
 `SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
