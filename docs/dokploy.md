@@ -6,8 +6,8 @@ These are deliberate external gates; the repository cannot safely invent them:
 
 1. Grant Dokploy read access to the private GitHub repository
    `Ensombl/ensombl-auth`. Configure the only Compose deployment to watch the
-   force-updated `production` branch. There is no staging auth stack. Do not
-   configure any registry publication.
+   protected `main` branch directly. There is no staging auth stack or release
+   branch. Do not configure any registry publication.
 2. Create DNS for `auth.ensombl.io`. The checked-in Traefik labels attach the
    exact public routes to Dokploy's `websecure` entrypoint and `letsencrypt`
    resolver. TLS must be valid before any user import.
@@ -69,23 +69,23 @@ Create a dedicated Dokploy machine account for audited provisioning and
 operations. Store its base URL, account identifier, and API token in a separate
 Bitwarden project for deployment control. Do not mix those credentials into
 `ensombl-auth-prod`, and do not expose them to application containers or the
-GitHub release workflow.
+GitHub workflow environment.
 
 Rotation is explicit: update Bitwarden, re-sync the complete allowlisted
 environment to Dokploy, deploy, verify health, then revoke the old value.
 
 ## Create the Dokploy application
 
-1. Select Compose, set the repository branch to `production`, and set the
-   Compose path to `deploy/dokploy/compose.yml`. Do not create a second
-   environment-specific auth deployment.
+1. Select Compose, set the repository branch to `main`, and set the Compose
+   path to `deploy/dokploy/compose.yml`. Do not create a second auth deployment
+   or an intermediate release branch.
 2. Inject exactly the keys in `deploy/secrets/manifest.json` using the approved
    Bitwarden-to-Dokploy handoff above.
 3. Do not create a separate Dokploy domain or port mapping. The Compose labels
    route only the allowlisted paths on `auth.ensombl.io`; PostgreSQL, Ory admin,
    Keto, and internal control paths have no public router.
 4. Set persistent storage for the `auth-postgres` volume.
-5. Enable Dokploy auto-deploy for pushes to `production`. Dokploy builds
+5. Enable Dokploy auto-deploy for pushes to `main`. Dokploy builds
    `apps/control-plane/Dockerfile` locally;
    there is no `image:` name for the project application and nothing is pushed
    to GHCR or any other registry.
@@ -96,18 +96,15 @@ environment to Dokploy, deploy, verify health, then revoke the old value.
    persisted invitation activations; the `invitation-reconcile` profile is the
    operator-triggered one-shot form.
 
-## Production release branch
+## Production deployment
 
-`.github/workflows/deploy.yml` runs only after a commit reaches `main`. It
-derives `<latest-tag>-<short-sha>`, runs `scripts/set-version.sh`, creates an
-otherwise identical release commit, and force-updates `production`. Dokploy
-watches that branch, builds the checked-in source, and starts the Compose
-stack.
+`main` is the production source of truth. Protect it with required checks and
+review. Once a reviewed commit reaches `main`, Dokploy pulls that exact Git
+revision, builds the checked-in source, and reconciles the one global stack at
+`auth.ensombl.io`.
 
-The workflow needs one GitHub Actions secret, `DEPLOY_TOKEN`, with permission
-to read the repository and force-update only the `production` branch. It does not
-receive Bitwarden, Dokploy, SMTP, database, or Ory credentials and never builds
-or publishes an image.
+Dokploy owns the build and deployment. GitHub receives no Bitwarden, Dokploy,
+SMTP, database, or Ory credentials and never builds or publishes an image.
 
 ## PostgreSQL ownership and rotation
 
