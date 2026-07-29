@@ -5,8 +5,9 @@
 These are deliberate external gates; the repository cannot safely invent them:
 
 1. Grant Dokploy read access to the private GitHub repository
-   `Ensombl/ensombl-auth` and configure it to clone the reviewed revision. Do
-   not configure any registry publication.
+   `Ensombl/ensombl-auth`. Configure the only Compose deployment to watch the
+   force-updated `production` branch. There is no staging auth stack. Do not
+   configure any registry publication.
 2. Create DNS for `auth.ensombl.io`. The checked-in Traefik labels attach the
    exact public routes to Dokploy's `websecure` entrypoint and `letsencrypt`
    resolver. TLS must be valid before any user import.
@@ -52,40 +53,40 @@ still be injected with the environment.
 The machine-readable inventory is
 `deploy/secrets/manifest.json`. Shared `.env` files are forbidden.
 
-## Bitwarden to Dokploy handoff blocker
+## Bitwarden to Dokploy handoff
 
 The current Dokploy Compose documentation requires variables to be entered in
 Dokploy's Compose environment; Dokploy writes those values to a runtime `.env`
 file beside the Compose definition. No native Bitwarden Secrets Manager
 integration is documented.
 
-That conflicts with the decision that Bitwarden is the only secrets system.
-Before hosted deployment, choose and approve exactly one handoff:
+Bitwarden is the source of truth. Dokploy holds the required encrypted runtime
+copy because Compose needs the environment before it can start. Provisioning
+must copy exactly the keys in `deploy/secrets/manifest.json`; do not put the
+Bitwarden machine token itself into Dokploy.
 
-1. **Recommended:** an external deployment agent with a read-only
-   `ensombl-auth-prod` machine token reads the allowlisted keys in
-   `deploy/secrets/manifest.json` and updates the Dokploy Compose environment
-   through an authenticated Dokploy API call immediately before deployment.
-2. Explicitly allow Dokploy to hold a runtime copy while Bitwarden remains the
-   source of truth, with audited rotation and access controls.
+Create a dedicated Dokploy machine account for audited provisioning and
+operations. Store its base URL, account identifier, and API token in a separate
+Bitwarden project for deployment control. Do not mix those credentials into
+`ensombl-auth-prod`, and do not expose them to application containers or the
+GitHub release workflow.
 
-The repository does not include a machine token, Dokploy API token, secret
-exporter, or command that prints secret values. Implementation of option 1
-needs the Dokploy base URL, an API credential with the narrow update/deploy
-scope, and confirmation of the target project/environment IDs. Until that
-choice is made, hosted deployment is intentionally blocked.
+Rotation is explicit: update Bitwarden, re-sync the complete allowlisted
+environment to Dokploy, deploy, verify health, then revoke the old value.
 
 ## Create the Dokploy application
 
-1. Select Compose and set the Compose path to
-   `deploy/dokploy/compose.yml`.
+1. Select Compose, set the repository branch to `production`, and set the
+   Compose path to `deploy/dokploy/compose.yml`. Do not create a second
+   environment-specific auth deployment.
 2. Inject exactly the keys in `deploy/secrets/manifest.json` using the approved
    Bitwarden-to-Dokploy handoff above.
 3. Do not create a separate Dokploy domain or port mapping. The Compose labels
    route only the allowlisted paths on `auth.ensombl.io`; PostgreSQL, Ory admin,
    Keto, and internal control paths have no public router.
 4. Set persistent storage for the `auth-postgres` volume.
-5. Deploy from source. Dokploy builds `apps/control-plane/Dockerfile` locally;
+5. Enable Dokploy auto-deploy for pushes to `production`. Dokploy builds
+   `apps/control-plane/Dockerfile` locally;
    there is no `image:` name for the project application and nothing is pushed
    to GHCR or any other registry.
 6. Wait for PostgreSQL role reconciliation, the three Ory migration jobs, the
@@ -94,6 +95,19 @@ choice is made, hosted deployment is intentionally blocked.
 7. Confirm `invitation-reconciler` is healthy. It continuously retries only
    persisted invitation activations; the `invitation-reconcile` profile is the
    operator-triggered one-shot form.
+
+## Production release branch
+
+`.github/workflows/deploy.yml` runs only after a commit reaches `main`. It
+derives `<latest-tag>-<short-sha>`, runs `scripts/set-version.sh`, creates an
+otherwise identical release commit, and force-updates `production`. Dokploy
+watches that branch, builds the checked-in source, and starts the Compose
+stack.
+
+The workflow needs one GitHub Actions secret, `DEPLOY_TOKEN`, with permission
+to read the repository and force-update only the `production` branch. It does not
+receive Bitwarden, Dokploy, SMTP, database, or Ory credentials and never builds
+or publishes an image.
 
 ## PostgreSQL ownership and rotation
 

@@ -24,6 +24,7 @@
     "lint": "turbo run lint",
     "db:migrate": "pnpm --filter @ensombl/auth-control migrate && docker compose --profile database-admin run --rm auth-control-grants",
     "identity:seed:dev": "pnpm --filter @ensombl/auth-control identity:seed:dev",
+    "release:set-version": "./scripts/set-version.sh",
     "docker:up": "docker compose up -d --wait && docker compose run --rm hydra-client",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
