@@ -80,10 +80,14 @@ read, clear, or otherwise update an identity gate.
 
 The manifest accepts only the exact Argon2id contract used by the
 FreightClaims migrator: `m=65536,t=3,p=1`, 16-byte salt, and 32-byte hash.
-Plaintext and legacy ciphertext are rejected. `fc-stage` extraction is used
-only for a read-only rehearsal into disposable local auth. The hosted global
-stack accepts only the reviewed `fc-prod` batch at the final migration; the
-auth repository does not invent or widen source access.
+Plaintext and legacy ciphertext are rejected. The hosted global stack accepts
+only the two explicitly reviewed sources, `freightclaims-fc-stage` and
+`freightclaims-fc-prod`; the operator must select the matching source gate for
+each batch. If Production contains an identity already completed by the Stage
+import with the same source user ID and normalized email, the importer reuses
+that active global identity. It does not replace the password or reassert a
+reset gate the user already completed. Any incomplete, differently keyed, or
+email-mismatched cross-source identity fails closed.
 
 The import order is:
 
@@ -97,7 +101,9 @@ The import order is:
 Failure injection exists at every split boundary. Before activation a partial
 identity is inactive; after activation it is already reset-gated and admitted.
 Reruns validate the ledger-bound Kratos external ID, email, and state before
-resuming. A completed batch hash is a no-op.
+resuming. The ledger may bind the same global identity to the corresponding
+Stage and Production source records only after the earlier source entry is
+complete. A completed batch hash is a no-op.
 
 ## Invitation contract
 

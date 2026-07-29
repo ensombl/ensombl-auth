@@ -51,6 +51,9 @@ where table_schema = 'auth_control'
 grant execute
   on function auth_control.require_migrated_identity_reset(uuid, text)
   to auth_identity_import;
+grant execute
+  on function auth_control.can_reuse_completed_migrated_identity(uuid, text, text, text)
+  to auth_identity_import;
 revoke create on schema auth_control from auth_control_runtime, auth_identity_import;
 \set QUIET off
 SQL

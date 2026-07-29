@@ -149,19 +149,19 @@ GET https://auth.ensombl.io/internal/anything          -> 404
   DENY`, `nosniff`, strict referrer policy, and production HSTS. OIDC discovery
   retains its upstream caching policy.
 
-Do not import `fc-prod` users before these gates pass. `fc-stage` is rehearsed
-only against disposable local auth and is never loaded into this global stack.
+Do not import either Stage or Production users before these gates pass. Stage
+must first pass the disposable local-auth rehearsal and may then be imported
+only for the approved hosted Stage login test.
 
 ## Audited identity import
 
-Source extraction is intentionally not implemented in this repository. The
-stage reader is used by FreightClaims to rehearse the transform and import
-against disposable local auth. Only after that evidence is accepted may the
-production reader prepare the final `freightclaims-fc-prod` batch for this
-stack. The manifest must contain only normalized traits, the source user key,
-allowlisted product grants, and the exact Argon2id PHC migration contract
-(`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). It must never contain a
-plaintext password or legacy ciphertext.
+Source extraction is intentionally not implemented in this repository.
+FreightClaims first rehearses the selected reader against disposable local
+auth, then prepares the reviewed `freightclaims-fc-stage` or
+`freightclaims-fc-prod` batch. The manifest must contain only normalized
+traits, the source user key, allowlisted product grants, and the exact Argon2id
+PHC migration contract (`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). It must
+never contain a plaintext password or legacy ciphertext.
 
 Run the source-built `identity-import` profile from the Dokploy-managed Compose
 context with the reviewed revision and approved Bitwarden environment already
@@ -169,15 +169,17 @@ in place. Pipe the manifest over standard input; never copy it into the
 checkout, a Compose volume, an environment variable, or a command argument:
 
 ```bash
-batch_path=/secure/operator-only/fc-prod-auth-batch.json
+source_environment=stage # stage or prod
+batch_path="/secure/operator-only/fc-${source_environment}-auth-batch.json"
 batch_sha="$(sha256sum "$batch_path" | awk '{print $1}')"
 docker compose \
   --file deploy/dokploy/compose.yml \
   --profile identity-import \
   run --rm -T \
+  -e "IDENTITY_IMPORT_ALLOWED_SOURCE=freightclaims-fc-${source_environment}" \
   -e IDENTITY_IMPORT_EXPECTED_SHA256="$batch_sha" \
   identity-import <"$batch_path"
-unset batch_sha
+unset batch_sha source_environment
 ```
 
 If Dokploy does not expose an audited operator shell in its managed checkout,
@@ -191,3 +193,10 @@ sets the reset gate, Keto relations are written idempotently, and only then is
 the identity activated and the entry completed. A split failure remains
 inactive and/or reset-gated and is resumed from the ledger on the exact batch
 rerun. A completed batch rerun is a no-op.
+
+When a later Production batch contains the same source user ID and normalized
+email as a completed Stage entry, it reuses the existing active global
+identity. The prior password and the current reset-gate state are preserved,
+so a user who already changed their password during hosted Stage is not forced
+back to the legacy credential or prompted a second time. Any other
+cross-source collision stops the batch.

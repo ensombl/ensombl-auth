@@ -67,6 +67,17 @@ allowed_products_json="$(
   printf '%s' "$IDENTITY_IMPORT_ALLOWED_PRODUCTS" |
     jq -Rc 'split(",") | map(gsub("^\\s+|\\s+$"; ""))'
 )"
+case "$IDENTITY_IMPORT_ALLOWED_SOURCE" in
+  freightclaims-fc-stage)
+    counterpart_source=freightclaims-fc-prod
+    ;;
+  freightclaims-fc-prod)
+    counterpart_source=freightclaims-fc-stage
+    ;;
+  *)
+    fail invalid_allowed_source
+    ;;
+esac
 if ! printf '%s' "$allowed_products_json" |
   jq -e '
     . as $products
@@ -220,6 +231,8 @@ while [ "$index" -lt "$identity_count" ]; do
   password_hash="$(jq -r ".identities[$index].password_hash" "$manifest_path")"
   email_sha256="$(printf '%s' "$email" | sha256sum | awk '{print $1}')"
   external_id="$source_name:$source_user_id"
+  counterpart_external_id="$counterpart_source:$source_user_id"
+  reuse_completed_identity=false
   if [ "${#external_id}" -gt 255 ]; then
     fail external_id_too_long
   fi
@@ -345,17 +358,45 @@ EOF
         ;;
       1)
         found_external_id="$(jq -r '.[0].external_id // ""' "$response_path")"
-        if [ "$found_external_id" != "$external_id" ]; then
-          fail kratos_email_collision
-        fi
         found_email="$(jq -r '.[0].traits.email // ""' "$response_path")"
         if [ "$found_email" != "$email" ]; then
           fail kratos_email_mismatch
         fi
         identity_id="$(jq -r '.[0].id' "$response_path")"
         identity_state="$(jq -r '.[0].state' "$response_path")"
-        if [ "$identity_state" != inactive ]; then
-          fail kratos_unbound_identity_not_inactive
+        case "$identity_id" in
+          ????????-????-????-????-????????????) ;;
+          *) fail kratos_identity_invalid_id ;;
+        esac
+        if [ "$found_external_id" = "$external_id" ]; then
+          if [ "$identity_state" != inactive ]; then
+            fail kratos_unbound_identity_not_inactive
+          fi
+        elif [ "$found_external_id" = "$counterpart_external_id" ]; then
+          if [ "$identity_state" != active ]; then
+            fail kratos_counterpart_identity_not_active
+          fi
+          export IMPORT_IDENTITY_ID="$identity_id"
+          reusable="$(
+            psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet --tuples-only --no-align <<'SQL'
+\getenv identity_id IMPORT_IDENTITY_ID
+\getenv source_name IMPORT_SOURCE
+\getenv source_user_id IMPORT_SOURCE_USER_ID
+\getenv email_sha256 IMPORT_EMAIL_SHA256
+select auth_control.can_reuse_completed_migrated_identity(
+  :'identity_id'::uuid,
+  :'source_name',
+  :'source_user_id',
+  :'email_sha256'
+);
+SQL
+          )"
+          if [ "$reusable" != t ]; then
+            fail kratos_counterpart_identity_not_reusable
+          fi
+          reuse_completed_identity=true
+        else
+          fail kratos_email_collision
         fi
         ;;
       *) fail kratos_email_not_unique ;;
@@ -396,16 +437,42 @@ SQL
     resumed_email="$(jq -r '.traits.email // ""' "$response_path")"
     resumed_state="$(jq -r '.state // ""' "$response_path")"
     if [ "$resumed_id" != "$identity_id" ] ||
-      [ "$resumed_external_id" != "$external_id" ] ||
       [ "$resumed_email" != "$email" ]; then
       fail kratos_ledger_identity_mismatch
     fi
-    if [ "$resumed_state" != inactive ] && [ "$resumed_state" != active ]; then
-      fail kratos_identity_invalid_state
+    if [ "$resumed_external_id" = "$external_id" ]; then
+      if [ "$resumed_state" != inactive ] && [ "$resumed_state" != active ]; then
+        fail kratos_identity_invalid_state
+      fi
+    elif [ "$resumed_external_id" = "$counterpart_external_id" ]; then
+      if [ "$resumed_state" != active ]; then
+        fail kratos_counterpart_identity_not_active
+      fi
+      reusable="$(
+        psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet --tuples-only --no-align <<'SQL'
+\getenv identity_id IMPORT_IDENTITY_ID
+\getenv source_name IMPORT_SOURCE
+\getenv source_user_id IMPORT_SOURCE_USER_ID
+\getenv email_sha256 IMPORT_EMAIL_SHA256
+select auth_control.can_reuse_completed_migrated_identity(
+  :'identity_id'::uuid,
+  :'source_name',
+  :'source_user_id',
+  :'email_sha256'
+);
+SQL
+      )"
+      if [ "$reusable" != t ]; then
+        fail kratos_counterpart_identity_not_reusable
+      fi
+      reuse_completed_identity=true
+    else
+      fail kratos_ledger_identity_mismatch
     fi
   fi
 
-  psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet <<'SQL'
+  if [ "$reuse_completed_identity" = false ]; then
+    psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet <<'SQL'
 \getenv source_name IMPORT_SOURCE
 \getenv source_user_id IMPORT_SOURCE_USER_ID
 \getenv identity_id IMPORT_IDENTITY_ID
@@ -420,7 +487,8 @@ where source = :'source_name'
   and source_user_id = :'source_user_id'
   and status <> 'completed';
 SQL
-  maybe_fail_after after_reset_gated
+    maybe_fail_after after_reset_gated
+  fi
 
   product_count="$(jq -r ".identities[$index].products | length" "$manifest_path")"
   product_index=0
@@ -464,6 +532,22 @@ where source = :'source_name'
   and status <> 'completed';
 SQL
   maybe_fail_after after_products_granted
+
+  if [ "$reuse_completed_identity" = true ]; then
+    psql --no-psqlrc --set ON_ERROR_STOP=1 --quiet <<'SQL'
+\getenv source_name IMPORT_SOURCE
+\getenv source_user_id IMPORT_SOURCE_USER_ID
+update auth_control.identity_import_entries
+set status = 'completed',
+    updated_at = now(),
+    completed_at = now()
+where source = :'source_name'
+  and source_user_id = :'source_user_id';
+SQL
+    imported_count=$((imported_count + 1))
+    index=$((index + 1))
+    continue
+  fi
 
   printf '%s\n' '[{"op":"replace","path":"/state","value":"active"}]' >"$request_path"
   activate_status="$(

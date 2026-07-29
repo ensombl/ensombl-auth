@@ -76,7 +76,7 @@ The fixture is `developer@freightclaims.test` with initial password
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
-this fixture is separate from the audited `fc-stage` importer.
+this fixture is separate from the audited Stage and Production importers.
 
 ## Security invariants
 
@@ -100,6 +100,9 @@ this fixture is separate from the audited `fc-stage` importer.
 - Identity batches enter only through a source-built stdin/tmpfs one-shot. A
   user is created inactive, durably reset-gated, and product-admitted before
   activation; split failures resume from a hash-bound ledger.
+- Reviewed Stage and Production batches can map the same legacy source user to
+  one global identity. A later source never replaces an active password or
+  reasserts a reset gate already completed in the earlier environment.
 - Hydra public and admin listeners run in separate processes and networks.
   Kratos v26 exposes both listeners from one process, but Traefik routes only
   its public paths; the resulting shared-network trust boundary is documented
