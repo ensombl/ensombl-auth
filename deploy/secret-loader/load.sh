@@ -71,5 +71,16 @@ jq -n \
     }
   }' >"$ZITADEL_SECRET_DIRECTORY/config.json"
 
+cat >"$ZITADEL_SECRET_DIRECTORY/steps.yaml" <<'EOF'
+FirstInstance:
+  Org:
+    Machine:
+      Pat:
+        ExpirationDate: 2099-01-01T00:00:00Z
+    LoginClient:
+      Pat:
+        ExpirationDate: 2099-01-01T00:00:00Z
+EOF
+
 unset BWS_ACCESS_TOKEN BWS_PROJECT_ID secrets_json masterkey database_url initial_admin_password resend_api_key
 printf '%s\n' 'ZITADEL runtime secrets loaded'

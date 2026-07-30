@@ -57,6 +57,8 @@ services:
     user: "0"
     command:
       - start-from-init
+      - --steps
+      - /zitadel/steps.yaml
       - --masterkey
       - ZitadelLocalMasterKey0123456789a
     environment:
@@ -89,6 +91,7 @@ services:
       ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROMNAME: Ensombl
       ZITADEL_DEFAULTINSTANCE_DOMAINPOLICY_SMTPSENDERADDRESSMATCHESINSTANCEDOMAIN: "false"
     volumes:
+      - ./deploy/zitadel/steps.yaml:/zitadel/steps.yaml:ro
       - bootstrap:/zitadel/bootstrap
     networks:
       - auth
