@@ -65,6 +65,7 @@ export class ZitadelClient {
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       try {
         const response = await fetch(`${this.#baseUrl}/.well-known/openid-configuration`, {
+          headers: this.#requestHeaders,
           signal: AbortSignal.timeout(3_000),
         });
         if (response.ok) return;

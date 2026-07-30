@@ -23,7 +23,7 @@ async function main(): Promise<void> {
   const requestHost = process.env.ZITADEL_REQUEST_HOST?.trim();
   const adminPat = await readPat();
   const client = new ZitadelClient(required("ZITADEL_URL"), adminPat, {
-    ...(requestHost ? { "x-forwarded-host": requestHost } : {}),
+    ...(requestHost ? { host: requestHost, "x-forwarded-host": requestHost } : {}),
     ...(process.env.ZITADEL_FORWARDED_PROTO
       ? { "x-forwarded-proto": process.env.ZITADEL_FORWARDED_PROTO }
       : {}),
