@@ -25,6 +25,8 @@ services:
       - start-from-init
       - --config
       - /run/ensombl-auth/config.json
+      - --steps
+      - /run/ensombl-auth/steps.yaml
       - --masterkeyFile
       - /run/ensombl-auth/masterkey
     environment:
