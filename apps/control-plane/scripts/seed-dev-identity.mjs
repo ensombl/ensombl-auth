@@ -2,8 +2,7 @@ import postgres from 'postgres'
 
 const kratosAdminUrl = new URL('http://127.0.0.1:24434')
 const ketoWriteUrl = new URL('http://127.0.0.1:24467')
-const databaseUrl =
-  'postgres://auth_control_runtime:auth_control_runtime_dev@127.0.0.1:25432/auth_control'
+const databaseUrl = 'postgres://auth_control:auth_control_dev@127.0.0.1:25432/auth_control'
 const identityContract = {
   email: 'developer@freightclaims.test',
   password: 'FreightClaims-Dev-2026!',

@@ -33,7 +33,8 @@ jq -e '
     and ($services["kratos-freightclaims"].networks | has("dokploy-network"))
     and ($services["hydra-public"].networks | has("dokploy-network"))
     and ($services["control-plane"].networks | has("dokploy-network"))
-    and ($services["hydra-admin"].networks | has("dokploy-network") | not)
+    and ($services["hydra-admin"].networks | has("dokploy-network"))
+    and (($services["hydra-admin"].labels // {}) | has("traefik.enable") | not)
     and (
       $services.kratos.labels["traefik.http.routers.ensombl-auth-kratos.rule"]
       | contains("PathPrefix(`/self-service/`)")
@@ -49,7 +50,8 @@ jq -e '
     and ($services.kratos.command | index("--watch-courier") | not)
     and ($services["kratos-freightclaims"].command | index("--watch-courier") | not)
     and ($services["kratos-courier"].command == ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"])
-    and ($services["kratos-courier"].networks | has("dokploy-network") | not)
+    and ($services["kratos-courier"].networks | has("dokploy-network"))
+    and (($services["kratos-courier"].labels // {}) | has("traefik.enable") | not)
     and (
       $services["hydra-public"].labels["traefik.http.routers.ensombl-auth-hydra.rule"]
       | contains("PathPrefix(`/oauth2/`)")

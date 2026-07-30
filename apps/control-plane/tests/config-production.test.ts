@@ -14,7 +14,7 @@ function setProductionEnvironment(): void {
     HYDRA_ADMIN_URL: 'http://hydra:4445',
     KETO_READ_URL: 'http://keto:4466',
     KETO_WRITE_URL: 'http://keto:4467',
-    DATABASE_URL: 'postgres://auth_control_runtime:production-password@postgres:5432/auth_control',
+    DATABASE_URL: 'postgres://auth_control:production-password@auth-control-db:5432/auth_control',
     ORY_HOOK_SECRET: 'production-hook-secret-that-is-not-the-default',
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
@@ -50,8 +50,7 @@ describe('production configuration', () => {
       NODE_ENV: 'production',
       PUBLIC_AUTH_URL: 'https://auth.ensombl.io',
       KRATOS_PUBLIC_INTERNAL_URL: 'http://kratos:4433',
-      DATABASE_URL:
-        'postgres://auth_control_runtime:production-password@postgres:5432/auth_control',
+      DATABASE_URL: 'postgres://auth_control:production-password@auth-control-db:5432/auth_control',
     })
   })
 

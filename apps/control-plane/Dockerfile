@@ -26,6 +26,7 @@ COPY --from=build /app/deployed/node_modules node_modules
 COPY --from=build /app/deployed/package.json package.json
 COPY --from=build /app/apps/control-plane/migrations migrations
 COPY --from=build /app/apps/control-plane/scripts scripts
+COPY --chown=node:node deploy/products/products.json /etc/ensombl/products.json
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \

@@ -10,13 +10,10 @@ if [ "$#" -eq 0 ]; then
 fi
 
 exec env \
-  POSTGRES_SUPERUSER_PASSWORD=validation-only-postgres-superuser \
-  KRATOS_DB_PASSWORD=validation-only-kratos \
-  HYDRA_DB_PASSWORD=validation-only-hydra \
-  KETO_DB_PASSWORD=validation-only-keto \
-  AUTH_CONTROL_MIGRATOR_DB_PASSWORD=validation-only-control-migrator \
-  AUTH_CONTROL_RUNTIME_DB_PASSWORD=validation-only-control-runtime \
-  IDENTITY_IMPORT_DB_PASSWORD=validation-only-identity-import \
+  KRATOS_DATABASE_URL=postgres://kratos:validation-only@auth-kratos-db:5432/kratos \
+  HYDRA_DATABASE_URL=postgres://hydra:validation-only@auth-hydra-db:5432/hydra \
+  KETO_DATABASE_URL=postgres://keto:validation-only@auth-keto-db:5432/keto \
+  AUTH_CONTROL_DATABASE_URL=postgres://auth_control:validation-only@auth-control-db:5432/auth_control \
   KRATOS_COOKIE_SECRET=validation-only-cookie-secret-32-bytes \
   KRATOS_CIPHER_SECRET="$validation_cipher_secret" \
   HYDRA_SYSTEM_SECRET=validation-only-hydra-system-secret \

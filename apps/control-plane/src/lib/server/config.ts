@@ -12,8 +12,7 @@ const localDefaults = {
   HYDRA_ADMIN_URL: 'http://localhost:24445',
   KETO_READ_URL: 'http://localhost:24466',
   KETO_WRITE_URL: 'http://localhost:24467',
-  DATABASE_URL:
-    'postgres://auth_control_runtime:auth_control_runtime_dev@localhost:25432/auth_control',
+  DATABASE_URL: 'postgres://auth_control:auth_control_dev@localhost:25432/auth_control',
   ORY_HOOK_SECRET: 'local-only-hook-secret-32-bytes',
   MIGRATION_API_SECRET: 'local-only-migration-api-secret',
   INVITATION_RECONCILER_SECRET: 'local-only-invitation-reconciler-secret',

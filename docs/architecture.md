@@ -14,15 +14,15 @@ Kratos and control-UI edge over the same global identity database.
 
 There is no catch-all router. Only the five product endpoints documented below
 match `/internal/*`; every other internal path, `/admin/*`, and Keto API does
-not match a public route. Hydra public and admin listeners are separate containers;
-only `hydra-public` joins `dokploy-network`. Kratos v26.2.0 serves public and
-admin listeners from one process, so its container joins both
-`dokploy-network` and the private Kratos-admin network. Traefik routes only
-port 4433 and the public path allowlist. Both Kratos edges share the same
-database, cookie/cipher secrets, identity schema, and reset hooks, but issue
-host-only browser cookies. Other workloads on the shared Dokploy network remain
-part of the trusted deployment boundary. Keto and every database remain on
-internal networks.
+not match a public route. Hydra public and admin listeners are separate
+containers, and Kratos v26.2.0 serves public and admin listeners from one
+process. Traefik routes only the declared public ports and path allowlists.
+Both Kratos edges share the dedicated native Kratos database, cookie/cipher
+secrets, identity schema, and reset hooks, but issue host-only browser cookies.
+Kratos, Hydra, Keto, and auth control each use a separate native Dokploy
+PostgreSQL service. The dedicated auth Dokploy installation and its shared
+container network are the trusted deployment boundary; database and admin
+ports have no public router or host port.
 
 Product APIs never receive a raw Keto endpoint. From their separate
 infrastructure they call the exact HTTPS
@@ -97,41 +97,33 @@ the reviewed default; an unknown marker fails closed.
 
 ## Migration control contract
 
-The auth-side boundary is a source-built, one-shot Compose profile with no
-public endpoint. It accepts an operator-prepared manifest only through stdin,
-copies at most 1 MiB into a mode-0700 tmpfs, checks an out-of-band SHA-256 and
-the exact schema, and never logs traits or password hashes. Its database role
-can append/update only import ledger rows and execute a pinned-search-path
-`SECURITY DEFINER` function that can assert `reset_required=true`; it cannot
-read, clear, or otherwise update an identity gate.
+The hosted auth stack does not read a legacy database and contains no password
+decryptor. FreightClaims performs source selection and decryption inside its
+isolated migration worker, immediately converts accepted credentials to the
+reviewed Argon2id contract, and calls the exact HTTPS
+`POST /internal/migration/identities` boundary.
 
-The manifest accepts only the exact Argon2id contract used by the
-FreightClaims migrator: `m=65536,t=3,p=1`, 16-byte salt, and 32-byte hash.
-Plaintext and legacy ciphertext are rejected. The hosted global stack accepts
-only the two explicitly reviewed sources, `freightclaims-fc-staging` and
-`freightclaims-fc-production`; the operator must select the matching source gate for
-each batch. If Production contains an identity already completed by the Stage
-import with the same source user ID and normalized email, the importer reuses
-that active global identity. It does not replace the password or reassert a
-reset gate the user already completed. Any incomplete, differently keyed, or
-email-mismatched cross-source identity fails closed.
+The endpoint requires a client ID and the corresponding catalog-declared
+identity-migration bearer. It derives the product, source environment, and
+admission scope from that authenticated client rather than accepting them as
+caller-controlled fields. Payloads accept only `m=65536,t=3,p=1`, a 16-byte
+salt, and a 32-byte hash. Plaintext and legacy ciphertext are rejected and
+never enter auth logs.
 
-The import order is:
+For each accepted identity the control plane:
 
-1. Validate the complete batch and open its idempotency ledger.
-2. Create/import the Kratos identity and hash in `inactive` state.
-3. Durably assert the reset gate through the true-only function.
-4. Write explicit Keto `Product`, `Organization`, and product/organization
-   `Tenant` relationships.
-5. Activate the Kratos identity.
-6. Commit the identity and batch ledger entries.
+1. Validates the source record and idempotency binding.
+2. Creates or verifies the Kratos identity and imported hash.
+3. Durably asserts the mandatory reset gate.
+4. Writes the reviewed product and tenant relations to Keto.
+5. Activates the identity only after the reset gate and admission exist.
+6. Commits the source alias and membership ledger.
 
-Failure injection exists at every split boundary. Before activation a partial
-identity is inactive; after activation it is already reset-gated and admitted.
-Reruns validate the ledger-bound Kratos external ID, email, and state before
-resuming. The ledger may bind the same global identity to the corresponding
-Stage and Production source records only after the earlier source entry is
-complete. A completed batch hash is a no-op.
+Retries validate the bound Kratos identity, normalized email, source user ID,
+and state before resuming. A production source may reuse a completed staging
+global identity only for the exact reviewed counterpart. It never replaces an
+active password or reasserts a reset gate the user already completed. Any
+incomplete, differently keyed, or email-mismatched collision fails closed.
 
 ## Invitation contract
 

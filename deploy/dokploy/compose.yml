@@ -4,6 +4,18 @@ x-control-build: &control-build
   context: ../..
   dockerfile: apps/control-plane/Dockerfile
 
+x-kratos-build: &kratos-build
+  context: ../..
+  dockerfile: deploy/ory/kratos/Dockerfile
+
+x-hydra-build: &hydra-build
+  context: ../..
+  dockerfile: deploy/ory/hydra/Dockerfile
+
+x-keto-build: &keto-build
+  context: ../..
+  dockerfile: deploy/ory/keto/Dockerfile
+
 x-control-environment: &control-environment
   NODE_ENV: production
   PUBLIC_AUTH_URL: https://auth.ensombl.io
@@ -12,7 +24,7 @@ x-control-environment: &control-environment
   HYDRA_ADMIN_URL: http://hydra-admin:4445
   KETO_READ_URL: http://keto:4466
   KETO_WRITE_URL: http://keto:4467
-  DATABASE_URL: postgres://auth_control_runtime:${AUTH_CONTROL_RUNTIME_DB_PASSWORD:?Inject AUTH_CONTROL_RUNTIME_DB_PASSWORD from Bitwarden}@postgres:5432/auth_control?sslmode=disable
+  DATABASE_URL: ${AUTH_CONTROL_DATABASE_URL:?Inject AUTH_CONTROL_DATABASE_URL from Bitwarden}
   ORY_HOOK_SECRET: ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
   MIGRATION_API_SECRET: ${MIGRATION_API_SECRET:?Inject MIGRATION_API_SECRET from Bitwarden}
   INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
@@ -27,108 +39,38 @@ x-control-environment: &control-environment
   PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
 
 x-kratos-environment: &kratos-environment
-  DSN: postgres://kratos:${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}@postgres:5432/kratos?sslmode=disable
+  DSN: ${KRATOS_DATABASE_URL:?Inject KRATOS_DATABASE_URL from Bitwarden}
   SECRETS_COOKIE_0: ${KRATOS_COOKIE_SECRET:?Inject KRATOS_COOKIE_SECRET from Bitwarden}
   SECRETS_CIPHER_0: ${KRATOS_CIPHER_SECRET:?Inject KRATOS_CIPHER_SECRET from Bitwarden}
   SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
   SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
 
 x-hydra-environment: &hydra-environment
-  DSN: postgres://hydra:${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}@postgres:5432/hydra?sslmode=disable
+  DSN: ${HYDRA_DATABASE_URL:?Inject HYDRA_DATABASE_URL from Bitwarden}
   SECRETS_SYSTEM_0: ${HYDRA_SYSTEM_SECRET:?Inject HYDRA_SYSTEM_SECRET from Bitwarden}
   OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT: ${HYDRA_PAIRWISE_SALT:?Inject HYDRA_PAIRWISE_SALT from Bitwarden}
 
-x-postgres-reconcile-environment: &postgres-reconcile-environment
-  POSTGRES_USER: postgres
-  POSTGRES_DB: postgres
-  POSTGRES_SUPERUSER_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Inject POSTGRES_SUPERUSER_PASSWORD from Bitwarden}
-  KRATOS_DB_PASSWORD: ${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}
-  HYDRA_DB_PASSWORD: ${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}
-  KETO_DB_PASSWORD: ${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}
-  AUTH_CONTROL_MIGRATOR_DB_PASSWORD: ${AUTH_CONTROL_MIGRATOR_DB_PASSWORD:?Inject AUTH_CONTROL_MIGRATOR_DB_PASSWORD from Bitwarden}
-  AUTH_CONTROL_RUNTIME_DB_PASSWORD: ${AUTH_CONTROL_RUNTIME_DB_PASSWORD:?Inject AUTH_CONTROL_RUNTIME_DB_PASSWORD from Bitwarden}
-  IDENTITY_IMPORT_DB_PASSWORD: ${IDENTITY_IMPORT_DB_PASSWORD:?Inject IDENTITY_IMPORT_DB_PASSWORD from Bitwarden}
-
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?Inject POSTGRES_SUPERUSER_PASSWORD from Bitwarden}
-      POSTGRES_DB: postgres
-    volumes:
-      - auth-postgres:/var/lib/postgresql/data
-      - auth-postgres-socket:/var/run/postgresql
-    networks:
-      - db-kratos
-      - db-hydra
-      - db-keto
-      - db-control
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  postgres-reconcile:
-    image: postgres:16-alpine
-    user: postgres
-    network_mode: none
-    environment:
-      <<: *postgres-reconcile-environment
-      PGHOST: /var/run/postgresql
-    entrypoint: ["/bin/sh", "/reconcile/reconcile-databases.sh"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - auth-postgres-socket:/var/run/postgresql
-      - ../postgres/reconcile-databases.sh:/reconcile/reconcile-databases.sh:ro
-    restart: "no"
-
   control-migrate:
     build: *control-build
     command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
     environment:
-      AUTH_CONTROL_MIGRATION_URL: postgres://auth_control_migrator:${AUTH_CONTROL_MIGRATOR_DB_PASSWORD:?Inject AUTH_CONTROL_MIGRATOR_DB_PASSWORD from Bitwarden}@postgres:5432/auth_control?sslmode=disable&options=-c%20role%3Dauth_control_owner
-    depends_on:
-      postgres-reconcile:
-        condition: service_completed_successfully
+      AUTH_CONTROL_MIGRATION_URL: ${AUTH_CONTROL_DATABASE_URL:?Inject AUTH_CONTROL_DATABASE_URL from Bitwarden}
     networks:
-      - db-control
-    restart: "no"
-
-  auth-control-grants:
-    image: postgres:16-alpine
-    user: postgres
-    network_mode: none
-    environment:
-      POSTGRES_USER: postgres
-      PGHOST: /var/run/postgresql
-    entrypoint: ["/bin/sh", "/reconcile/reconcile-auth-control-privileges.sh"]
-    depends_on:
-      control-migrate:
-        condition: service_completed_successfully
-    volumes:
-      - auth-postgres-socket:/var/run/postgresql
-      - ../postgres/reconcile-auth-control-privileges.sh:/reconcile/reconcile-auth-control-privileges.sh:ro
+      - dokploy-network
     restart: "no"
 
   kratos-migrate:
-    image: oryd/kratos:v26.2.0
+    build: *kratos-build
     command: ["migrate", "sql", "-e", "--yes"]
     environment:
-      DSN: postgres://kratos:${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}@postgres:5432/kratos?sslmode=disable
-    depends_on:
-      postgres-reconcile:
-        condition: service_completed_successfully
+      DSN: ${KRATOS_DATABASE_URL:?Inject KRATOS_DATABASE_URL from Bitwarden}
     networks:
-      - db-kratos
+      - dokploy-network
     restart: "no"
 
   kratos:
-    image: oryd/kratos:v26.2.0
+    build: *kratos-build
     command: ["serve", "--config", "/etc/config/kratos/kratos.yml"]
     restart: unless-stopped
     environment:
@@ -136,11 +78,8 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
-    volumes:
-      - ../ory/kratos:/etc/config/kratos:ro
     networks:
       - dokploy-network
-      - db-kratos
       - kratos-admin
       - control-private
     labels:
@@ -160,7 +99,7 @@ services:
       retries: 30
 
   kratos-freightclaims:
-    image: oryd/kratos:v26.2.0
+    build: *kratos-build
     command:
       [
         "serve",
@@ -175,11 +114,8 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
-    volumes:
-      - ../ory/kratos:/etc/config/kratos:ro
     networks:
       - dokploy-network
-      - db-kratos
       - control-private
     labels:
       traefik.enable: "true"
@@ -198,19 +134,16 @@ services:
       retries: 30
 
   hydra-migrate:
-    image: oryd/hydra:v26.2.0
+    build: *hydra-build
     command: ["migrate", "sql", "-e", "--yes"]
     environment:
-      DSN: postgres://hydra:${HYDRA_DB_PASSWORD:?Inject HYDRA_DB_PASSWORD from Bitwarden}@postgres:5432/hydra?sslmode=disable
-    depends_on:
-      postgres-reconcile:
-        condition: service_completed_successfully
+      DSN: ${HYDRA_DATABASE_URL:?Inject HYDRA_DATABASE_URL from Bitwarden}
     networks:
-      - db-hydra
+      - dokploy-network
     restart: "no"
 
   hydra-public:
-    image: oryd/hydra:v26.2.0
+    build: *hydra-build
     command: ["serve", "public", "--config", "/etc/config/hydra/hydra.yml"]
     restart: unless-stopped
     environment:
@@ -218,11 +151,8 @@ services:
     depends_on:
       hydra-migrate:
         condition: service_completed_successfully
-    volumes:
-      - ../ory/hydra:/etc/config/hydra:ro
     networks:
       - dokploy-network
-      - db-hydra
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
@@ -244,7 +174,7 @@ services:
       retries: 30
 
   hydra-admin:
-    image: oryd/hydra:v26.2.0
+    build: *hydra-build
     command: ["serve", "admin", "--config", "/etc/config/hydra/hydra.yml"]
     restart: unless-stopped
     environment:
@@ -252,10 +182,8 @@ services:
     depends_on:
       hydra-migrate:
         condition: service_completed_successfully
-    volumes:
-      - ../ory/hydra:/etc/config/hydra:ro
     networks:
-      - db-hydra
+      - dokploy-network
       - hydra-admin
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4445/health/ready"]
@@ -274,41 +202,30 @@ services:
     depends_on:
       hydra-admin:
         condition: service_healthy
-    volumes:
-      - ../products/products.json:/etc/ensombl/products.json:ro
     networks:
       - hydra-admin
     restart: "no"
 
   keto-migrate:
-    image: oryd/keto:v26.2.0
+    build: *keto-build
     command: ["migrate", "up", "-y", "--config", "/home/ory/keto.yml"]
     environment:
-      DSN: postgres://keto:${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}@postgres:5432/keto?sslmode=disable
-    depends_on:
-      postgres-reconcile:
-        condition: service_completed_successfully
-    volumes:
-      - ../ory/keto/keto.yml:/home/ory/keto.yml:ro
-      - ../ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
+      DSN: ${KETO_DATABASE_URL:?Inject KETO_DATABASE_URL from Bitwarden}
     networks:
-      - db-keto
+      - dokploy-network
     restart: "no"
 
   keto:
-    image: oryd/keto:v26.2.0
+    build: *keto-build
     command: ["serve", "--config", "/home/ory/keto.yml", "all"]
     restart: unless-stopped
     environment:
-      DSN: postgres://keto:${KETO_DB_PASSWORD:?Inject KETO_DB_PASSWORD from Bitwarden}@postgres:5432/keto?sslmode=disable
+      DSN: ${KETO_DATABASE_URL:?Inject KETO_DATABASE_URL from Bitwarden}
     depends_on:
       keto-migrate:
         condition: service_completed_successfully
-    volumes:
-      - ../ory/keto/keto.yml:/home/ory/keto.yml:ro
-      - ../ory/keto/namespaces.ts:/home/ory/namespaces.ts:ro
     networks:
-      - db-keto
+      - dokploy-network
       - authorization
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4466/health/ready"]
@@ -321,10 +238,8 @@ services:
     restart: unless-stopped
     environment:
       <<: *control-environment
-    volumes:
-      - ../products/products.json:/etc/ensombl/products.json:ro
     depends_on:
-      auth-control-grants:
+      control-migrate:
         condition: service_completed_successfully
       kratos:
         condition: service_healthy
@@ -336,7 +251,6 @@ services:
         condition: service_healthy
     networks:
       dokploy-network:
-      db-control:
       kratos-admin:
       hydra-admin:
       authorization:
@@ -369,7 +283,7 @@ services:
       retries: 30
 
   kratos-courier:
-    image: oryd/kratos:v26.2.0
+    build: *kratos-build
     command: ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"]
     restart: unless-stopped
     environment:
@@ -378,10 +292,8 @@ services:
     depends_on:
       control-plane:
         condition: service_healthy
-    volumes:
-      - ../ory/kratos:/etc/config/kratos:ro
     networks:
-      - db-kratos
+      - dokploy-network
       - control-private
 
   invitation-reconciler:
@@ -440,64 +352,9 @@ services:
       - control-private
     restart: "no"
 
-  identity-import:
-    profiles: ["identity-import"]
-    build:
-      context: ../..
-      dockerfile: deploy/identity-import/Dockerfile
-    environment:
-      PGHOST: postgres
-      PGPORT: "5432"
-      PGDATABASE: auth_control
-      PGUSER: auth_identity_import
-      PGPASSWORD: ${IDENTITY_IMPORT_DB_PASSWORD:?Inject IDENTITY_IMPORT_DB_PASSWORD from Bitwarden}
-      KRATOS_ADMIN_URL: http://kratos:4434
-      KETO_WRITE_URL: http://keto:4467
-      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-production
-      IDENTITY_IMPORT_ALLOWED_PRODUCTS: freightclaims
-    stdin_open: true
-    read_only: true
-    tmpfs:
-      - /work:rw,noexec,nosuid,nodev,mode=0700,uid=70,gid=70,size=4m
-    cap_drop:
-      - ALL
-    pids_limit: 64
-    mem_limit: 256m
-    memswap_limit: 256m
-    ulimits:
-      core:
-        soft: 0
-        hard: 0
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      auth-control-grants:
-        condition: service_completed_successfully
-      kratos:
-        condition: service_healthy
-      keto:
-        condition: service_healthy
-    networks:
-      - db-control
-      - kratos-admin
-      - authorization
-    restart: "no"
-
-volumes:
-  auth-postgres:
-  auth-postgres-socket:
-
 networks:
   dokploy-network:
     external: true
-  db-kratos:
-    internal: true
-  db-hydra:
-    internal: true
-  db-keto:
-    internal: true
-  db-control:
-    internal: true
   kratos-admin:
     internal: true
   hydra-admin:

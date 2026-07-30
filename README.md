@@ -19,7 +19,8 @@ isolated.
 - A source-built SvelteKit control application for Kratos self-service screens,
   Hydra login/consent/logout, invitations, product admission, and the migrated
   password reset gate.
-- PostgreSQL for the three Ory stores and the small auth-control database.
+- Four isolated PostgreSQL databases: one each for Kratos, Hydra, Keto, and
+  the small auth-control store.
 - Checked-in Dokploy Traefik routes for the exact public control, Kratos, and
   Hydra paths. Ory admin APIs and control endpoints have no public router.
 - One singleton Kratos courier and an internal, product-aware Resend boundary.
@@ -29,9 +30,10 @@ isolated.
 The application uses Node 24, pnpm 11, TypeScript, SvelteKit, and Turborepo,
 matching the relevant runtime and frontend patterns in Exhibit A. No project
 container is published to a registry. Dokploy builds the control application
-directly from the reviewed Git revision; the Compose stack only pulls pinned
-upstream Ory and PostgreSQL images. Caddy remains only in the disposable local
-development stack.
+and thin, configuration-only Ory images directly from the reviewed Git
+revision. Hosted PostgreSQL is provided by four native Dokploy database
+services and is not part of the Compose stack. Caddy remains only in the
+disposable local development stack.
 
 ## Local development
 
@@ -46,16 +48,15 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` starts PostgreSQL, Mailpit, Kratos, Hydra, Keto, and the same-origin
-gateway, reconciles database roles, applies the auth-control migration and
-least-privilege grants under an advisory lock, then starts the SvelteKit
-control application and durable invitation-activation reconciler with one
-clean Ctrl-C lifecycle.
+`pnpm dev` starts four isolated PostgreSQL services, Mailpit, Kratos, Hydra,
+Keto, and the same-origin gateway, applies each component's normal versioned
+migration, then starts the SvelteKit control application and durable
+invitation-activation reconciler with one clean Ctrl-C lifecycle.
 
-The application `DATABASE_URL` is runtime-only. Migrations consume only the
-dedicated `AUTH_CONTROL_MIGRATION_URL`; local development supplies a constrained
-migrator default and rejects remote migration hosts, while hosted deployments
-must provide an explicit non-loopback value.
+The auth-control migration consumes only `AUTH_CONTROL_MIGRATION_URL`; local
+development supplies a loopback-only default, while hosted deployments must
+provide the explicit internal URL of the dedicated native auth-control
+database.
 
 Local endpoints:
 
@@ -81,7 +82,7 @@ The fixture is `developer@freightclaims.test` with initial password
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
-this fixture is separate from the audited Stage and Production importers.
+this fixture is separate from the audited staging and production importers.
 
 ## Security invariants
 
@@ -103,10 +104,11 @@ this fixture is separate from the audited Stage and Production importers.
   bearer secrets. Dokploy Traefik exposes no other `/internal/*` route.
 - Passwords, ciphertext, password hashes, OAuth tokens, recovery codes, and
   secrets are never written to application logs or the auth-control database.
-- Identity batches enter only through a source-built stdin/tmpfs one-shot. A
-  user is created inactive, durably reset-gated, and product-admitted before
-  activation; split failures resume from a hash-bound ledger.
-- Reviewed Stage and Production batches can map the same legacy source user to
+- Hosted identity batches enter only through the exact bearer-protected
+  identity-migration API. A user is created inactive, durably reset-gated, and
+  product-admitted before activation; split failures resume from the
+  hash-bound ledger.
+- Reviewed staging and production batches can map the same legacy source user to
   one global identity. A later source never replaces an active password or
   reasserts a reset gate already completed in the earlier environment.
 - Every migrated identity is admitted only to its reviewed product and exact
@@ -145,7 +147,7 @@ FreightClaims currently declares two confidential clients:
 
 | Environment | Client | Base origin | Audience |
 | --- | --- | --- | --- |
-| stage | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
+| staging | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
 | production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
 
 Both use Authorization Code, refresh tokens, and
