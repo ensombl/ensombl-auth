@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises'
+import { sql } from 'drizzle-orm'
+import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 
 const kratosAdminUrl = new URL('http://127.0.0.1:24434')
@@ -88,18 +90,19 @@ if (!identity?.id || !['active', 'inactive'].includes(identity.state)) {
   throw new Error('Kratos returned an invalid development identity')
 }
 
-const sql = postgres(databaseUrl, { max: 1 })
+const databaseClient = postgres(databaseUrl)
+const database = drizzle(databaseClient)
 try {
-  const gates = await sql`
+  const gates = await database.execute(sql`
     select reset_required
-    from auth_control.identity_gates
+    from identity_gates
     where identity_id = ${identity.id}::uuid
-  `
+  `)
   if (gates[0]?.reset_required === true) {
     throw new Error('Development identity unexpectedly has a migration reset gate')
   }
 } finally {
-  await sql.end()
+  await databaseClient.end()
 }
 
 const granted = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {

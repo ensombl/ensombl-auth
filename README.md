@@ -21,7 +21,9 @@ isolated.
   Hydra login/consent/logout, invitations, product admission, and the migrated
   password reset gate.
 - Four isolated PostgreSQL databases: one each for Kratos, Hydra, Keto, and
-  the small auth-control store.
+  the small auth-control store. The control plane owns its dedicated database
+  through a code-first Drizzle schema and generated migrations; Ory continues
+  to own the other three schemas.
 - Checked-in Dokploy Traefik routes for the exact public control, Kratos, and
   Hydra paths. Ory admin APIs and control endpoints have no public router.
 - One singleton Kratos courier and an internal, product-aware Resend boundary.
@@ -57,7 +59,9 @@ invitation-activation reconciler with one clean Ctrl-C lifecycle.
 The auth-control migration consumes only `AUTH_CONTROL_MIGRATION_URL`; local
 development supplies a loopback-only default, while hosted deployments must
 provide the explicit internal URL of the dedicated native auth-control
-database.
+database. Run `pnpm db:generate` after changing the checked-in Drizzle schema;
+`pnpm db:migrate` applies generated migrations, and `pnpm db:studio` opens
+Drizzle Studio against the configured development database.
 
 Local endpoints:
 

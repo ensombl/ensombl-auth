@@ -25,6 +25,10 @@ PostgreSQL service. The dedicated auth Dokploy installation and its shared
 container network are the trusted deployment boundary; database and admin
 ports have no public router or host port.
 
+Auth control owns the `public` schema in its dedicated database through
+Drizzle's TypeScript schema and generated migrations. It does not share tables
+or migration history with Kratos, Hydra, or Keto.
+
 Product APIs never receive a raw Keto endpoint. From their separate
 infrastructure they call the exact HTTPS
 `POST /internal/authorization/check` decision boundary with a client-specific
@@ -74,7 +78,7 @@ preserved. The local development stack continues to use its small Caddy router.
    browser's host-only Kratos session through `sessions/whoami`.
 5. If there is no Kratos session, the browser enters the FreightClaims-branded
    Kratos login flow.
-6. The control application checks `auth_control.identity_gates` even when Hydra
+6. The control application checks its `identity_gates` table even when Hydra
    says the login can be skipped.
 7. A required reset enters Kratos settings. Kratos itself rejects a password
    equal to the current password. The synchronous password-settings hook first

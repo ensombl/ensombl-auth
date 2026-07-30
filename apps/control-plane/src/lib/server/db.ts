@@ -1,10 +1,19 @@
-import postgres from 'postgres'
+import { and, eq, sql } from 'drizzle-orm'
+import { drizzle, type PostgresJsDatabase } from 'drizzle-orm/postgres-js'
+import postgres, { type Sql } from 'postgres'
 import { config } from './config'
+import * as schema from './database-schema'
+import { hookReceipts, identityGates } from './database-schema'
 
-let client: ReturnType<typeof postgres> | undefined
+export type Database = PostgresJsDatabase<typeof schema>
 
-export function db(): ReturnType<typeof postgres> {
-  client ??= postgres(config().DATABASE_URL, {
+let client: Sql | undefined
+let database: Database | undefined
+
+export function db(): Database {
+  if (database) return database
+
+  client = postgres(config().DATABASE_URL, {
     max: 10,
     idle_timeout: 20,
     connect_timeout: 10,
@@ -13,45 +22,48 @@ export function db(): ReturnType<typeof postgres> {
       undefined: null,
     },
   })
-  return client
+  database = drizzle(client, { schema })
+  return database
+}
+
+export async function closeDatabase(): Promise<void> {
+  const activeClient = client
+  database = undefined
+  client = undefined
+  await activeClient?.end()
 }
 
 export async function isResetRequired(identityId: string): Promise<boolean> {
-  const rows = await db()<Array<{ reset_required: boolean }>>`
-    select reset_required
-    from auth_control.identity_gates
-    where identity_id = ${identityId}::uuid
-  `
-  return rows[0]?.reset_required ?? false
+  const rows = await db()
+    .select({ resetRequired: identityGates.resetRequired })
+    .from(identityGates)
+    .where(eq(identityGates.identityId, identityId))
+    .limit(1)
+  return rows[0]?.resetRequired ?? false
 }
 
 export async function setResetGate(input: { identityId: string; source: string }): Promise<void> {
-  await db()`
-    insert into auth_control.identity_gates (
-      identity_id,
-      reset_required,
-      reset_generation,
-      source,
-      updated_at
-    )
-    values (
-      ${input.identityId}::uuid,
-      true,
-      1,
-      ${input.source},
-      now()
-    )
-    on conflict (identity_id) do update
-    set reset_required = excluded.reset_required,
-        reset_generation = case
-          when not auth_control.identity_gates.reset_required
-            then auth_control.identity_gates.reset_generation + 1
-          else auth_control.identity_gates.reset_generation
-        end,
-        reset_completed_at = null,
-        source = excluded.source,
-        updated_at = now()
-  `
+  await db()
+    .insert(identityGates)
+    .values({
+      identityId: input.identityId,
+      resetRequired: true,
+      resetGeneration: 1,
+      source: input.source,
+    })
+    .onConflictDoUpdate({
+      target: identityGates.identityId,
+      set: {
+        resetRequired: true,
+        resetGeneration: sql<number>`case
+          when not ${identityGates.resetRequired} then ${identityGates.resetGeneration} + 1
+          else ${identityGates.resetGeneration}
+        end`,
+        resetCompletedAt: null,
+        source: input.source,
+        updatedAt: sql`now()`,
+      },
+    })
 }
 
 export async function clearResetGateFromHook(input: {
@@ -60,34 +72,29 @@ export async function clearResetGateFromHook(input: {
   flowId: string
   sessionId?: string
 }): Promise<void> {
-  await db().begin(async (transaction) => {
-    const receipt = await transaction`
-      insert into auth_control.hook_receipts (
-        event_id,
-        hook_type,
-        identity_id,
-        flow_id,
-        session_id
-      )
-      values (
-        ${input.eventId},
-        'password_changed',
-        ${input.identityId}::uuid,
-        ${input.flowId},
-        ${input.sessionId ?? null}
-      )
-      on conflict (event_id) do nothing
-      returning event_id
-    `
+  await db().transaction(async (transaction) => {
+    const receipt = await transaction
+      .insert(hookReceipts)
+      .values({
+        eventId: input.eventId,
+        hookType: 'password_changed',
+        identityId: input.identityId,
+        flowId: input.flowId,
+        sessionId: input.sessionId ?? null,
+      })
+      .onConflictDoNothing()
+      .returning({ eventId: hookReceipts.eventId })
     if (receipt.length === 0) return
 
-    await transaction`
-      update auth_control.identity_gates
-      set reset_required = false,
-          reset_completed_at = now(),
-          updated_at = now()
-      where identity_id = ${input.identityId}::uuid
-        and reset_required
-    `
+    await transaction
+      .update(identityGates)
+      .set({
+        resetRequired: false,
+        resetCompletedAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(eq(identityGates.identityId, input.identityId), eq(identityGates.resetRequired, true)),
+      )
   })
 }

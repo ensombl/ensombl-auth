@@ -1,4 +1,5 @@
 import { json } from '@sveltejs/kit'
+import { sql } from 'drizzle-orm'
 import { config } from '$lib/server/config'
 import { db } from '$lib/server/db'
 import type { RequestHandler } from './$types'
@@ -15,10 +16,12 @@ async function reachable(url: URL): Promise<boolean> {
 export const GET: RequestHandler = async () => {
   const configured = config()
   const checks = await Promise.all([
-    db()`select 1`.then(
-      () => true,
-      () => false,
-    ),
+    db()
+      .execute(sql`select 1`)
+      .then(
+        () => true,
+        () => false,
+      ),
     reachable(new URL('health/ready', `${configured.KRATOS_ADMIN_URL}/`)),
     reachable(new URL('health/ready', `${configured.HYDRA_ADMIN_URL}/`)),
     reachable(new URL('health/ready', `${configured.KETO_READ_URL}/`)),

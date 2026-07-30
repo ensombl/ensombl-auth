@@ -10,6 +10,9 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "lint": "biome check .",
     "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:check": "drizzle-kit check",
+    "db:studio": "drizzle-kit studio",
     "migrate": "tsx scripts/migrate.ts",
     "identity:seed:dev": "node scripts/seed-dev-identity.mjs",
     "reconcile:invitations": "node scripts/reconcile-invitations.mjs",
@@ -17,6 +20,7 @@
     "reconcile:invitations:health": "node scripts/reconcile-invitations-health.mjs"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.2",
     "postgres": "3.4.9",
     "tsx": "4.20.6",
     "zod": "4.4.3"
@@ -26,6 +30,7 @@
     "@sveltejs/kit": "2.70.1",
     "@sveltejs/vite-plugin-svelte": "7.1.2",
     "@types/node": "24.10.1",
+    "drizzle-kit": "0.31.10",
     "svelte": "5.56.8",
     "svelte-check": "4.4.8",
     "typescript": "5.9.3",
