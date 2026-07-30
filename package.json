@@ -1,7 +1,8 @@
 {
   "name": "ensombl-auth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
+  "type": "module",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=24 <25",
@@ -9,32 +10,25 @@
   },
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "dev": "pnpm docker:up && pnpm db:migrate && turbo run dev --filter=\"./apps/*\"",
-    "build": "turbo run build",
-    "check": "turbo run check",
-    "test": "pnpm test:unit && pnpm test:database-schema && pnpm test:gateway && pnpm test:docker-context && pnpm test:bws-wrapper && pnpm test:secret-transport",
-    "test:unit": "turbo run test",
-    "test:database-schema": "pnpm --filter @ensombl/auth-control db:check",
-    "test:gateway": "./scripts/policy/test-gateway-routes.sh",
-    "test:docker-context": "bash ./scripts/policy/test-docker-context.sh",
-    "test:bws-wrapper": "bash ./scripts/policy/test-bws-wrapper.sh",
-    "test:secret-transport": "bash ./scripts/policy/test-secret-transport.sh",
-    "test:e2e:dev-identity": "node ./scripts/e2e/dev-identity.mjs",
-    "test:e2e:reset": "node ./scripts/e2e/reset-oauth.mjs",
-    "lint": "turbo run lint",
-    "db:migrate": "pnpm --filter @ensombl/auth-control migrate",
-    "db:generate": "pnpm --filter @ensombl/auth-control db:generate",
-    "db:studio": "pnpm --filter @ensombl/auth-control db:studio",
-    "identity:seed:dev": "pnpm --filter @ensombl/auth-control identity:seed:dev",
-    "docker:up": "docker compose up -d --wait && docker compose run --rm hydra-client",
+    "dev": "pnpm docker:up",
+    "build": "tsc --noEmit",
+    "check": "pnpm lint && pnpm build && pnpm test && pnpm validate:compose",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "reconcile": "tsx src/cli.ts",
+    "docker:up": "docker compose up -d --wait && docker compose build product-reconcile && docker compose run --rm product-reconcile",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
-    "validate:compose": "docker compose config --quiet && ./scripts/policy/validate-dokploy-compose.sh"
+    "docker:reset": "docker compose down --volumes",
+    "docker:logs": "docker compose logs -f zitadel-api zitadel-login",
+    "validate:compose": "docker compose config --quiet && BWS_ACCESS_TOKEN=compose-validation BWS_PROJECT_ID=00000000-0000-0000-0000-000000000000 docker compose -f deploy/dokploy/compose.yml config --quiet"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "@types/node": "24.10.1",
-    "turbo": "2.10.7",
-    "typescript": "5.9.3"
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.0",
+    "zod": "4.3.6"
   }
 }

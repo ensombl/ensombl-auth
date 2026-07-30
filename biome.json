@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
   "files": {
-    "includes": ["**", "!**/node_modules", "!**/.svelte-kit", "!**/build", "!**/migrations"]
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.local",
+      "!**/coverage",
+      "!**/.turbo",
+      "!pnpm-lock.yaml"
+    ]
   },
   "formatter": {
     "enabled": true,
@@ -10,8 +17,8 @@
   },
   "javascript": {
     "formatter": {
-      "quoteStyle": "single",
-      "semicolons": "asNeeded",
+      "quoteStyle": "double",
+      "semicolons": "always",
       "trailingCommas": "all"
     }
   },
@@ -31,21 +38,5 @@
         "useNodejsImportProtocol": "error"
       }
     }
-  },
-  "overrides": [
-    {
-      "includes": ["**/*.svelte"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "noUnusedImports": "off",
-            "noUnusedVariables": "off"
-          },
-          "style": {
-            "useImportType": "off"
-          }
-        }
-      }
-    }
-  ]
+  }
 }
