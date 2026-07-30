@@ -4,7 +4,7 @@
 
 Dokploy's existing Traefik terminates TLS. Hydra remains a single canonical
 issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` and
-`auth.freightcheck.com` are branded Kratos and control-UI edges over the same
+`auth.freightcheck.io` are branded Kratos and control-UI edges over the same
 global identity database.
 
 | Host and path | Destination |
