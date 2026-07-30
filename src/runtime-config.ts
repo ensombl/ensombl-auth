@@ -10,6 +10,11 @@ export interface ApplicationRuntime {
   clientId: string;
   clientSecret: string;
   baseUrl: string;
+  managementServiceAccount: {
+    userId: string;
+    clientId: string;
+    clientSecret: string;
+  };
 }
 
 export interface ProductRuntime {
@@ -36,7 +41,6 @@ export interface ProductRuntime {
 export interface RuntimeConfig {
   issuer: string;
   consoleUrl: string;
-  managementToken?: string;
   products: Record<string, ProductRuntime>;
 }
 

@@ -22,6 +22,16 @@ const applicationSchema = z.object({
   name: z.string().min(1).max(200),
   base_url: z.url(),
   development_mode: z.boolean().default(false),
+  management_service_account: z.object({
+    id: z.uuid(),
+    username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
+    display_name: z.string().min(1).max(200),
+    instance_roles: z
+      .array(z.enum(["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]))
+      .min(1)
+      .max(2)
+      .refine((roles) => new Set(roles).size === roles.length, "Duplicate instance role"),
+  }),
 });
 
 const serviceAccountSchema = z.object({
@@ -141,6 +151,8 @@ export const catalogSchema = z
       }
 
       const environments = new Set<string>();
+      const managementAccountIds = new Set<string>();
+      const managementAccountUsernames = new Set<string>();
       for (const [applicationIndex, application] of product.applications.entries()) {
         if (environments.has(application.environment)) {
           context.addIssue({
@@ -150,6 +162,26 @@ export const catalogSchema = z
           });
         }
         environments.add(application.environment);
+        for (const [values, value, field] of [
+          [managementAccountIds, application.management_service_account.id, "id"],
+          [managementAccountUsernames, application.management_service_account.username, "username"],
+        ] as const) {
+          if (values.has(value)) {
+            context.addIssue({
+              code: "custom",
+              message: `Duplicate management service-account ${field}: ${value}`,
+              path: [
+                "products",
+                productIndex,
+                "applications",
+                applicationIndex,
+                "management_service_account",
+                field,
+              ],
+            });
+          }
+          values.add(value);
+        }
       }
     }
   });
