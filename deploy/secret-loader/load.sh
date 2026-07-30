@@ -50,11 +50,9 @@ fi
 printf '%s' "$masterkey" >"$ZITADEL_SECRET_DIRECTORY/masterkey"
 jq -n \
   --arg databaseUrl "$database_url" \
-  --arg initialAdminPassword "$initial_admin_password" \
   --arg resendApiKey "$resend_api_key" \
   '{
     Database: {Postgres: {DSN: $databaseUrl}},
-    FirstInstance: {Org: {Human: {Password: $initialAdminPassword}}},
     DefaultInstance: {
       DomainPolicy: {SMTPSenderAddressMatchesInstanceDomain: false},
       SMTPConfiguration: {
@@ -71,16 +69,17 @@ jq -n \
     }
   }' >"$ZITADEL_SECRET_DIRECTORY/config.json"
 
-cat >"$ZITADEL_SECRET_DIRECTORY/steps.yaml" <<'EOF'
-FirstInstance:
-  Org:
-    Machine:
-      Pat:
-        ExpirationDate: 2099-01-01T00:00:00Z
-    LoginClient:
-      Pat:
-        ExpirationDate: 2099-01-01T00:00:00Z
-EOF
+jq -n \
+  --arg initialAdminPassword "$initial_admin_password" \
+  '{
+    FirstInstance: {
+      Org: {
+        Human: {Password: $initialAdminPassword},
+        Machine: {Pat: {ExpirationDate: "2099-01-01T00:00:00Z"}},
+        LoginClient: {Pat: {ExpirationDate: "2099-01-01T00:00:00Z"}}
+      }
+    }
+  }' >"$ZITADEL_SECRET_DIRECTORY/steps.yaml"
 
 unset BWS_ACCESS_TOKEN BWS_PROJECT_ID secrets_json masterkey database_url initial_admin_password resend_api_key
 printf '%s\n' 'ZITADEL runtime secrets loaded'
