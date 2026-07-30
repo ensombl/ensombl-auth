@@ -1,8 +1,7 @@
 node_modules/
-.svelte-kit/
 .turbo/
-build/
 coverage/
 .env
 .env.*
+.local/
 *.tsbuildinfo

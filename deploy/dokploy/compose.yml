@@ -1,435 +1,177 @@
 name: ensombl-auth
 
-x-control-build: &control-build
-  context: ../..
-  dockerfile: apps/control-plane/Dockerfile
-
-x-kratos-build: &kratos-build
-  context: ../..
-  dockerfile: deploy/ory/kratos/Dockerfile
-
-x-hydra-build: &hydra-build
-  context: ../..
-  dockerfile: deploy/ory/hydra/Dockerfile
-
-x-keto-build: &keto-build
-  context: ../..
-  dockerfile: deploy/ory/keto/Dockerfile
-
-x-bws-environment: &bws-environment
-  BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN:?Inject the ensombl-auth access token}
+x-bws: &bws
+  BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN:?Inject the ensombl-auth Bitwarden access token}
   BWS_PROJECT_ID: ${BWS_PROJECT_ID:?Set the non-secret ensombl-auth project UUID}
 
-x-control-environment: &control-environment
-  <<: *bws-environment
-  BWS_SECRET_MAP: >-
-    DATABASE_URL=AUTH_CONTROL_DATABASE_URL
-    ORY_HOOK_SECRET=ORY_HOOK_SECRET
-    MIGRATION_API_SECRET=MIGRATION_API_SECRET
-    INVITATION_RECONCILER_SECRET=INVITATION_RECONCILER_SECRET
-    AUTH_COURIER_SECRET=AUTH_COURIER_SECRET
-    RESEND_API_KEY=RESEND_API_KEY
-    FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET=FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET
-    FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET=FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET
-    FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET=FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET
-    FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET=FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET
-    FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET=FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET
-    FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET=FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET
-    FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET=FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET
-    FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET=FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET
-    FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET=FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET
-    FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET=FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET
-  NODE_ENV: production
-  PUBLIC_AUTH_URL: https://auth.ensombl.io
-  KRATOS_PUBLIC_INTERNAL_URL: http://kratos:4433
-  KRATOS_ADMIN_URL: http://kratos:4434
-  HYDRA_ADMIN_URL: http://hydra-admin:4445
-  KETO_READ_URL: http://keto:4466
-  KETO_WRITE_URL: http://keto:4467
-  PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
-
-x-kratos-environment: &kratos-environment
-  <<: *bws-environment
-  BWS_SECRET_MAP: >-
-    DSN=KRATOS_DATABASE_URL
-    SECRETS_COOKIE_0=KRATOS_COOKIE_SECRET
-    SECRETS_CIPHER_0=KRATOS_CIPHER_SECRET
-    SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=bearer:ORY_HOOK_SECRET
-    SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=bearer:ORY_HOOK_SECRET
-
-x-hydra-environment: &hydra-environment
-  <<: *bws-environment
-  BWS_SECRET_MAP: >-
-    DSN=HYDRA_DATABASE_URL
-    SECRETS_SYSTEM_0=HYDRA_SYSTEM_SECRET
-    OIDC_SUBJECT_IDENTIFIERS_PAIRWISE_SALT=HYDRA_PAIRWISE_SALT
-
 services:
-  control-migrate:
-    build: *control-build
-    command: ["./node_modules/.bin/tsx", "scripts/migrate.ts"]
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: AUTH_CONTROL_MIGRATION_URL=AUTH_CONTROL_DATABASE_URL
-    networks:
-      - dokploy-network
+  secret-loader:
+    build:
+      context: ../..
+      dockerfile: deploy/secret-loader/Dockerfile
     restart: "no"
-
-  kratos-migrate:
-    build: *kratos-build
-    command: ["migrate", "sql", "-e", "--yes"]
     environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: DSN=KRATOS_DATABASE_URL
+      <<: *bws
+    volumes:
+      - runtime-secrets:/run/ensombl-auth
     networks:
-      - dokploy-network
-    restart: "no"
-
-  kratos:
-    build: *kratos-build
-    command: ["serve", "--config", "/etc/config/kratos/kratos.yml"]
-    restart: unless-stopped
-    environment:
-      <<: *kratos-environment
-    depends_on:
-      kratos-migrate:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
-      - kratos-admin
-      - control-private
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-kratos.rule: Host(`auth.ensombl.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
-      traefik.http.routers.ensombl-auth-kratos.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-kratos.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-kratos.middlewares: ensombl-auth-product-default@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-kratos.service: ensombl-auth-kratos
-      traefik.http.middlewares.ensombl-auth-product-default.headers.customrequestheaders.X-Ensombl-Auth-Product: ensombl
-      traefik.http.services.ensombl-auth-kratos.loadbalancer.server.port: "4433"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  kratos-freightclaims:
-    build: *kratos-build
-    command:
-      [
-        "serve",
-        "--config",
-        "/etc/config/kratos/kratos.yml",
-        "--config",
-        "/etc/config/kratos/freightclaims.yml",
-      ]
-    restart: unless-stopped
-    environment:
-      <<: *kratos-environment
-    depends_on:
-      kratos-migrate:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
-      - control-private
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.rule: Host(`auth.freightclaims.com`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.middlewares: ensombl-auth-product-freightclaims@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.service: ensombl-auth-kratos-freightclaims
-      traefik.http.middlewares.ensombl-auth-product-freightclaims.headers.customrequestheaders.X-Ensombl-Auth-Product: freightclaims
-      traefik.http.services.ensombl-auth-kratos-freightclaims.loadbalancer.server.port: "4433"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  kratos-freightcheck:
-    build: *kratos-build
-    command:
-      [
-        "serve",
-        "--config",
-        "/etc/config/kratos/kratos.yml",
-        "--config",
-        "/etc/config/kratos/freightcheck.yml",
-      ]
-    restart: unless-stopped
-    environment:
-      <<: *kratos-environment
-    depends_on:
-      kratos-migrate:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
-      - control-private
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.rule: Host(`auth.freightcheck.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.middlewares: ensombl-auth-product-freightcheck@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.service: ensombl-auth-kratos-freightcheck
-      traefik.http.middlewares.ensombl-auth-product-freightcheck.headers.customrequestheaders.X-Ensombl-Auth-Product: freightcheck
-      traefik.http.services.ensombl-auth-kratos-freightcheck.loadbalancer.server.port: "4433"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  hydra-migrate:
-    build: *hydra-build
-    command: ["migrate", "sql", "-e", "--yes"]
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: DSN=HYDRA_DATABASE_URL
-    networks:
-      - dokploy-network
-    restart: "no"
-
-  hydra-public:
-    build: *hydra-build
-    command: ["serve", "public", "--config", "/etc/config/hydra/hydra.yml"]
-    restart: unless-stopped
-    environment:
-      <<: *hydra-environment
-    depends_on:
-      hydra-migrate:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-hydra.rule: Host(`auth.ensombl.io`) && (PathPrefix(`/oauth2/`) || Path(`/userinfo`))
-      traefik.http.routers.ensombl-auth-hydra.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-hydra.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-hydra.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-hydra.service: ensombl-auth-hydra
-      traefik.http.routers.ensombl-auth-discovery.rule: Host(`auth.ensombl.io`) && PathPrefix(`/.well-known/`)
-      traefik.http.routers.ensombl-auth-discovery.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-discovery.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-discovery.middlewares: ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-discovery.service: ensombl-auth-hydra
-      traefik.http.services.ensombl-auth-hydra.loadbalancer.server.port: "4444"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4444/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  hydra-admin:
-    build: *hydra-build
-    command: ["serve", "admin", "--config", "/etc/config/hydra/hydra.yml"]
-    restart: unless-stopped
-    environment:
-      <<: *hydra-environment
-    depends_on:
-      hydra-migrate:
-        condition: service_completed_successfully
-    networks:
-      - dokploy-network
-      - hydra-admin
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4445/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  product-reconcile:
-    build: *control-build
-    command: ["node", "scripts/reconcile-products.mjs"]
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: >-
-        FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET=FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET
-        FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET=FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET
-        FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET=FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET
-        FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET=FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET
-      HYDRA_ADMIN_URL: http://hydra-admin:4445
-      PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
-    depends_on:
-      hydra-admin:
-        condition: service_healthy
-    networks:
-      - hydra-admin
       - secret-egress
-    restart: "no"
 
-  keto-migrate:
-    build: *keto-build
-    command: ["migrate", "up", "-y", "--config", "/home/ory/keto.yml"]
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: DSN=KETO_DATABASE_URL
-    networks:
-      - dokploy-network
-    restart: "no"
-
-  keto:
-    build: *keto-build
-    command: ["serve", "--config", "/home/ory/keto.yml", "all"]
+  zitadel-api:
+    image: ghcr.io/zitadel/zitadel:v4.16.2
     restart: unless-stopped
+    user: "0"
+    command:
+      - start-from-init
+      - --config
+      - /run/ensombl-auth/config.json
+      - --masterkeyFile
+      - /run/ensombl-auth/masterkey
     environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: DSN=KETO_DATABASE_URL
-    depends_on:
-      keto-migrate:
-        condition: service_completed_successfully
+      ZITADEL_PORT: "8080"
+      ZITADEL_EXTERNALDOMAIN: auth.ensombl.io
+      ZITADEL_EXTERNALPORT: "443"
+      ZITADEL_EXTERNALSECURE: "true"
+      ZITADEL_TLS_ENABLED: "false"
+      ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_VERIFIERS: argon2
+      ZITADEL_FIRSTINSTANCE_INSTANCENAME: Ensombl
+      ZITADEL_FIRSTINSTANCE_ORG_NAME: Ensombl
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: patrick@ensombl.io
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: patrick@ensombl.io
+      ZITADEL_FIRSTINSTANCE_ORG_HUMAN_PASSWORDCHANGEREQUIRED: "false"
+      ZITADEL_FIRSTINSTANCE_PATPATH: /zitadel/bootstrap/admin.pat
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_USERNAME: bootstrap-admin
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_MACHINE_NAME: Bootstrap administrator
+      ZITADEL_FIRSTINSTANCE_ORG_MACHINE_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: ZITADEL Login
+      ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_PAT_EXPIRATIONDATE: "2099-01-01T00:00:00Z"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://auth.ensombl.io/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://auth.ensombl.io/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://auth.ensombl.io/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "true"
+    volumes:
+      - runtime-secrets:/run/ensombl-auth:ro
+      - bootstrap:/zitadel/bootstrap
     networks:
       - dokploy-network
-      - authorization
+      - auth-internal
+    depends_on:
+      secret-loader:
+        condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4466/health/ready"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-
-  control-plane:
-    build: *control-build
-    restart: unless-stopped
-    environment:
-      <<: *control-environment
-    depends_on:
-      control-migrate:
-        condition: service_completed_successfully
-      kratos:
-        condition: service_healthy
-      hydra-admin:
-        condition: service_healthy
-      product-reconcile:
-        condition: service_completed_successfully
-      keto:
-        condition: service_healthy
-    networks:
-      dokploy-network:
-      kratos-admin:
-      hydra-admin:
-      authorization:
-      control-private:
+      test: ["CMD", "/app/zitadel", "ready"]
+      interval: 10s
+      timeout: 30s
+      retries: 60
+      start_period: 30s
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/admin`) || PathPrefix(`/admin/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
-      traefik.http.routers.ensombl-auth-control.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-control.service: ensombl-auth-control
-      traefik.http.routers.ensombl-auth-product-api.rule: Host(`auth.ensombl.io`) && (Path(`/internal/authorization/check`) || Path(`/internal/invitations`) || Path(`/internal/tenants/memberships`) || Path(`/internal/migration/identities`) || Path(`/internal/oauth2/introspect`))
-      traefik.http.routers.ensombl-auth-product-api.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-product-api.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-product-api.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
-      traefik.http.routers.ensombl-auth-product-api.service: ensombl-auth-control
+      traefik.http.services.ensombl-auth-zitadel.loadbalancer.server.port: "8080"
+      traefik.http.services.ensombl-auth-zitadel.loadbalancer.server.scheme: h2c
       traefik.http.middlewares.ensombl-auth-security.headers.contenttypenosniff: "true"
-      traefik.http.middlewares.ensombl-auth-security.headers.framedeny: "true"
       traefik.http.middlewares.ensombl-auth-security.headers.referrerpolicy: no-referrer
       traefik.http.middlewares.ensombl-auth-security.headers.stsseconds: "31536000"
       traefik.http.middlewares.ensombl-auth-security.headers.stsincludesubdomains: "true"
-      traefik.http.middlewares.ensombl-auth-security.headers.customresponseheaders.Content-Security-Policy: frame-ancestors 'none'
-      traefik.http.middlewares.ensombl-auth-no-store.headers.customresponseheaders.Cache-Control: no-store
-      traefik.http.services.ensombl-auth-control.loadbalancer.server.port: "3000"
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
+      traefik.http.middlewares.ensombl-auth-admin.redirectregex.regex: ^https://auth\.ensombl\.io/admin/?$
+      traefik.http.middlewares.ensombl-auth-admin.redirectregex.replacement: https://auth.ensombl.io/ui/console
+      traefik.http.middlewares.ensombl-auth-alias.redirectregex.regex: ^https://auth\.(freightclaims\.com|freightcheck\.io)/(.*)
+      traefik.http.middlewares.ensombl-auth-alias.redirectregex.replacement: https://auth.ensombl.io/$${2}
+      traefik.http.middlewares.ensombl-auth-alias.redirectregex.permanent: "true"
+      traefik.http.routers.ensombl-auth-api.rule: Host(`auth.ensombl.io`) && !PathPrefix(`/ui/v2/login`)
+      traefik.http.routers.ensombl-auth-api.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-api.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-api.middlewares: ensombl-auth-admin@docker,ensombl-auth-security@docker
+      traefik.http.routers.ensombl-auth-api.service: ensombl-auth-zitadel
+      traefik.http.routers.ensombl-auth-api.priority: "100"
+      traefik.http.routers.ensombl-auth-alias.rule: Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)
+      traefik.http.routers.ensombl-auth-alias.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-alias.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-alias.middlewares: ensombl-auth-alias@docker
+      traefik.http.routers.ensombl-auth-alias.service: ensombl-auth-zitadel
+      traefik.http.routers.ensombl-auth-alias.priority: "300"
 
-  kratos-courier:
-    build: *kratos-build
-    command: ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"]
+  zitadel-login:
+    image: ghcr.io/zitadel/zitadel-login:v4.16.2
     restart: unless-stopped
+    user: "0"
     environment:
-      <<: *kratos-environment
-      BWS_SECRET_MAP: >-
-        DSN=KRATOS_DATABASE_URL
-        SECRETS_COOKIE_0=KRATOS_COOKIE_SECRET
-        SECRETS_CIPHER_0=KRATOS_CIPHER_SECRET
-        SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=bearer:ORY_HOOK_SECRET
-        SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE=bearer:ORY_HOOK_SECRET
-        COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE=bearer:AUTH_COURIER_SECRET
-    depends_on:
-      control-plane:
-        condition: service_healthy
+      ZITADEL_API_URL: http://zitadel-api:8080
+      NEXT_PUBLIC_BASE_PATH: /ui/v2/login
+      ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
+      CUSTOM_REQUEST_HEADERS: Host:auth.ensombl.io,X-Forwarded-Proto:https
+    volumes:
+      - bootstrap:/zitadel/bootstrap:ro
     networks:
       - dokploy-network
-      - control-private
-
-  invitation-reconciler:
-    build: *control-build
-    command: ["node", "scripts/reconcile-invitations-worker.mjs"]
-    restart: unless-stopped
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: INVITATION_RECONCILER_SECRET=INVITATION_RECONCILER_SECRET
-      CONTROL_PLANE_INTERNAL_URL: http://control-plane:3000
-      RECONCILE_LIMIT: "100"
-      RECONCILE_INTERVAL_MS: "30000"
-      RECONCILE_HEARTBEAT_PATH: /tmp/ensombl-invitation-reconciler-heartbeat
+      - auth-internal
     depends_on:
-      control-plane:
+      zitadel-api:
         condition: service_healthy
-    read_only: true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,mode=0700,uid=1000,gid=1000,size=1m
-    cap_drop:
-      - ALL
-    pids_limit: 64
-    mem_limit: 256m
-    memswap_limit: 256m
-    ulimits:
-      core:
-        soft: 0
-        hard: 0
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - control-private
-      - secret-egress
     healthcheck:
-      test: ["CMD", "node", "scripts/reconcile-invitations-health.mjs"]
-      interval: 30s
-      timeout: 5s
-      retries: 4
-      start_period: 30s
+      test:
+        [
+          "CMD",
+          "/bin/sh",
+          "-c",
+          "node /app/healthcheck.mjs http://localhost:3000/ui/v2/login/healthy",
+        ]
+      interval: 10s
+      timeout: 30s
+      retries: 40
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.services.ensombl-auth-login.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.ensombl-auth-root.replacepath.path: /ui/v2/login/
+      traefik.http.routers.ensombl-auth-root.rule: Host(`auth.ensombl.io`) && Path(`/`)
+      traefik.http.routers.ensombl-auth-root.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-root.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-root.middlewares: ensombl-auth-root@docker,ensombl-auth-security@docker
+      traefik.http.routers.ensombl-auth-root.service: ensombl-auth-login
+      traefik.http.routers.ensombl-auth-root.priority: "300"
+      traefik.http.routers.ensombl-auth-login.rule: Host(`auth.ensombl.io`) && PathPrefix(`/ui/v2/login`)
+      traefik.http.routers.ensombl-auth-login.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-login.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-login.middlewares: ensombl-auth-security@docker
+      traefik.http.routers.ensombl-auth-login.service: ensombl-auth-login
+      traefik.http.routers.ensombl-auth-login.priority: "200"
 
-  invitation-reconcile:
-    profiles: ["invitation-reconcile"]
-    build: *control-build
-    command: ["node", "scripts/reconcile-invitations.mjs"]
-    environment:
-      <<: *bws-environment
-      BWS_SECRET_MAP: INVITATION_RECONCILER_SECRET=INVITATION_RECONCILER_SECRET
-      CONTROL_PLANE_INTERNAL_URL: http://control-plane:3000
-      RECONCILE_LIMIT: "100"
-    depends_on:
-      control-plane:
-        condition: service_healthy
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    networks:
-      - control-private
-      - secret-egress
+  product-reconcile:
+    build:
+      context: ../..
+      dockerfile: deploy/operator/Dockerfile
     restart: "no"
+    environment:
+      <<: *bws
+      ZITADEL_URL: http://zitadel-api:8080
+      ZITADEL_REQUEST_HOST: auth.ensombl.io
+      ZITADEL_FORWARDED_PROTO: https
+      ZITADEL_ADMIN_PAT_FILE: /zitadel/bootstrap/admin.pat
+      PRODUCT_CATALOG_PATH: /app/deploy/products/products.json
+      ZITADEL_RUNTIME_CONFIG_PATH: /runtime/runtime.json
+      ZITADEL_ROTATE_MISSING_CLIENT_SECRETS: "false"
+    volumes:
+      - bootstrap:/zitadel/bootstrap:ro
+      - product-runtime:/runtime
+    networks:
+      - auth-internal
+      - secret-egress
+    depends_on:
+      zitadel-api:
+        condition: service_healthy
 
 networks:
   dokploy-network:
     external: true
-  kratos-admin:
-    internal: true
-  hydra-admin:
-    internal: true
-  authorization:
-    internal: true
-  control-private:
+  auth-internal:
     internal: true
   secret-egress:
+
+volumes:
+  runtime-secrets:
+  bootstrap:
+  product-runtime:

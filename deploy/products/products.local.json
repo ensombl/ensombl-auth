@@ -1,50 +1,75 @@
 {
-  "email_from_address": "noreply@notifications.ensombl.io",
-  "default_auth_brand": {
-    "id": "ensombl",
-    "display_name": "Ensombl",
-    "auth_origin": "http://localhost:24455",
-    "email_from_name": "Ensombl"
+  "issuer": "http://localhost:24455",
+  "console_path": "/ui/console",
+  "email": {
+    "from_address": "noreply@notifications.ensombl.io",
+    "default_from_name": "Ensombl"
   },
+  "default_roles": [
+    { "key": "member", "display_name": "Member" },
+    { "key": "admin", "display_name": "Administrator" },
+    { "key": "owner", "display_name": "Owner" }
+  ],
   "products": [
     {
       "id": "freightclaims",
-      "auth_brand": {
-        "display_name": "FreightClaims",
-        "auth_origin": "http://localhost:24455",
-        "email_from_name": "FreightClaims"
+      "display_name": "FreightClaims",
+      "auth_origin": "http://localhost:24455",
+      "email_from_name": "FreightClaims",
+      "owner_organization": {
+        "name": "FreightClaims",
+        "domain": "freightclaims.localhost"
       },
-      "return_origins": ["http://localhost:4200"],
-      "tenant_roles": {
+      "branding": {
+        "primary_color": "#155EEF",
+        "warn_color": "#D92D20",
+        "background_color": "#F8FAFC",
+        "font_color": "#101828",
+        "primary_color_dark": "#84ADFF",
+        "warn_color_dark": "#FDA29B",
+        "background_color_dark": "#101828",
+        "font_color_dark": "#F9FAFB"
+      },
+      "roles": {
         "mode": "replace",
-        "roles": [
-          {
-            "id": "member",
-            "permissions": ["access"]
-          },
-          {
-            "id": "adjuster",
-            "permissions": ["access"]
-          },
-          {
-            "id": "tenant_admin",
-            "permissions": ["access", "administer"]
-          }
+        "values": [
+          { "key": "member", "display_name": "Member" },
+          { "key": "adjuster", "display_name": "Adjuster" },
+          { "key": "tenant_admin", "display_name": "Tenant administrator" },
+          { "key": "platform_support", "display_name": "Platform support" },
+          { "key": "platform_admin", "display_name": "Platform administrator" }
         ]
       },
-      "clients": [
+      "local_fixture": {
+        "tenant": {
+          "id": "01900000-0000-7000-8000-000000000001",
+          "name": "FreightClaims Local Development",
+          "domain": "local.freightclaims.test",
+          "branding": {
+            "primary_color": "#0E7490",
+            "warn_color": "#D92D20",
+            "background_color": "#F0FDFA",
+            "font_color": "#134E4A",
+            "primary_color_dark": "#5EEAD4",
+            "warn_color_dark": "#FDA29B",
+            "background_color_dark": "#134E4A",
+            "font_color_dark": "#F0FDFA"
+          }
+        },
+        "user": {
+          "id": "01900000-0000-7000-8000-000000000002",
+          "email": "developer@freightclaims.test",
+          "display_name": "FreightClaims Developer",
+          "password": "FreightClaims-Dev-2026!",
+          "role": "tenant_admin"
+        }
+      },
+      "applications": [
         {
-          "id": "freightclaims-local-web",
-          "display_name": "FreightClaims local web BFF",
+          "environment": "local",
+          "name": "FreightClaims local web",
           "base_url": "http://localhost:4200",
-          "audience": "freightclaims",
-          "admission_scope": "freightclaims:local",
-          "authorization_secret_environment": "FREIGHTCLAIMS_LOCAL_AUTHORIZATION_DECISION_SECRET",
-          "identity_management_secret_environment": "FREIGHTCLAIMS_LOCAL_IDENTITY_MANAGEMENT_SECRET",
-          "identity_migration_secret_environment": "FREIGHTCLAIMS_LOCAL_IDENTITY_MIGRATION_SECRET",
-          "identity_migration_source": "freightclaims-fc-staging",
-          "secret_environment": "FREIGHTCLAIMS_LOCAL_HYDRA_CLIENT_SECRET",
-          "trusted": true
+          "development_mode": true
         }
       ]
     }
