@@ -79,4 +79,39 @@ describe("product catalog", () => {
     if (!product || !application) throw new Error("Expected one product application");
     expect(secretPrefix(product, application)).toBe("ZITADEL_FREIGHTCHECK_PRODUCTION");
   });
+
+  it("requires local service accounts to use declared product roles", () => {
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            local_fixture: {
+              tenant: {
+                id: "tenant",
+                name: "Local tenant",
+                domain: "local.example.com",
+              },
+              user: {
+                id: "user",
+                email: "developer@example.com",
+                display_name: "Local developer",
+                password: "Local-password-2026!",
+                role: "owner",
+              },
+              service_accounts: [
+                {
+                  id: "machine",
+                  username: "local-machine",
+                  display_name: "Local machine",
+                  role: "undeclared_role",
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    ).toThrow(/Unknown local service-account role/u);
+  });
 });

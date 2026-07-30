@@ -16,6 +16,15 @@ export interface ProductRuntime {
   projectId: string;
   ownerOrganizationId: string;
   applications: Record<string, ApplicationRuntime>;
+  serviceAccounts?: Record<
+    string,
+    {
+      userId: string;
+      clientId: string;
+      clientSecret: string;
+      role: string;
+    }
+  >;
   localFixture?: {
     tenantOrganizationId: string;
     userId: string;

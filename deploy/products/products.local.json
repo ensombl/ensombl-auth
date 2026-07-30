@@ -37,7 +37,9 @@
           { "key": "adjuster", "display_name": "Adjuster" },
           { "key": "tenant_admin", "display_name": "Tenant administrator" },
           { "key": "platform_support", "display_name": "Platform support" },
-          { "key": "platform_admin", "display_name": "Platform administrator" }
+          { "key": "platform_admin", "display_name": "Platform administrator" },
+          { "key": "partner_api", "display_name": "Partner API" },
+          { "key": "tai_api", "display_name": "TAI API" }
         ]
       },
       "local_fixture": {
@@ -62,7 +64,21 @@
           "display_name": "FreightClaims Developer",
           "password": "FreightClaims-Dev-2026!",
           "role": "tenant_admin"
-        }
+        },
+        "service_accounts": [
+          {
+            "id": "01900000-0000-7000-8000-000000002001",
+            "username": "freightclaims-local-partner",
+            "display_name": "FreightClaims local partner",
+            "role": "partner_api"
+          },
+          {
+            "id": "01900000-0000-7000-8000-000000002002",
+            "username": "freightclaims-local-tai",
+            "display_name": "FreightClaims local TAI",
+            "role": "tai_api"
+          }
+        ]
       },
       "applications": [
         {

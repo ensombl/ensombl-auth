@@ -291,6 +291,36 @@ export class ZitadelClient {
     return response.id;
   }
 
+  async createServiceAccount(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly username: string;
+    readonly displayName: string;
+  }): Promise<string> {
+    const response = await this.#request<{ id: string }>("/v2/users/new", {
+      method: "POST",
+      body: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        username: input.username,
+        machine: {
+          name: input.displayName,
+          description: `${input.displayName} service account`,
+          accessTokenType: "ACCESS_TOKEN_TYPE_JWT",
+        },
+      },
+    });
+    return response.id;
+  }
+
+  async generateServiceAccountSecret(userId: string): Promise<string> {
+    const response = await this.#request<{ clientSecret: string }>(
+      `/v2/users/${encodeURIComponent(userId)}/secret`,
+      { method: "POST" },
+    );
+    return response.clientSecret;
+  }
+
   async listAuthorizations(input: {
     readonly userId: string;
     readonly projectId: string;

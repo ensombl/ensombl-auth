@@ -187,6 +187,42 @@ export async function reconcileCatalog(
         organizationId: tenant.id,
         roleKeys: [fixture.user.role],
       });
+      const serviceAccounts: NonNullable<RuntimeConfig["products"][string]["serviceAccounts"]> = {};
+      if (fixture.service_accounts.length > 0) productRuntime.serviceAccounts = serviceAccounts;
+      for (const account of fixture.service_accounts) {
+        const existingAccount = await client.getUser(account.id);
+        if (!existingAccount) {
+          await client.createServiceAccount({
+            organizationId: ownerOrganization.id,
+            userId: account.id,
+            username: account.username,
+            displayName: account.display_name,
+          });
+        }
+        const previousSecret = existingProduct?.serviceAccounts?.[account.username]?.clientSecret;
+        let clientSecret = previousSecret;
+        if (!clientSecret && options.rotateMissingSecrets) {
+          clientSecret = await client.generateServiceAccountSecret(account.id);
+        }
+        if (!clientSecret) {
+          throw new Error(
+            `Client secret is missing for local service account ${product.id}/${account.username}. ` +
+              `Set ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
+          );
+        }
+        await client.ensureAuthorization({
+          userId: account.id,
+          projectId,
+          organizationId: tenant.id,
+          roleKeys: [account.role],
+        });
+        serviceAccounts[account.username] = {
+          userId: account.id,
+          clientId: account.username,
+          clientSecret,
+          role: account.role,
+        };
+      }
       productRuntime.localFixture = {
         tenantOrganizationId: tenant.id,
         userId: fixture.user.id,
