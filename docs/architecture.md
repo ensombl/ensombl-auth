@@ -31,7 +31,7 @@ roles so the rewrite does not need a second role translation.
 Products use Authorization Code with PKCE through a confidential BFF client. The canonical issuer
 is `https://auth.ensombl.io`. Access and ID tokens contain ZITADEL project-role claims whose values
 map each role to the organization IDs in which it applies. Authorization is evaluated from those
-signed claims and the product database projection; there is no separate Keto decision service.
+signed claims and the product database projection; there is no separate authorization service.
 
 Machine clients use ZITADEL API applications and standard token introspection. Product management
 uses a least-privilege ZITADEL service account. The initial IAM-owner PAT exists only to reconcile
@@ -66,8 +66,8 @@ generic account recovery has no product context and intentionally uses the Ensom
 ## Runtime and secrets
 
 The hosted stack contains only ZITADEL, Login V2, a one-shot Bitwarden secret loader, and a one-shot
-catalog reconciler. PostgreSQL is a native Dokploy database service. The old Kratos, Hydra, Keto,
-and auth-control databases are not used by the new stack and are retained temporarily for rollback.
+catalog reconciler. PostgreSQL is a native Dokploy database service. No retired auth database or
+second runtime path is part of this stack.
 
 Dokploy receives only `BWS_ACCESS_TOKEN` and the non-secret `BWS_PROJECT_ID`. The loader writes the
 ZITADEL master key and JSON runtime config to a private volume. ZITADEL itself has no Bitwarden

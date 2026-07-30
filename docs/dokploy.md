@@ -32,9 +32,8 @@ Dokploy Traefik terminates TLS. ZITADEL and Login V2 receive h2c/HTTP only on th
 - `auth.freightclaims.com` and `auth.freightcheck.io` are public product aliases that redirect to
   the canonical issuer. Product styling is selected by the OIDC application, not the alias.
 
-## Rollback
+## Recovery
 
-Do not delete the former four native Ory databases or their Bitwarden secrets during the initial
-cutover. Rolling back means redeploying the last Ory Git revision and restoring its previous
-Compose environment. Remove the old databases only after the FreightClaims staging rehearsal and
-production cutover have both passed their agreed retention window.
+This repository has one current ZITADEL contract. It does not carry retired auth database
+definitions or a second runtime mode. Recovery uses the native PostgreSQL backup and restore
+procedure plus the reviewed Git revision.
