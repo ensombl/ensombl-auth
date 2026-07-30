@@ -17,7 +17,6 @@
     "test:gateway": "./scripts/policy/test-gateway-routes.sh",
     "test:docker-context": "bash ./scripts/policy/test-docker-context.sh",
     "test:secret-transport": "bash ./scripts/policy/test-secret-transport.sh",
-    "test:e2e:identity-import": "node ./scripts/e2e/identity-import.mjs",
     "test:e2e:dev-identity": "node ./scripts/e2e/dev-identity.mjs",
     "test:e2e:reset": "node ./scripts/e2e/reset-oauth.mjs",
     "lint": "turbo run lint",

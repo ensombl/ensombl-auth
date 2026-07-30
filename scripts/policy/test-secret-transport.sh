@@ -47,14 +47,4 @@ if ! rg -q \
   exit 1
 fi
 
-if rg -n -- '--arg (password|password_hash|secret)' deploy/identity-import; then
-  echo "Identity material must not be copied into jq command arguments" >&2
-  exit 1
-fi
-
-if rg -n -- 'credentials_identifier=\$' deploy/identity-import; then
-  echo "Identity email must not be copied into curl command arguments" >&2
-  exit 1
-fi
-
 echo "Secret transport and Bitwarden manifest policy passed"

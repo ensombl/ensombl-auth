@@ -235,49 +235,6 @@ services:
       timeout: 3s
       retries: 30
 
-  identity-import:
-    profiles: ["identity-import"]
-    build:
-      context: .
-      dockerfile: deploy/identity-import/Dockerfile
-    environment:
-      PGHOST: auth-control-postgres
-      PGPORT: "5432"
-      PGDATABASE: auth_control
-      PGUSER: auth_control
-      PGPASSWORD: auth_control_dev
-      KRATOS_ADMIN_URL: http://kratos:4434
-      KETO_WRITE_URL: http://keto:4467
-      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-staging
-      IDENTITY_IMPORT_ALLOWED_PRODUCTS: freightclaims
-    stdin_open: true
-    read_only: true
-    tmpfs:
-      - /work:rw,noexec,nosuid,nodev,mode=0700,uid=70,gid=70,size=4m
-    cap_drop:
-      - ALL
-    pids_limit: 64
-    mem_limit: 256m
-    memswap_limit: 256m
-    ulimits:
-      core:
-        soft: 0
-        hard: 0
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      auth-control-postgres:
-        condition: service_healthy
-      kratos:
-        condition: service_healthy
-      keto:
-        condition: service_healthy
-    networks:
-      - db-control
-      - kratos-admin
-      - authorization
-    restart: "no"
-
   gateway:
     image: caddy:2.10-alpine
     depends_on:
