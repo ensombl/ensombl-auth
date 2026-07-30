@@ -14,11 +14,27 @@ if ! printf '%s\n' "$BWS_PROJECT_ID" |
   exit 1
 fi
 
-secrets_json="$(
-  bws secret list "$BWS_PROJECT_ID" \
-    --output json \
-    --color no
-)"
+attempt=1
+delay=1
+while :; do
+  if secrets_json="$(
+    bws secret list "$BWS_PROJECT_ID" \
+      --output json \
+      --color no
+  )"; then
+    break
+  fi
+
+  if [ "$attempt" -ge 6 ]; then
+    printf 'Unable to load Bitwarden secrets after %s attempts\n' "$attempt" >&2
+    exit 1
+  fi
+
+  printf 'Unable to load Bitwarden secrets; retrying in %ss\n' "$delay" >&2
+  sleep "$delay"
+  attempt=$((attempt + 1))
+  delay=$((delay * 2))
+done
 
 for mapping in $BWS_SECRET_MAP; do
   target="${mapping%%=*}"

@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 fixture_path="$repo_root/scripts/policy/fixtures"
 wrapper="$repo_root/deploy/bws/with-secrets.sh"
 project_id='00000000-0000-0000-0000-000000000001'
+retry_fixture="$(mktemp -d)"
+trap 'rm -rf "$retry_fixture"' EXIT
 
 PATH="$fixture_path:$PATH" \
   BWS_ACCESS_TOKEN=fixture-access-token \
@@ -30,6 +32,20 @@ if PATH="$fixture_path:$PATH" \
   BWS_SECRET_MAP='EXPORTED_SECRET=RAW_SECRET' \
   sh "$wrapper" true 2>/dev/null; then
   echo "Duplicate Bitwarden keys must fail closed" >&2
+  exit 1
+fi
+
+PATH="$fixture_path:$PATH" \
+  BWS_FIXTURE_FAILURES=2 \
+  BWS_FIXTURE_COUNTER="$retry_fixture/attempts" \
+  BWS_ACCESS_TOKEN=fixture-access-token \
+  BWS_PROJECT_ID="$project_id" \
+  BWS_SECRET_MAP='EXPORTED_SECRET=RAW_SECRET' \
+  sh "$wrapper" sh -c 'test "$EXPORTED_SECRET" = "value with spaces and \$dollar"' \
+  2>/dev/null
+
+if [ "$(cat "$retry_fixture/attempts")" != '3' ]; then
+  echo "BWS runtime wrapper did not retry transient retrieval failures" >&2
   exit 1
 fi
 
