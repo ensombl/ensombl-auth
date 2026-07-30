@@ -30,6 +30,22 @@ mapped_secrets="$(
     | unique[]
   ' <<<"$rendered_compose"
 )"
+egressless_bws_services="$(
+  jq -r '
+    . as $compose
+    | .services
+    | to_entries[]
+    | select(.value.environment.BWS_SECRET_MAP? != null)
+    | . as $service
+    | [
+        $service.value.networks
+        | keys[]
+        | select(($compose.networks[.].internal // false) == false)
+      ]
+    | select(length == 0)
+    | $service.key
+  ' <<<"$rendered_compose"
+)"
 
 if ! diff -u \
   <(printf '%s\n' "$manifest_secrets") \
@@ -42,6 +58,12 @@ if ! diff -u \
   <(printf '%s\n' "$bootstrap_environment") \
   <(printf '%s\n' "$compose_interpolation"); then
   echo "Dokploy must receive only the BWS token and non-secret project ID" >&2
+  exit 1
+fi
+
+if [ -n "$egressless_bws_services" ]; then
+  printf 'BWS consumers require outbound HTTPS but have only internal networks:\n%s\n' \
+    "$egressless_bws_services" >&2
   exit 1
 fi
 
