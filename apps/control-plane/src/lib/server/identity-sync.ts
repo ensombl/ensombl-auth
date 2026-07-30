@@ -1,5 +1,11 @@
 import { createHash } from 'node:crypto'
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm'
 import { config } from './config'
+import {
+  identitySourceAliases,
+  identitySourceMemberships,
+  identitySyncBatches,
+} from './database-schema'
 import { db, setResetGate } from './db'
 import { fetchJson } from './http'
 import { grantProductAdmission, revokeProductAdmission, setTenantMembership } from './keto'
@@ -47,10 +53,10 @@ export type IdentitySyncResult = {
 
 type SourceAlias = {
   source: string
-  source_user_id: string
-  identity_id: string
-  email_sha256: string
-  admission_scope: string
+  sourceUserId: string
+  identityId: string
+  emailSha256: string
+  admissionScope: string
   state: 'active' | 'revoked'
 }
 
@@ -153,17 +159,23 @@ async function currentAlias(
   source: string,
   sourceUserId: string,
 ): Promise<SourceAlias | undefined> {
-  const rows = await db()<SourceAlias[]>`
-    select source,
-           source_user_id,
-           identity_id::text,
-           email_sha256,
-           admission_scope,
-           state
-    from auth_control.identity_source_aliases
-    where source = ${source}
-      and source_user_id = ${sourceUserId}
-  `
+  const rows = await db()
+    .select({
+      source: identitySourceAliases.source,
+      sourceUserId: identitySourceAliases.sourceUserId,
+      identityId: identitySourceAliases.identityId,
+      emailSha256: identitySourceAliases.emailSha256,
+      admissionScope: identitySourceAliases.admissionScope,
+      state: identitySourceAliases.state,
+    })
+    .from(identitySourceAliases)
+    .where(
+      and(
+        eq(identitySourceAliases.source, source),
+        eq(identitySourceAliases.sourceUserId, sourceUserId),
+      ),
+    )
+    .limit(1)
   return rows[0]
 }
 
@@ -173,20 +185,25 @@ async function compatibleAlias(input: {
   emailSha256: string
 }): Promise<SourceAlias | undefined> {
   if (input.sources.length === 0) return undefined
-  const rows = await db()<SourceAlias[]>`
-    select source,
-           source_user_id,
-           identity_id::text,
-           email_sha256,
-           admission_scope,
-           state
-    from auth_control.identity_source_aliases
-    where source in ${db()(input.sources)}
-      and source_user_id = ${input.sourceUserId}
-      and email_sha256 = ${input.emailSha256}
-      and state = 'active'
-  `
-  if (new Set(rows.map((row) => row.identity_id)).size > 1) {
+  const rows = await db()
+    .select({
+      source: identitySourceAliases.source,
+      sourceUserId: identitySourceAliases.sourceUserId,
+      identityId: identitySourceAliases.identityId,
+      emailSha256: identitySourceAliases.emailSha256,
+      admissionScope: identitySourceAliases.admissionScope,
+      state: identitySourceAliases.state,
+    })
+    .from(identitySourceAliases)
+    .where(
+      and(
+        inArray(identitySourceAliases.source, [...input.sources]),
+        eq(identitySourceAliases.sourceUserId, input.sourceUserId),
+        eq(identitySourceAliases.emailSha256, input.emailSha256),
+        eq(identitySourceAliases.state, 'active'),
+      ),
+    )
+  if (new Set(rows.map((row) => row.identityId)).size > 1) {
     throw new IdentitySyncError('counterpart_identity_collision', 409)
   }
   return rows[0]
@@ -201,52 +218,54 @@ async function persistAlias(input: {
   state: 'active' | 'revoked'
   snapshot: string
 }): Promise<SourceAlias> {
-  const rows = await db()<SourceAlias[]>`
-    insert into auth_control.identity_source_aliases (
-      source,
-      source_user_id,
-      identity_id,
-      email_sha256,
-      admission_scope,
-      state,
-      first_snapshot,
-      last_snapshot
-    )
-    values (
-      ${input.source},
-      ${input.sourceUserId},
-      ${input.identityId}::uuid,
-      ${input.emailSha256},
-      ${input.admissionScope},
-      ${input.state},
-      ${input.snapshot},
-      ${input.snapshot}
-    )
-    on conflict (source, source_user_id) do update
-    set state = excluded.state,
-        last_snapshot = excluded.last_snapshot,
-        updated_at = now()
-    where auth_control.identity_source_aliases.identity_id = excluded.identity_id
-      and auth_control.identity_source_aliases.email_sha256 = excluded.email_sha256
-      and auth_control.identity_source_aliases.admission_scope = excluded.admission_scope
-    returning source,
-              source_user_id,
-              identity_id::text,
-              email_sha256,
-              admission_scope,
-              state
-  `
+  const rows = await db()
+    .insert(identitySourceAliases)
+    .values({
+      source: input.source,
+      sourceUserId: input.sourceUserId,
+      identityId: input.identityId,
+      emailSha256: input.emailSha256,
+      admissionScope: input.admissionScope,
+      state: input.state,
+      firstSnapshot: input.snapshot,
+      lastSnapshot: input.snapshot,
+    })
+    .onConflictDoUpdate({
+      target: [identitySourceAliases.source, identitySourceAliases.sourceUserId],
+      set: {
+        state: input.state,
+        lastSnapshot: input.snapshot,
+        updatedAt: sql`now()`,
+      },
+      setWhere: sql`${identitySourceAliases.identityId} = ${input.identityId}
+        and ${identitySourceAliases.emailSha256} = ${input.emailSha256}
+        and ${identitySourceAliases.admissionScope} = ${input.admissionScope}`,
+    })
+    .returning({
+      source: identitySourceAliases.source,
+      sourceUserId: identitySourceAliases.sourceUserId,
+      identityId: identitySourceAliases.identityId,
+      emailSha256: identitySourceAliases.emailSha256,
+      admissionScope: identitySourceAliases.admissionScope,
+      state: identitySourceAliases.state,
+    })
   if (!rows[0]) throw new IdentitySyncError('source_identity_collision', 409)
   return rows[0]
 }
 
 async function existingMemberships(source: string, sourceUserId: string) {
-  return db()<Array<{ tenant_id: string; role: string }>>`
-    select tenant_id, role
-    from auth_control.identity_source_memberships
-    where source = ${source}
-      and source_user_id = ${sourceUserId}
-  `
+  return db()
+    .select({
+      tenantId: identitySourceMemberships.tenantId,
+      role: identitySourceMemberships.role,
+    })
+    .from(identitySourceMemberships)
+    .where(
+      and(
+        eq(identitySourceMemberships.source, source),
+        eq(identitySourceMemberships.sourceUserId, sourceUserId),
+      ),
+    )
 }
 
 async function replaceMembershipLedger(input: {
@@ -257,33 +276,27 @@ async function replaceMembershipLedger(input: {
   snapshot: string
   memberships: IdentitySyncMembership[]
 }): Promise<void> {
-  await db().begin(async (transaction) => {
-    await transaction`
-      delete from auth_control.identity_source_memberships
-      where source = ${input.source}
-        and source_user_id = ${input.sourceUserId}
-    `
-    for (const membership of input.memberships) {
-      await transaction`
-        insert into auth_control.identity_source_memberships (
-          source,
-          source_user_id,
-          admission_scope,
-          tenant_id,
-          identity_id,
-          role,
-          last_snapshot
-        )
-        values (
-          ${input.source},
-          ${input.sourceUserId},
-          ${input.admissionScope},
-          ${membership.tenantId},
-          ${input.identityId}::uuid,
-          ${membership.role},
-          ${input.snapshot}
-        )
-      `
+  await db().transaction(async (transaction) => {
+    await transaction
+      .delete(identitySourceMemberships)
+      .where(
+        and(
+          eq(identitySourceMemberships.source, input.source),
+          eq(identitySourceMemberships.sourceUserId, input.sourceUserId),
+        ),
+      )
+    if (input.memberships.length > 0) {
+      await transaction.insert(identitySourceMemberships).values(
+        input.memberships.map((membership) => ({
+          source: input.source,
+          sourceUserId: input.sourceUserId,
+          admissionScope: input.admissionScope,
+          tenantId: membership.tenantId,
+          identityId: input.identityId,
+          role: membership.role,
+          lastSnapshot: input.snapshot,
+        })),
+      )
     }
   })
 }
@@ -293,19 +306,19 @@ async function synchronizeMemberships(input: {
   snapshot: string
   desired: IdentitySyncMembership[]
 }): Promise<void> {
-  const previous = await existingMemberships(input.alias.source, input.alias.source_user_id)
+  const previous = await existingMemberships(input.alias.source, input.alias.sourceUserId)
   const desiredByTenant = new Map(
     input.desired.map((membership) => [membership.tenantId, membership.role]),
   )
-  const rolePolicy = config().tenantRolePolicyByAdmissionScope.get(input.alias.admission_scope)
+  const rolePolicy = config().tenantRolePolicyByAdmissionScope.get(input.alias.admissionScope)
   if (!rolePolicy) throw new IdentitySyncError('tenant_role_policy_missing', 500)
 
   for (const membership of previous) {
-    if (desiredByTenant.get(membership.tenant_id) === membership.role) continue
+    if (desiredByTenant.get(membership.tenantId) === membership.role) continue
     await setTenantMembership({
-      identityId: input.alias.identity_id,
-      tenantId: membership.tenant_id,
-      product: input.alias.admission_scope,
+      identityId: input.alias.identityId,
+      tenantId: membership.tenantId,
+      product: input.alias.admissionScope,
       role: membership.role,
       rolePolicy,
       state: 'revoked',
@@ -313,9 +326,9 @@ async function synchronizeMemberships(input: {
   }
   for (const membership of input.desired) {
     await setTenantMembership({
-      identityId: input.alias.identity_id,
+      identityId: input.alias.identityId,
       tenantId: membership.tenantId,
-      product: input.alias.admission_scope,
+      product: input.alias.admissionScope,
       role: membership.role,
       rolePolicy,
       state: 'active',
@@ -323,26 +336,31 @@ async function synchronizeMemberships(input: {
   }
   await replaceMembershipLedger({
     source: input.alias.source,
-    sourceUserId: input.alias.source_user_id,
-    identityId: input.alias.identity_id,
-    admissionScope: input.alias.admission_scope,
+    sourceUserId: input.alias.sourceUserId,
+    identityId: input.alias.identityId,
+    admissionScope: input.alias.admissionScope,
     snapshot: input.snapshot,
     memberships: input.desired,
   })
 }
 
 async function hasAnotherActiveAdmission(alias: SourceAlias): Promise<boolean> {
-  const rows = await db()<Array<{ found: boolean }>>`
-    select exists (
-      select 1
-      from auth_control.identity_source_aliases
-      where identity_id = ${alias.identity_id}::uuid
-        and admission_scope = ${alias.admission_scope}
-        and state = 'active'
-        and (source, source_user_id) <> (${alias.source}, ${alias.source_user_id})
-    ) as found
-  `
-  return rows[0]?.found === true
+  const rows = await db()
+    .select({ source: identitySourceAliases.source })
+    .from(identitySourceAliases)
+    .where(
+      and(
+        eq(identitySourceAliases.identityId, alias.identityId),
+        eq(identitySourceAliases.admissionScope, alias.admissionScope),
+        eq(identitySourceAliases.state, 'active'),
+        or(
+          ne(identitySourceAliases.source, alias.source),
+          ne(identitySourceAliases.sourceUserId, alias.sourceUserId),
+        ),
+      ),
+    )
+    .limit(1)
+  return rows.length > 0
 }
 
 async function synchronizeEntry(
@@ -356,7 +374,7 @@ async function synchronizeEntry(
   let linked = false
 
   if (alias) {
-    if (alias.email_sha256 !== digest || alias.admission_scope !== request.admissionScope) {
+    if (alias.emailSha256 !== digest || alias.admissionScope !== request.admissionScope) {
       throw new IdentitySyncError('source_identity_collision', 409)
     }
   } else {
@@ -367,7 +385,7 @@ async function synchronizeEntry(
     })
     let identityId: string
     if (counterpart) {
-      identityId = counterpart.identity_id
+      identityId = counterpart.identityId
       linked = true
     } else {
       if (entry.state === 'revoked') {
@@ -400,7 +418,7 @@ async function synchronizeEntry(
     })
   }
 
-  const identity = await getIdentity(alias.identity_id)
+  const identity = await getIdentity(alias.identityId)
   if (identity.traits?.email?.trim().toLowerCase() !== normalizedEmail) {
     throw new IdentitySyncError('identity_email_mismatch', 409)
   }
@@ -409,14 +427,14 @@ async function synchronizeEntry(
     if (identity.external_id !== externalId(request.source, entry.sourceUserId)) {
       throw new IdentitySyncError('inactive_identity_not_owned_by_source', 409)
     }
-    await setResetGate({ identityId: alias.identity_id, source: request.source })
-    await activateIdentity(alias.identity_id)
+    await setResetGate({ identityId: alias.identityId, source: request.source })
+    await activateIdentity(alias.identityId)
   }
 
   alias = await persistAlias({
     source: request.source,
     sourceUserId: entry.sourceUserId,
-    identityId: alias.identity_id,
+    identityId: alias.identityId,
     emailSha256: digest,
     admissionScope: request.admissionScope,
     state: entry.state,
@@ -424,7 +442,7 @@ async function synchronizeEntry(
   })
 
   if (entry.state === 'active') {
-    await grantProductAdmission(alias.identity_id, request.admissionScope)
+    await grantProductAdmission(alias.identityId, request.admissionScope)
     await synchronizeMemberships({
       alias,
       snapshot: request.sourceSnapshot,
@@ -433,55 +451,56 @@ async function synchronizeEntry(
   } else {
     await synchronizeMemberships({ alias, snapshot: request.sourceSnapshot, desired: [] })
     if (!(await hasAnotherActiveAdmission(alias))) {
-      await revokeProductAdmission(alias.identity_id, request.admissionScope)
+      await revokeProductAdmission(alias.identityId, request.admissionScope)
     }
   }
 
-  return { identityId: alias.identity_id, created, linked, skipped: false }
+  return { identityId: alias.identityId, created, linked, skipped: false }
 }
 
 export async function synchronizeIdentityBatch(
   request: IdentitySyncRequest,
 ): Promise<IdentitySyncResult> {
-  const existing = await db()<Array<{ status: string; response: IdentitySyncResult | null }>>`
-    insert into auth_control.identity_sync_batches (
-      request_sha256,
-      client_id,
-      source,
-      source_snapshot,
-      expected_count,
-      status
-    )
-    values (
-      ${request.requestSha256},
-      ${request.clientId},
-      ${request.source},
-      ${request.sourceSnapshot},
-      ${request.identities.length},
-      'running'
-    )
-    on conflict (request_sha256) do update
-    set status = case
-          when auth_control.identity_sync_batches.status = 'failed' then 'running'
-          else auth_control.identity_sync_batches.status
-        end,
-        completed_at = case
-          when auth_control.identity_sync_batches.status = 'failed' then null
-          else auth_control.identity_sync_batches.completed_at
-        end,
-        last_error_code = case
-          when auth_control.identity_sync_batches.status = 'failed' then null
-          else auth_control.identity_sync_batches.last_error_code
-        end
-    where auth_control.identity_sync_batches.client_id = excluded.client_id
-      and auth_control.identity_sync_batches.source = excluded.source
-      and auth_control.identity_sync_batches.source_snapshot = excluded.source_snapshot
-      and auth_control.identity_sync_batches.expected_count = excluded.expected_count
-    returning status, response
-  `
+  const existing = await db()
+    .insert(identitySyncBatches)
+    .values({
+      requestSha256: request.requestSha256,
+      clientId: request.clientId,
+      source: request.source,
+      sourceSnapshot: request.sourceSnapshot,
+      expectedCount: request.identities.length,
+      status: 'running',
+    })
+    .onConflictDoUpdate({
+      target: identitySyncBatches.requestSha256,
+      set: {
+        status: sql`case
+          when ${identitySyncBatches.status} = 'failed' then 'running'
+          else ${identitySyncBatches.status}
+        end`,
+        completedAt: sql`case
+          when ${identitySyncBatches.status} = 'failed' then null
+          else ${identitySyncBatches.completedAt}
+        end`,
+        lastErrorCode: sql`case
+          when ${identitySyncBatches.status} = 'failed' then null
+          else ${identitySyncBatches.lastErrorCode}
+        end`,
+      },
+      setWhere: sql`${identitySyncBatches.clientId} = ${request.clientId}
+        and ${identitySyncBatches.source} = ${request.source}
+        and ${identitySyncBatches.sourceSnapshot} = ${request.sourceSnapshot}
+        and ${identitySyncBatches.expectedCount} = ${request.identities.length}`,
+    })
+    .returning({
+      status: identitySyncBatches.status,
+      response: identitySyncBatches.response,
+    })
   const batch = existing[0]
   if (!batch) throw new IdentitySyncError('batch_hash_collision', 409)
-  if (batch.status === 'completed' && batch.response) return batch.response
+  if (batch.status === 'completed' && batch.response) {
+    return batch.response as unknown as IdentitySyncResult
+  }
 
   let created = 0
   let linked = 0
@@ -516,25 +535,32 @@ export async function synchronizeIdentityBatch(
       skipped,
       identities,
     }
-    await db()`
-      update auth_control.identity_sync_batches
-      set status = 'completed',
-          response = ${db().json(result)},
-          completed_at = now(),
-          last_error_code = null
-      where request_sha256 = ${request.requestSha256}
-    `
+    await db()
+      .update(identitySyncBatches)
+      .set({
+        status: 'completed',
+        response: result as unknown as Record<string, unknown>,
+        completedAt: sql`now()`,
+        lastErrorCode: null,
+      })
+      .where(eq(identitySyncBatches.requestSha256, request.requestSha256))
     return result
   } catch (caught) {
     const code = caught instanceof IdentitySyncError ? caught.code : 'identity_sync_unavailable'
-    await db()`
-      update auth_control.identity_sync_batches
-      set status = 'failed',
-          completed_at = null,
-          last_error_code = ${code}
-      where request_sha256 = ${request.requestSha256}
-        and status <> 'completed'
-    `.catch(() => undefined)
+    await db()
+      .update(identitySyncBatches)
+      .set({
+        status: 'failed',
+        completedAt: null,
+        lastErrorCode: code,
+      })
+      .where(
+        and(
+          eq(identitySyncBatches.requestSha256, request.requestSha256),
+          ne(identitySyncBatches.status, 'completed'),
+        ),
+      )
+      .catch(() => undefined)
     throw caught
   }
 }

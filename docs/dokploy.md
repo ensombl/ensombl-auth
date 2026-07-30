@@ -17,7 +17,9 @@ Create these four native Dokploy PostgreSQL services:
 The repository Compose stack contains no database. It contains only the Ory
 processes, migrations, control plane, singleton courier, and invitation
 reconciler. Each component runs its own versioned schema migration against its
-dedicated native database.
+dedicated native database. Auth control applies its checked-in Drizzle
+migrations to the `public` schema of `auth-control-db`; the Ory services retain
+their own migration tooling.
 
 Use Dokploy's standard Docker Compose deployment mode, not Docker Stack. Point
 it at `deploy/dokploy/compose.yml`. Dokploy builds every checked-in Dockerfile

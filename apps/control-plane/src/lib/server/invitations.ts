@@ -1,20 +1,18 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { and, asc, eq, gt, inArray, isNull, lt, lte, notInArray, or, sql } from 'drizzle-orm'
 import { authProductMarkerForAdmission } from './auth-brand'
 import { config } from './config'
+import {
+  type InvitationState as DatabaseInvitationState,
+  hookReceipts,
+  invitationEvents,
+  invitations,
+} from './database-schema'
 import { db } from './db'
 import { fetchJson } from './http'
 import { grantProductAdmission, hasProductAdmissionStrict } from './keto'
 
-export type InvitationState =
-  | 'pending_identity'
-  | 'identity_failed'
-  | 'pending_dispatch'
-  | 'dispatch_failed'
-  | 'dispatched'
-  | 'activation_pending'
-  | 'activation_failed'
-  | 'active'
-  | 'expired'
+export type InvitationState = DatabaseInvitationState
 
 export type Invitation = {
   id: string
@@ -38,19 +36,7 @@ export type InvitationRequest = {
   idempotencyKey: string
 }
 
-type DbInvitation = {
-  id: string
-  identity_id: string | null
-  normalized_email: string
-  product: string
-  invited_by: string
-  idempotency_key: string
-  request_fingerprint: string
-  state: InvitationState
-  admission_preexisting: boolean
-  expires_at: Date
-  recovery_dispatched_at: Date | null
-}
+type DbInvitation = typeof invitations.$inferSelect
 
 type ClaimedInvitation = Invitation & {
   processingToken: string
@@ -70,16 +56,16 @@ export class InvitationUnavailableError extends Error {}
 function fromDb(row: DbInvitation): Invitation {
   return {
     id: row.id,
-    identityId: row.identity_id,
-    normalizedEmail: row.normalized_email,
+    identityId: row.identityId,
+    normalizedEmail: row.normalizedEmail,
     product: row.product,
-    invitedBy: row.invited_by,
-    idempotencyKey: row.idempotency_key,
-    requestFingerprint: row.request_fingerprint,
+    invitedBy: row.invitedBy,
+    idempotencyKey: row.idempotencyKey,
+    requestFingerprint: row.requestFingerprint,
     state: row.state,
-    admissionPreexisting: row.admission_preexisting,
-    expiresAt: row.expires_at,
-    recoveryDispatchedAt: row.recovery_dispatched_at,
+    admissionPreexisting: row.admissionPreexisting,
+    expiresAt: row.expiresAt,
+    recoveryDispatchedAt: row.recoveryDispatchedAt,
   }
 }
 
@@ -94,42 +80,32 @@ async function reserveInvitation(
 ): Promise<{ invitation: Invitation; created: boolean }> {
   const id = randomUUID()
   const fingerprint = invitationFingerprint(input)
-  const inserted = await db()<DbInvitation[]>`
-    insert into auth_control.invitations (
+  const inserted = await db()
+    .insert(invitations)
+    .values({
       id,
-      normalized_email,
-      product,
-      invited_by,
-      expires_at,
-      idempotency_key,
-      request_fingerprint,
-      state
-    )
-    values (
-      ${id}::uuid,
-      ${input.email},
-      ${input.product},
-      ${input.invitedBy},
-      now() + ${input.expiresInHours} * interval '1 hour',
-      ${input.idempotencyKey},
-      ${fingerprint},
-      'pending_identity'
-    )
-    on conflict (idempotency_key) do nothing
-    returning *
-  `
+      normalizedEmail: input.email,
+      product: input.product,
+      invitedBy: input.invitedBy,
+      expiresAt: sql`now() + ${input.expiresInHours} * interval '1 hour'`,
+      idempotencyKey: input.idempotencyKey,
+      requestFingerprint: fingerprint,
+      state: 'pending_identity',
+    })
+    .onConflictDoNothing({ target: invitations.idempotencyKey })
+    .returning()
 
   const row =
     inserted[0] ??
     (
-      await db()<DbInvitation[]>`
-        select *
-        from auth_control.invitations
-        where idempotency_key = ${input.idempotencyKey}
-      `
+      await db()
+        .select()
+        .from(invitations)
+        .where(eq(invitations.idempotencyKey, input.idempotencyKey))
+        .limit(1)
     )[0]
   if (!row) throw new InvitationUnavailableError('Unable to reserve invitation')
-  if (row.request_fingerprint !== fingerprint) {
+  if (row.requestFingerprint !== fingerprint) {
     throw new InvitationConflictError('Idempotency key was used for a different invitation')
   }
 
@@ -137,35 +113,50 @@ async function reserveInvitation(
 }
 
 async function claimInvitation(invitation: Invitation): Promise<ClaimedInvitation | null> {
-  await db()`
-    update auth_control.invitations
-    set state = 'expired',
-        expired_at = now(),
-        processing_token = null,
-        processing_started_at = null,
-        updated_at = now()
-    where id = ${invitation.id}::uuid
-      and state not in ('active', 'expired')
-      and activation_requested_at is null
-      and expires_at <= now()
-  `
+  await db()
+    .update(invitations)
+    .set({
+      state: 'expired',
+      expiredAt: sql`now()`,
+      processingToken: null,
+      processingStartedAt: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(invitations.id, invitation.id),
+        notInArray(invitations.state, ['active', 'expired']),
+        isNull(invitations.activationRequestedAt),
+        lte(invitations.expiresAt, sql`now()`),
+      ),
+    )
 
   const processingToken = randomUUID()
-  const rows = await db()<DbInvitation[]>`
-    update auth_control.invitations
-    set processing_token = ${processingToken}::uuid,
-        processing_started_at = now(),
-        attempt_count = attempt_count + 1,
-        updated_at = now()
-    where id = ${invitation.id}::uuid
-      and state in ('pending_identity', 'identity_failed', 'pending_dispatch', 'dispatch_failed')
-      and expires_at > now()
-      and (
-        processing_token is null
-        or processing_started_at < now() - interval '2 minutes'
-      )
-    returning *
-  `
+  const rows = await db()
+    .update(invitations)
+    .set({
+      processingToken,
+      processingStartedAt: sql`now()`,
+      attemptCount: sql`${invitations.attemptCount} + 1`,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(invitations.id, invitation.id),
+        inArray(invitations.state, [
+          'pending_identity',
+          'identity_failed',
+          'pending_dispatch',
+          'dispatch_failed',
+        ]),
+        gt(invitations.expiresAt, sql`now()`),
+        or(
+          isNull(invitations.processingToken),
+          lt(invitations.processingStartedAt, sql`now() - interval '2 minutes'`),
+        ),
+      ),
+    )
+    .returning()
   return rows[0] ? { ...fromDb(rows[0]), processingToken } : null
 }
 
@@ -174,34 +165,44 @@ async function attachIdentity(
   identityId: string,
   admissionPreexisting: boolean,
 ): Promise<ClaimedInvitation> {
-  const rows = await db()<DbInvitation[]>`
-    update auth_control.invitations
-    set identity_id = ${identityId}::uuid,
-        admission_preexisting = ${admissionPreexisting},
-        state = 'pending_dispatch',
-        last_error_code = null,
-        updated_at = now()
-    where id = ${invitation.id}::uuid
-      and processing_token = ${invitation.processingToken}::uuid
-    returning *
-  `
+  const rows = await db()
+    .update(invitations)
+    .set({
+      identityId,
+      admissionPreexisting,
+      state: 'pending_dispatch',
+      lastErrorCode: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(invitations.id, invitation.id),
+        eq(invitations.processingToken, invitation.processingToken),
+      ),
+    )
+    .returning()
   if (!rows[0]) throw new InvitationUnavailableError('Invitation processing lease was lost')
   return { ...fromDb(rows[0]), processingToken: invitation.processingToken }
 }
 
 async function markDispatched(invitation: ClaimedInvitation): Promise<Invitation> {
-  const rows = await db()<DbInvitation[]>`
-    update auth_control.invitations
-    set state = 'dispatched',
-        recovery_dispatched_at = now(),
-        processing_token = null,
-        processing_started_at = null,
-        last_error_code = null,
-        updated_at = now()
-    where id = ${invitation.id}::uuid
-      and processing_token = ${invitation.processingToken}::uuid
-    returning *
-  `
+  const rows = await db()
+    .update(invitations)
+    .set({
+      state: 'dispatched',
+      recoveryDispatchedAt: sql`now()`,
+      processingToken: null,
+      processingStartedAt: null,
+      lastErrorCode: null,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(invitations.id, invitation.id),
+        eq(invitations.processingToken, invitation.processingToken),
+      ),
+    )
+    .returning()
   if (!rows[0]) throw new InvitationUnavailableError('Invitation processing lease was lost')
   return fromDb(rows[0])
 }
@@ -211,16 +212,21 @@ async function markInvitationFailure(
   state: 'identity_failed' | 'dispatch_failed',
   errorCode: string,
 ): Promise<void> {
-  await db()`
-    update auth_control.invitations
-    set state = ${state},
-        processing_token = null,
-        processing_started_at = null,
-        last_error_code = ${errorCode},
-        updated_at = now()
-    where id = ${invitation.id}::uuid
-      and processing_token = ${invitation.processingToken}::uuid
-  `
+  await db()
+    .update(invitations)
+    .set({
+      state,
+      processingToken: null,
+      processingStartedAt: null,
+      lastErrorCode: errorCode,
+      updatedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(invitations.id, invitation.id),
+        eq(invitations.processingToken, invitation.processingToken),
+      ),
+    )
 }
 
 async function findOrCreateIdentity(email: string): Promise<Identity> {
@@ -353,98 +359,99 @@ export type InvitationActivation = {
 async function beginInvitationActivation(
   input: InvitationActivation,
 ): Promise<ActivationCandidate[]> {
-  return db().begin(async (transaction) => {
-    await transaction`
-      insert into auth_control.hook_receipts (
-        event_id,
-        hook_type,
-        identity_id,
-        flow_id
-      )
-      values (
-        ${input.eventId},
-        'invitation_recovery',
-        ${input.identityId}::uuid,
-        ${input.flowId}
-      )
-      on conflict (event_id) do nothing
-    `
+  return db().transaction(async (transaction) => {
+    await transaction
+      .insert(hookReceipts)
+      .values({
+        eventId: input.eventId,
+        hookType: 'invitation_recovery',
+        identityId: input.identityId,
+        flowId: input.flowId,
+      })
+      .onConflictDoNothing({ target: hookReceipts.eventId })
 
-    await transaction`
-      update auth_control.invitations
-      set state = 'expired',
-          expired_at = now(),
-          updated_at = now()
-      where identity_id = ${input.identityId}::uuid
-        and state in ('dispatched', 'activation_pending', 'activation_failed')
-        and activation_requested_at is null
-        and expires_at <= now()
-    `
+    await transaction
+      .update(invitations)
+      .set({
+        state: 'expired',
+        expiredAt: sql`now()`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(invitations.identityId, input.identityId),
+          inArray(invitations.state, ['dispatched', 'activation_pending', 'activation_failed']),
+          isNull(invitations.activationRequestedAt),
+          lte(invitations.expiresAt, sql`now()`),
+        ),
+      )
 
-    const candidates = await transaction<
-      Array<{
-        id: string
-        identity_id: string
-        product: string
-        admission_preexisting: boolean
-      }>
-    >`
-      select id, identity_id, product, admission_preexisting
-      from auth_control.invitations
-      where identity_id = ${input.identityId}::uuid
-        and (
-          (state = 'dispatched' and expires_at > now())
-          or (
-            state in ('activation_pending', 'activation_failed')
-            and activation_requested_at is not null
-            and (
-              processing_token is null
-              or processing_started_at < now() - interval '2 minutes'
-            )
-          )
-        )
-      for update
-    `
+    const candidates = await transaction
+      .select({
+        id: invitations.id,
+        identityId: invitations.identityId,
+        product: invitations.product,
+        admissionPreexisting: invitations.admissionPreexisting,
+      })
+      .from(invitations)
+      .where(
+        and(
+          eq(invitations.identityId, input.identityId),
+          or(
+            and(eq(invitations.state, 'dispatched'), gt(invitations.expiresAt, sql`now()`)),
+            and(
+              inArray(invitations.state, ['activation_pending', 'activation_failed']),
+              sql`${invitations.activationRequestedAt} is not null`,
+              or(
+                isNull(invitations.processingToken),
+                lt(invitations.processingStartedAt, sql`now() - interval '2 minutes'`),
+              ),
+            ),
+          ),
+        ),
+      )
+      .for('update')
 
     const claimed: ActivationCandidate[] = []
     for (const candidate of candidates) {
+      if (!candidate.identityId) {
+        throw new Error('Activation candidate is missing its identity')
+      }
       const processingToken = randomUUID()
-      await transaction`
-        update auth_control.invitations
-        set state = 'activation_pending',
-            activation_requested_at = coalesce(activation_requested_at, now()),
-            processing_token = ${processingToken}::uuid,
-            processing_started_at = now(),
-            attempt_count = attempt_count + 1,
-            last_error_code = null,
-            updated_at = now()
-        where id = ${candidate.id}::uuid
-      `
-      await transaction`
-        insert into auth_control.invitation_events (
-          event_id,
-          invitation_id,
-          event_type,
-          outcome,
-          flow_id
-        )
-        values (
-          ${input.eventId},
-          ${candidate.id}::uuid,
-          'recovery_activation',
-          'pending',
-          ${input.flowId}
-        )
-        on conflict (event_id, invitation_id) do update
-        set outcome = 'pending',
-            detail_code = null,
-            updated_at = now()
-      `
+      await transaction
+        .update(invitations)
+        .set({
+          state: 'activation_pending',
+          activationRequestedAt: sql`coalesce(${invitations.activationRequestedAt}, now())`,
+          processingToken,
+          processingStartedAt: sql`now()`,
+          attemptCount: sql`${invitations.attemptCount} + 1`,
+          lastErrorCode: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(invitations.id, candidate.id))
+      await transaction
+        .insert(invitationEvents)
+        .values({
+          eventId: input.eventId,
+          invitationId: candidate.id,
+          eventType: 'recovery_activation',
+          outcome: 'pending',
+          flowId: input.flowId,
+        })
+        .onConflictDoUpdate({
+          target: [invitationEvents.eventId, invitationEvents.invitationId],
+          set: {
+            outcome: 'pending',
+            detailCode: null,
+            updatedAt: sql`now()`,
+          },
+        })
       claimed.push({
         id: candidate.id,
-        identityId: candidate.identity_id,
+        identityId: candidate.identityId,
         product: candidate.product,
-        admissionPreexisting: candidate.admission_preexisting,
+        admissionPreexisting: candidate.admissionPreexisting,
         processingToken,
       })
     }
@@ -457,29 +464,36 @@ async function completeInvitationActivation(
   eventId: string,
   candidate: ActivationCandidate,
 ): Promise<void> {
-  await db().begin(async (transaction) => {
-    const updated = await transaction`
-      update auth_control.invitations
-      set state = 'active',
-          activated_at = now(),
-          processing_token = null,
-          processing_started_at = null,
-          last_error_code = null,
-          updated_at = now()
-      where id = ${candidate.id}::uuid
-        and state = 'activation_pending'
-        and processing_token = ${candidate.processingToken}::uuid
-      returning id
-    `
+  await db().transaction(async (transaction) => {
+    const updated = await transaction
+      .update(invitations)
+      .set({
+        state: 'active',
+        activatedAt: sql`now()`,
+        processingToken: null,
+        processingStartedAt: null,
+        lastErrorCode: null,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(invitations.id, candidate.id),
+          eq(invitations.state, 'activation_pending'),
+          eq(invitations.processingToken, candidate.processingToken),
+        ),
+      )
+      .returning({ id: invitations.id })
     if (updated.length !== 1) throw new Error('Invitation activation lease was lost')
-    await transaction`
-      update auth_control.invitation_events
-      set outcome = 'succeeded',
-          detail_code = null,
-          updated_at = now()
-      where event_id = ${eventId}
-        and invitation_id = ${candidate.id}::uuid
-    `
+    await transaction
+      .update(invitationEvents)
+      .set({
+        outcome: 'succeeded',
+        detailCode: null,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(eq(invitationEvents.eventId, eventId), eq(invitationEvents.invitationId, candidate.id)),
+      )
   })
 }
 
@@ -487,26 +501,33 @@ async function failInvitationActivation(
   eventId: string,
   candidate: ActivationCandidate,
 ): Promise<void> {
-  await db().begin(async (transaction) => {
-    await transaction`
-      update auth_control.invitations
-      set state = 'activation_failed',
-          processing_token = null,
-          processing_started_at = null,
-          last_error_code = 'keto_admission_failed',
-          updated_at = now()
-      where id = ${candidate.id}::uuid
-        and state = 'activation_pending'
-        and processing_token = ${candidate.processingToken}::uuid
-    `
-    await transaction`
-      update auth_control.invitation_events
-      set outcome = 'failed',
-          detail_code = 'keto_admission_failed',
-          updated_at = now()
-      where event_id = ${eventId}
-        and invitation_id = ${candidate.id}::uuid
-    `
+  await db().transaction(async (transaction) => {
+    await transaction
+      .update(invitations)
+      .set({
+        state: 'activation_failed',
+        processingToken: null,
+        processingStartedAt: null,
+        lastErrorCode: 'keto_admission_failed',
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(invitations.id, candidate.id),
+          eq(invitations.state, 'activation_pending'),
+          eq(invitations.processingToken, candidate.processingToken),
+        ),
+      )
+    await transaction
+      .update(invitationEvents)
+      .set({
+        outcome: 'failed',
+        detailCode: 'keto_admission_failed',
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(eq(invitationEvents.eventId, eventId), eq(invitationEvents.invitationId, candidate.id)),
+      )
   })
 }
 
@@ -549,67 +570,70 @@ type ReconciliationCandidate = {
 }
 
 async function claimInvitationReconciliations(limit: number): Promise<ReconciliationCandidate[]> {
-  return db().begin(async (transaction) => {
-    const candidates = await transaction<
-      Array<{
-        id: string
-        identity_id: string
-        product: string
-        admission_preexisting: boolean
-      }>
-    >`
-      select id, identity_id, product, admission_preexisting
-      from auth_control.invitations
-      where state in ('activation_pending', 'activation_failed')
-        and activation_requested_at is not null
-        and (
-          processing_token is null
-          or processing_started_at < now() - interval '2 minutes'
-        )
-      order by activation_requested_at, id
-      limit ${limit}
-      for update skip locked
-    `
+  return db().transaction(async (transaction) => {
+    const candidates = await transaction
+      .select({
+        id: invitations.id,
+        identityId: invitations.identityId,
+        product: invitations.product,
+        admissionPreexisting: invitations.admissionPreexisting,
+      })
+      .from(invitations)
+      .where(
+        and(
+          inArray(invitations.state, ['activation_pending', 'activation_failed']),
+          sql`${invitations.activationRequestedAt} is not null`,
+          or(
+            isNull(invitations.processingToken),
+            lt(invitations.processingStartedAt, sql`now() - interval '2 minutes'`),
+          ),
+        ),
+      )
+      .orderBy(asc(invitations.activationRequestedAt), asc(invitations.id))
+      .limit(limit)
+      .for('update', { skipLocked: true })
 
     const claimed: ReconciliationCandidate[] = []
     for (const candidate of candidates) {
+      if (!candidate.identityId) {
+        throw new Error('Activation candidate is missing its identity')
+      }
       const eventId = `invitation_reconcile:${candidate.id}`
       const processingToken = randomUUID()
-      await transaction`
-        update auth_control.invitations
-        set state = 'activation_pending',
-            processing_token = ${processingToken}::uuid,
-            processing_started_at = now(),
-            attempt_count = attempt_count + 1,
-            last_error_code = null,
-            updated_at = now()
-        where id = ${candidate.id}::uuid
-      `
-      await transaction`
-        insert into auth_control.invitation_events (
-          event_id,
-          invitation_id,
-          event_type,
-          outcome
-        )
-        values (
-          ${eventId},
-          ${candidate.id}::uuid,
-          'activation_reconcile',
-          'pending'
-        )
-        on conflict (event_id, invitation_id) do update
-        set outcome = 'pending',
-            detail_code = null,
-            updated_at = now()
-      `
+      await transaction
+        .update(invitations)
+        .set({
+          state: 'activation_pending',
+          processingToken,
+          processingStartedAt: sql`now()`,
+          attemptCount: sql`${invitations.attemptCount} + 1`,
+          lastErrorCode: null,
+          updatedAt: sql`now()`,
+        })
+        .where(eq(invitations.id, candidate.id))
+      await transaction
+        .insert(invitationEvents)
+        .values({
+          eventId,
+          invitationId: candidate.id,
+          eventType: 'activation_reconcile',
+          outcome: 'pending',
+        })
+        .onConflictDoUpdate({
+          target: [invitationEvents.eventId, invitationEvents.invitationId],
+          set: {
+            outcome: 'pending',
+            detailCode: null,
+            updatedAt: sql`now()`,
+          },
+        })
       claimed.push({
         eventId,
         candidate: {
           id: candidate.id,
-          identityId: candidate.identity_id,
+          identityId: candidate.identityId,
           product: candidate.product,
-          admissionPreexisting: candidate.admission_preexisting,
+          admissionPreexisting: candidate.admissionPreexisting,
           processingToken,
         },
       })
@@ -665,15 +689,17 @@ export async function hasUnactivatedInvitationAdmission(
   identityId: string,
   product: string,
 ): Promise<boolean> {
-  const rows = await db()<Array<{ blocked: boolean }>>`
-    select exists (
-      select 1
-      from auth_control.invitations
-      where identity_id = ${identityId}::uuid
-        and product = ${product}
-        and not admission_preexisting
-        and state not in ('active', 'expired')
-    ) as blocked
-  `
-  return rows[0]?.blocked ?? true
+  const rows = await db()
+    .select({ id: invitations.id })
+    .from(invitations)
+    .where(
+      and(
+        eq(invitations.identityId, identityId),
+        eq(invitations.product, product),
+        eq(invitations.admissionPreexisting, false),
+        notInArray(invitations.state, ['active', 'expired']),
+      ),
+    )
+    .limit(1)
+  return rows.length > 0
 }
