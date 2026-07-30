@@ -40,9 +40,6 @@ async function main(): Promise<void> {
     ...(bws ? { bws } : {}),
     rotateMissingSecrets: process.env.ZITADEL_ROTATE_MISSING_CLIENT_SECRETS === "true",
   });
-  if (process.env.ZITADEL_RUNTIME_INCLUDE_ADMIN_PAT === "true") {
-    runtime.managementToken = adminPat;
-  }
   await writeRuntimeConfig(outputPath, runtime);
 
   console.log(

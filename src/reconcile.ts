@@ -31,6 +31,12 @@ async function persistApplication(
   await bws.set(`${prefix}_APPLICATION_ID`, runtime.applicationId);
   await bws.set(`${prefix}_CLIENT_ID`, runtime.clientId);
   await bws.set(`${prefix}_CLIENT_SECRET`, runtime.clientSecret);
+  await bws.set(`${prefix}_MANAGEMENT_USER_ID`, runtime.managementServiceAccount.userId);
+  await bws.set(`${prefix}_MANAGEMENT_CLIENT_ID`, runtime.managementServiceAccount.clientId);
+  await bws.set(
+    `${prefix}_MANAGEMENT_CLIENT_SECRET`,
+    runtime.managementServiceAccount.clientSecret,
+  );
 }
 
 export async function reconcileCatalog(
@@ -110,6 +116,11 @@ export async function reconcileCatalog(
         applicationRuntime = {
           ...created,
           baseUrl: application.base_url,
+          managementServiceAccount: {
+            userId: "",
+            clientId: "",
+            clientSecret: "",
+          },
         };
       } else {
         const prefix = secretPrefix(product, application);
@@ -133,8 +144,53 @@ export async function reconcileCatalog(
           clientId: current.oidcConfiguration.clientId,
           clientSecret,
           baseUrl: application.base_url,
+          managementServiceAccount: {
+            userId: "",
+            clientId: "",
+            clientSecret: "",
+          },
         };
       }
+
+      const account = application.management_service_account;
+      const existingAccount = await client.getUser(account.id);
+      if (!existingAccount) {
+        await client.createServiceAccount({
+          organizationId: ownerOrganization.id,
+          userId: account.id,
+          username: account.username,
+          displayName: account.display_name,
+        });
+      }
+      const previousManagementSecret =
+        existingApplication?.managementServiceAccount?.clientSecret ??
+        options.bws?.get(`${secretPrefix(product, application)}_MANAGEMENT_CLIENT_SECRET`);
+      let managementClientSecret = previousManagementSecret;
+      if (!managementClientSecret && (!existingAccount || options.rotateMissingSecrets)) {
+        managementClientSecret = await client.generateServiceAccountSecret(account.id);
+      }
+      if (!managementClientSecret) {
+        throw new Error(
+          `Client secret is missing for management service account ` +
+            `${product.id}/${application.environment}. Set ` +
+            `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
+        );
+      }
+      await client.ensureAdministrator({
+        userId: account.id,
+        resource: { instance: true },
+        roles: account.instance_roles,
+      });
+      await client.ensureAdministrator({
+        userId: account.id,
+        resource: { projectId },
+        roles: ["PROJECT_OWNER"],
+      });
+      applicationRuntime.managementServiceAccount = {
+        userId: account.id,
+        clientId: account.username,
+        clientSecret: managementClientSecret,
+      };
 
       productRuntime.applications[application.environment] = applicationRuntime;
       await persistApplication(

@@ -322,6 +322,32 @@ export class ZitadelClient {
     return response.clientSecret;
   }
 
+  async ensureAdministrator(input: {
+    readonly userId: string;
+    readonly resource: { readonly instance: true } | { readonly projectId: string };
+    readonly roles: string[];
+  }): Promise<void> {
+    const path = "/zitadel.internal_permission.v2.InternalPermissionService/CreateAdministrator";
+    const response = await this.#requestRaw(path, {
+      method: "POST",
+      connect: true,
+      body: input,
+    });
+    if (response.ok) return;
+    if (response.status !== 409) {
+      const body = await this.#parseResponse(response);
+      throw new Error(`POST ${path} returned ${response.status}: ${JSON.stringify(body)}`);
+    }
+    await this.#request(
+      "/zitadel.internal_permission.v2.InternalPermissionService/UpdateAdministrator",
+      {
+        method: "POST",
+        connect: true,
+        body: input,
+      },
+    );
+  }
+
   async listAuthorizations(input: {
     readonly userId: string;
     readonly projectId: string;

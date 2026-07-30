@@ -174,7 +174,6 @@ services:
       ZITADEL_ADMIN_PAT_FILE: /zitadel/bootstrap/admin.pat
       PRODUCT_CATALOG_PATH: /app/deploy/products/products.local.json
       ZITADEL_RUNTIME_CONFIG_PATH: /output/runtime.json
-      ZITADEL_RUNTIME_INCLUDE_ADMIN_PAT: "true"
       ZITADEL_ROTATE_MISSING_CLIENT_SECRETS: "true"
     volumes:
       - bootstrap:/zitadel/bootstrap:ro

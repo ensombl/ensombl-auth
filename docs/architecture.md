@@ -34,8 +34,9 @@ map each role to the organization IDs in which it applies. Authorization is eval
 signed claims and the product database projection; there is no separate authorization service.
 
 Machine clients use ZITADEL API applications and standard token introspection. Product management
-uses a least-privilege ZITADEL service account. The initial IAM-owner PAT exists only to reconcile
-the declarative catalog and is mounted from the private bootstrap volume.
+uses the environment's declared ZITADEL service account and short-lived client-credentials access
+tokens. The initial IAM-owner PAT exists only inside the auth stack to reconcile the declarative
+catalog and is mounted from the private bootstrap volume. Product workloads never receive it.
 
 ## Legacy password migration
 

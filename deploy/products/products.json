@@ -46,12 +46,24 @@
         {
           "environment": "staging",
           "name": "FreightClaims staging web",
-          "base_url": "https://app.staging.freightclaims.ensombl.io"
+          "base_url": "https://app.staging.freightclaims.ensombl.io",
+          "management_service_account": {
+            "id": "f1659442-a65a-4da6-bbd7-4efa55b7c7ef",
+            "username": "freightclaims-staging-management",
+            "display_name": "FreightClaims staging management",
+            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+          }
         },
         {
           "environment": "production",
           "name": "FreightClaims production web",
-          "base_url": "https://app.freightclaims.ensombl.io"
+          "base_url": "https://app.freightclaims.ensombl.io",
+          "management_service_account": {
+            "id": "7ea4dd05-da93-4a19-a63b-be7e9bd2bef1",
+            "username": "freightclaims-production-management",
+            "display_name": "FreightClaims production management",
+            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+          }
         }
       ]
     },
@@ -78,12 +90,24 @@
         {
           "environment": "staging",
           "name": "FreightCheck staging web",
-          "base_url": "https://app.staging.freightcheck.io"
+          "base_url": "https://app.staging.freightcheck.io",
+          "management_service_account": {
+            "id": "ed9353c3-d6ac-4f63-91fd-a5a92fbb284b",
+            "username": "freightcheck-staging-management",
+            "display_name": "FreightCheck staging management",
+            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+          }
         },
         {
           "environment": "production",
           "name": "FreightCheck production web",
-          "base_url": "https://app.freightcheck.io"
+          "base_url": "https://app.freightcheck.io",
+          "management_service_account": {
+            "id": "245097ab-5609-41b1-99cb-5f9d2efbbdb7",
+            "username": "freightcheck-production-management",
+            "display_name": "FreightCheck production management",
+            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+          }
         }
       ]
     }

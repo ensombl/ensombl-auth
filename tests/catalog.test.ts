@@ -38,6 +38,12 @@ const baseCatalog = {
           environment: "production",
           name: "FreightCheck production web",
           base_url: "https://app.freightcheck.io",
+          management_service_account: {
+            id: "01900000-0000-7000-8000-000000000100",
+            username: "freightcheck-production-management",
+            display_name: "FreightCheck production management",
+            instance_roles: ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"],
+          },
         },
       ],
     },
@@ -78,6 +84,25 @@ describe("product catalog", () => {
     const application = product?.applications[0];
     if (!product || !application) throw new Error("Expected one product application");
     expect(secretPrefix(product, application)).toBe("ZITADEL_FREIGHTCHECK_PRODUCTION");
+  });
+
+  it("rejects duplicate management service accounts within a product", () => {
+    const application = baseCatalog.products[0]?.applications[0];
+    if (!application) throw new Error("Expected one product application");
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            applications: [
+              { ...application, environment: "staging" },
+              { ...application, environment: "production" },
+            ],
+          },
+        ],
+      }),
+    ).toThrow(/Duplicate management service-account/u);
   });
 
   it("requires local service accounts to use declared product roles", () => {
