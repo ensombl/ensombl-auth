@@ -9,6 +9,7 @@ let { data, form } = $props()
     <Brand />
     <h1>Invite a {data.product} user</h1>
     <p class="muted">A recovery code is sent first. Product access activates after recovery.</p>
+    <p><a href="/admin">Switch product</a></p>
     {#if form?.ok}
       <p>Invitation {form.invitationId} is {form.state}.</p>
     {:else if form?.error}

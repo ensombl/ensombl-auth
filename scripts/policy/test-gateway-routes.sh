@@ -76,6 +76,14 @@ jq -e '
     )
     and (
       $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
+      | contains("Path(`/admin`)")
+    )
+    and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
+      | contains("PathPrefix(`/admin/`)")
+    )
+    and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
       | contains("PathPrefix(`/_app/`)")
     )
     and (
@@ -172,6 +180,14 @@ public_body="$(
 )"
 if [ "$public_body" != "upstream-reached" ]; then
   printf '%s\n' "Local Caddy did not reach the control application" >&2
+  exit 1
+fi
+
+admin_body="$(
+  docker exec "$active_gateway" wget -q -O - http://127.0.0.1:8080/admin
+)"
+if [ "$admin_body" != "upstream-reached" ]; then
+  printf '%s\n' "Local Caddy did not expose the control application's /admin route" >&2
   exit 1
 fi
 

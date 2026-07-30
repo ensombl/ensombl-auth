@@ -317,7 +317,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
+      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/admin`) || PathPrefix(`/admin/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
       traefik.http.routers.ensombl-auth-control.entrypoints: websecure
       traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker

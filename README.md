@@ -66,6 +66,7 @@ Drizzle Studio against the configured development database.
 Local endpoints:
 
 - Auth gateway: `http://localhost:24455`
+- Product administration: `http://localhost:24455/admin`
 - Control application (direct): `http://localhost:3400`
 - Mailpit: `http://localhost:28025`
 - Kratos public/admin: `http://localhost:24433` / `http://localhost:24434`
@@ -83,12 +84,13 @@ pnpm identity:seed:dev
 ```
 
 The fixture is `developer@freightclaims.test` with initial password
-`FreightClaims-Dev-2026!` and `Product:freightclaims:local#access`. It is created
-inactive, admitted, and then activated without a migration reset gate. Reruns
-reuse the identity and relation and never reset a password the developer has
-changed. The command hard-fails for production or non-loopback dependencies;
-it also assigns `tenant_admin` in the deterministic local FreightClaims tenant.
-This fixture is separate from the audited staging and production importers.
+`FreightClaims-Dev-2026!`, `Product:freightclaims:local#access`, and
+`Product:freightclaims#administer`. It is created inactive, admitted, and then
+activated without a migration reset gate. Reruns reuse the identity and
+relations and never reset a password the developer has changed. The command
+hard-fails for production or non-loopback dependencies; it also assigns
+`tenant_admin` in the deterministic local FreightClaims tenant. This fixture is
+separate from the audited staging and production importers.
 
 With the disposable local stack and control application running,
 `pnpm test:e2e:reset` verifies a fixed Argon2id PHC produced by the FreightClaims

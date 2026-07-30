@@ -20,7 +20,7 @@
 			respond 200
 		}
 
-		@private path /internal /internal/* /admin /admin/* /relation-tuples /relation-tuples/* /permissions /permissions/* /clients /clients/* /keys /keys/* /health /health/* /metrics /debug /debug/*
+		@private path /internal /internal/* /relation-tuples /relation-tuples/* /permissions /permissions/* /clients /clients/* /keys /keys/* /health /health/* /metrics /debug /debug/*
 		handle @private {
 			respond 404
 		}
