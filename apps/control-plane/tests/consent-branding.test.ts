@@ -28,7 +28,7 @@ afterEach(() => {
 
 describe('OAuth consent branding', () => {
   it.each([
-    ['freightclaims-staging-web', 'https://auth.freightclaims.ensombl.io'],
+    ['freightclaims-staging-web', 'https://auth.freightclaims.com'],
     ['freightcheck-staging-web', 'https://auth.freightcheck.io'],
   ])('moves the %s challenge before checking the host-scoped Kratos session', async (clientId, authOrigin) => {
     ory.getConsentRequest.mockResolvedValue({

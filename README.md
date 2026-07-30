@@ -2,7 +2,7 @@
 
 This repository is the source of truth for the global self-hosted Ory control
 plane. `https://auth.ensombl.io` is the canonical OIDC issuer and default
-Ensombl UI. `https://auth.freightclaims.ensombl.io` and
+Ensombl UI. `https://auth.freightclaims.com` and
 `https://auth.freightcheck.io` are the FreightClaims- and
 FreightCheck-branded browser entrypoints.
 
@@ -90,6 +90,12 @@ changed. The command hard-fails for production or non-loopback dependencies;
 it also assigns `tenant_admin` in the deterministic local FreightClaims tenant.
 This fixture is separate from the audited staging and production importers.
 
+With the disposable local stack and control application running,
+`pnpm test:e2e:reset` verifies a fixed Argon2id PHC produced by the FreightClaims
+TypeScript migrator through old-password login, forced reset, same-password
+rejection, session revocation, fresh login, authorization code, and token
+exchange.
+
 ## Tenant roles
 
 Every product gets the default tenant role stack unless it declares otherwise:
@@ -139,28 +145,6 @@ the private membership API. Tenant IDs are opaque product-owned strings.
   its public paths; the resulting shared-network trust boundary is documented
   in `docs/architecture.md`.
 
-## Deployment
-
-The Dokploy Compose definition is
-[`deploy/dokploy/compose.yml`](deploy/dokploy/compose.yml). Follow
-[`docs/dokploy.md`](docs/dokploy.md) before creating the application.
-
-With the disposable local stack and control application running,
-`pnpm test:e2e:reset` verifies a fixed Argon2id PHC produced by the FreightClaims
-TypeScript migrator through old-password login, forced reset, same-password
-rejection, session revocation, fresh login, authorization code, and token
-exchange.
-
-The hosted deployment deliberately fails closed until its secrets have been
-injected. The checked-in
-[`deploy/secrets/manifest.json`](deploy/secrets/manifest.json) is the complete
-non-secret inventory. The `ensombl-auth` Bitwarden Secrets Manager project is
-the live source of truth. Dokploy receives only its read-only
-`ensombl-auth-runtime` access token and the non-secret project UUID. Each
-process loads only its declared mappings at startup, removes the Bitwarden
-token from the child environment, and then starts normally. Shared `.env`
-files are forbidden.
-
 ## Product configuration
 
 [`deploy/products/products.json`](deploy/products/products.json) is the
@@ -178,8 +162,8 @@ The hosted product clients are:
 | FreightCheck | production | `freightcheck-production-web` | `https://app.freightcheck.io` | `freightcheck-production` |
 
 All use Authorization Code, refresh tokens, and
-`openid offline_access email profile`. Their Bitwarden-managed secrets are
-independent. FreightClaims uses `https://auth.freightclaims.ensombl.io`;
+`openid offline_access email profile`. Their client secrets are independent.
+FreightClaims uses `https://auth.freightclaims.com`;
 FreightCheck uses `https://auth.freightcheck.io`. The token issuer remains
 `https://auth.ensombl.io`. FreightCheck inherits the default
 `member`/`admin`/`owner` tenant roles.

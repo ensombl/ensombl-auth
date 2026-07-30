@@ -12,7 +12,7 @@ selfservice:
   default_browser_return_url: https://auth.ensombl.io/
   allowed_return_urls:
     - https://auth.ensombl.io
-    - https://auth.freightclaims.ensombl.io
+    - https://auth.freightclaims.com
     - https://auth.freightcheck.io
     - https://app.staging.freightclaims.ensombl.io
     - https://app.freightclaims.ensombl.io

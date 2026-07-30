@@ -36,16 +36,17 @@ registry.
    database port.
 4. Configure native database backups to independent object storage and prove
    an isolated restore before importing users.
-5. Create DNS records for `auth.ensombl.io`,
-   `auth.freightclaims.ensombl.io`, and `auth.freightcheck.io` pointing to the
-   auth Dokploy installation.
+5. Create DNS records for `auth.ensombl.io`, `auth.freightclaims.com`, and
+   `auth.freightcheck.io` pointing to the auth Dokploy installation.
 6. Verify `notifications.ensombl.io` in Resend and create a sending-only API
    key restricted to that domain.
 7. Create the Bitwarden Secrets Manager project `ensombl-auth`.
-8. Create the Bitwarden machine account `ensombl-auth-runtime` and grant it
-   `Can read` access to only the `ensombl-auth` project.
+8. Create the Bitwarden machine account `ensombl-auth`. It may temporarily
+   receive read/write access while the project is bootstrapped, but must be
+   reduced to `Can read` access to only the `ensombl-auth` project before
+   deployment.
 9. Generate one access token named
-   `dokploy-auth-primary-<issued-yyyymmdd>` from that machine account.
+   `dokploy-auth-<issued-yyyymmdd>` from that machine account.
 
 ## Required Bitwarden values
 
@@ -53,7 +54,7 @@ The Dokploy Compose environment contains exactly two bootstrap values:
 
 | Variable | Secret | Constraint / consumer |
 | --- | --- | --- |
-| `BWS_ACCESS_TOKEN` | yes | `dokploy-auth-primary-<issued-yyyymmdd>` token |
+| `BWS_ACCESS_TOKEN` | yes | `dokploy-auth-<issued-yyyymmdd>` token |
 | `BWS_PROJECT_ID` | no | UUID of the `ensombl-auth` project |
 
 Copy the four internal connection URLs from the corresponding native Dokploy
@@ -102,8 +103,8 @@ process. Runtime secrets are not copied into the Dokploy environment.
 
 All containers in this Compose deployment use the same token because Kratos,
 Hydra, Keto, and auth control are one reviewed trust boundary. Do not reuse the
-token in another deployment or grant `ensombl-auth-runtime` access to another
-project. A separate Dokploy administration credential belongs in
+token in another deployment or grant the `ensombl-auth` machine account access
+to another project. A separate Dokploy administration credential belongs in
 `ensombl-dokploy-infrastructure` and is never available to this runtime.
 
 Compose places the bootstrap token in Docker's container configuration.
@@ -163,9 +164,9 @@ For a secret rotation:
 4. Revoke the old provider credential only after the replacement is observed
    working.
 
-For a `BWS_ACCESS_TOKEN` rotation, create a newly dated token on
-`ensombl-auth-runtime`, replace the one Dokploy environment value, redeploy and
-verify, then revoke the previous token.
+For a `BWS_ACCESS_TOKEN` rotation, create a newly dated token on the
+`ensombl-auth` machine account, replace the one Dokploy environment value,
+redeploy and verify, then revoke the previous token.
 
 Database credentials are rotated through the corresponding native Dokploy
 database service and then copied into the matching internal URL. Treat Hydra
@@ -179,17 +180,16 @@ Verify:
 ```text
 GET https://auth.ensombl.io/healthz                         -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
-GET https://auth.freightclaims.ensombl.io/healthz           -> 200
+GET https://auth.freightclaims.com/healthz                  -> 200
 GET https://auth.freightcheck.io/healthz                     -> 200
 GET https://auth.ensombl.io/admin/anything                  -> 404
 GET https://auth.ensombl.io/internal/anything               -> 404
-GET https://auth.freightclaims.ensombl.io/internal/anything -> 404
+GET https://auth.freightclaims.com/internal/anything        -> 404
 GET https://auth.freightcheck.io/internal/anything           -> 404
 ```
 
 - OIDC issuer and protocol endpoints use only `https://auth.ensombl.io`.
-- FreightClaims browser login/recovery uses
-  `https://auth.freightclaims.ensombl.io`.
+- FreightClaims browser login/recovery uses `https://auth.freightclaims.com`.
 - FreightCheck browser login/recovery uses `https://auth.freightcheck.io`.
 - Staging and production OAuth clients contain only their exact callback and
   audience.

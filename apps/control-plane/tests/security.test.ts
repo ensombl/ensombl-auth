@@ -88,7 +88,7 @@ describe('configuration', () => {
       emailFromName: 'Ensombl',
     })
     expect(config().authBrandByProduct.get('freightclaims')).toMatchObject({
-      authOrigin: 'https://auth.freightclaims.ensombl.io',
+      authOrigin: 'https://auth.freightclaims.com',
       emailFromName: 'FreightClaims',
     })
     expect(config().authBrandByProduct.get('freightcheck')).toMatchObject({

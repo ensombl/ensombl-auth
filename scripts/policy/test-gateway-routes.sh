@@ -42,7 +42,7 @@ jq -e '
     )
     and (
       $services["kratos-freightclaims"].labels["traefik.http.routers.ensombl-auth-kratos-freightclaims.rule"]
-      | contains("Host(`auth.freightclaims.ensombl.io`)")
+      | contains("Host(`auth.freightclaims.com`)")
     )
     and (
       $services["kratos-freightclaims"].labels["traefik.http.middlewares.ensombl-auth-product-freightclaims.headers.customrequestheaders.X-Ensombl-Auth-Product"]
@@ -80,7 +80,7 @@ jq -e '
     )
     and (
       $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
-      | contains("Host(`auth.freightclaims.ensombl.io`)")
+      | contains("Host(`auth.freightclaims.com`)")
     )
     and (
       $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]

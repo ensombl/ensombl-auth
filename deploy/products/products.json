@@ -11,7 +11,7 @@
       "id": "freightclaims",
       "auth_brand": {
         "display_name": "FreightClaims",
-        "auth_origin": "https://auth.freightclaims.ensombl.io",
+        "auth_origin": "https://auth.freightclaims.com",
         "email_from_name": "FreightClaims"
       },
       "return_origins": [
