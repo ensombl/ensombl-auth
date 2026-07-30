@@ -1,13 +1,31 @@
+import { readFile } from 'node:fs/promises'
 import postgres from 'postgres'
 
 const kratosAdminUrl = new URL('http://127.0.0.1:24434')
 const ketoWriteUrl = new URL('http://127.0.0.1:24467')
 const databaseUrl = 'postgres://auth_control:auth_control_dev@127.0.0.1:25432/auth_control'
 const identityContract = {
+  clientId: 'freightclaims-local-web',
   email: 'developer@freightclaims.test',
   password: 'FreightClaims-Dev-2026!',
   externalId: 'local-dev:freightclaims-human',
-  admissionScope: 'freightclaims:local',
+  tenantId: '01900000-0000-7000-8000-000000000001',
+  role: 'tenant_admin',
+}
+const catalog = JSON.parse(
+  await readFile(new URL('../../../deploy/products/products.local.json', import.meta.url), 'utf8'),
+)
+const product = catalog.products
+  .flatMap((candidate) =>
+    candidate.clients.some((client) => client.id === identityContract.clientId) ? [candidate] : [],
+  )
+  .at(0)
+const client = product?.clients.find((candidate) => candidate.id === identityContract.clientId)
+if (
+  !client?.admission_scope ||
+  !product?.tenant_roles?.roles?.some((role) => role.id === identityContract.role)
+) {
+  throw new Error('The development identity contract is missing from the local product catalog')
 }
 
 if (process.env.NODE_ENV === 'production') {
@@ -89,13 +107,26 @@ const granted = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({
     namespace: 'Product',
-    object: identityContract.admissionScope,
+    object: client.admission_scope,
     relation: 'members',
     subject_id: identity.id,
   }),
   signal: AbortSignal.timeout(5_000),
 })
 if (!granted.ok) throw new Error(`Keto development admission failed (${granted.status})`)
+
+const tenantRole = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
+  method: 'PUT',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    namespace: 'TenantRole',
+    object: `${client.admission_scope}:${Buffer.from(identityContract.tenantId).toString('base64url')}:${identityContract.role}`,
+    relation: 'assignees',
+    subject_id: identity.id,
+  }),
+  signal: AbortSignal.timeout(5_000),
+})
+if (!tenantRole.ok) throw new Error(`Keto development tenant role failed (${tenantRole.status})`)
 
 if (identity.state === 'inactive') {
   const activated = await fetch(new URL(`/admin/identities/${identity.id}`, kratosAdminUrl), {

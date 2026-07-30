@@ -82,7 +82,8 @@ The fixture is `developer@freightclaims.test` with initial password
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
-this fixture is separate from the audited staging and production importers.
+it also assigns `tenant_admin` in the deterministic local FreightClaims tenant.
+This fixture is separate from the audited staging and production importers.
 
 ## Tenant roles
 
