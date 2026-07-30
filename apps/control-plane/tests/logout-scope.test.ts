@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('application logout scope', () => {
   it.each([
-    ['freightclaims-staging-web', 'https://auth.freightclaims.ensombl.io'],
+    ['freightclaims-staging-web', 'https://auth.freightclaims.com'],
     ['freightcheck-staging-web', 'https://auth.freightcheck.io'],
   ])('moves a %s logout challenge to the branded auth hostname', async (clientId, authOrigin) => {
     ory.getLogoutRequest.mockResolvedValue({

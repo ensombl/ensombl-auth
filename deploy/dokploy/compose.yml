@@ -17,7 +17,7 @@ x-keto-build: &keto-build
   dockerfile: deploy/ory/keto/Dockerfile
 
 x-bws-environment: &bws-environment
-  BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN:?Inject the ensombl-auth-runtime access token}
+  BWS_ACCESS_TOKEN: ${BWS_ACCESS_TOKEN:?Inject the ensombl-auth access token}
   BWS_PROJECT_ID: ${BWS_PROJECT_ID:?Set the non-secret ensombl-auth project UUID}
 
 x-control-environment: &control-environment
@@ -136,7 +136,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-kratos-freightclaims.rule: Host(`auth.freightclaims.ensombl.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.rule: Host(`auth.freightclaims.com`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
       traefik.http.routers.ensombl-auth-kratos-freightclaims.entrypoints: websecure
       traefik.http.routers.ensombl-auth-kratos-freightclaims.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-kratos-freightclaims.middlewares: ensombl-auth-product-freightclaims@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
@@ -316,7 +316,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
+      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
       traefik.http.routers.ensombl-auth-control.entrypoints: websecure
       traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker

@@ -3,9 +3,8 @@
 ## Public routing
 
 Dokploy's existing Traefik terminates TLS. Hydra remains a single canonical
-issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` and
-`auth.freightcheck.io` are branded Kratos and control-UI edges over the same
-global identity database.
+issuer at `auth.ensombl.io`; `auth.freightclaims.com` and `auth.freightcheck.io`
+are branded Kratos and control-UI edges over the same global identity database.
 
 | Host and path | Destination |
 | --- | --- |
@@ -44,10 +43,9 @@ Every other `/internal/*` path stays private and returns `404`.
 ## Hosted secret bootstrap
 
 The singleton hosted stack reads runtime secrets from the
-`ensombl-auth` Bitwarden Secrets Manager project. The read-only
-`ensombl-auth-runtime` machine account has access only to that project, and the
-Dokploy installation holds one deployment-specific access token plus the
-non-secret project UUID.
+`ensombl-auth` Bitwarden Secrets Manager project. The `ensombl-auth` machine
+account has read-only access to that project, and the Dokploy installation
+holds one deployment-specific access token plus the non-secret project UUID.
 
 Every checked-in runtime image installs the same pinned, checksum-verified BWS
 CLI. Before starting its real process, a common wrapper retrieves the project,
@@ -72,7 +70,7 @@ preserved. The local development stack continues to use its small Caddy router.
 2. Hydra sends a one-time login challenge to `/ui/oauth2/login`.
 3. The control application resolves the trusted Hydra client through the
    reviewed product catalog and moves the browser to
-   `auth.freightclaims.ensombl.io`; Hydra's issuer and protocol endpoints remain
+   `auth.freightclaims.com`; Hydra's issuer and protocol endpoints remain
    on `auth.ensombl.io`.
 4. The control application validates the challenge through Hydra admin and the
    browser's host-only Kratos session through `sessions/whoami`.
