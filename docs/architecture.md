@@ -2,33 +2,39 @@
 
 ## Public routing
 
-Dokploy's existing Traefik terminates TLS and uses the checked-in Compose labels
-to expose only:
+Dokploy's existing Traefik terminates TLS. Hydra remains a single canonical
+issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` is a branded
+Kratos and control-UI edge over the same global identity database.
 
-| Path | Destination |
+| Host and path | Destination |
 | --- | --- |
-| `/ui/*`, `/healthz`, `/` | source-built control application |
-| `/self-service/*`, `/sessions/*`, `/schemas/*` | Kratos public API |
-| `/oauth2/*`, `/.well-known/*`, `/userinfo` | Hydra public API |
+| both auth hosts: `/ui/*`, `/healthz`, `/` | source-built control application |
+| both auth hosts: `/self-service/*`, `/sessions/*`, `/schemas/*` | host-configured Kratos public edge |
+| `auth.ensombl.io`: `/oauth2/*`, `/.well-known/*`, `/userinfo` | canonical Hydra public API |
 
-There is no catch-all router, so `/internal/*`, `/admin/*`, and Keto APIs do not
-match a public route. Hydra public and admin listeners are separate containers;
+There is no catch-all router. Only the five product endpoints documented below
+match `/internal/*`; every other internal path, `/admin/*`, and Keto API does
+not match a public route. Hydra public and admin listeners are separate containers;
 only `hydra-public` joins `dokploy-network`. Kratos v26.2.0 serves public and
 admin listeners from one process, so its container joins both
 `dokploy-network` and the private Kratos-admin network. Traefik routes only
-port 4433 and the public path allowlist, but other workloads on the shared
-Dokploy network remain part of the trusted deployment boundary. Keto and every
-database remain on internal networks.
+port 4433 and the public path allowlist. Both Kratos edges share the same
+database, cookie/cipher secrets, identity schema, and reset hooks, but issue
+host-only browser cookies. Other workloads on the shared Dokploy network remain
+part of the trusted deployment boundary. Keto and every database remain on
+internal networks.
 
-Product APIs never receive a raw Keto endpoint. They call the private
+Product APIs never receive a raw Keto endpoint. From their separate
+infrastructure they call the exact HTTPS
 `POST /internal/authorization/check` decision boundary with a client-specific
 bearer secret. The control plane derives the product from the authenticated
 client, constructs a product-namespaced tenant object, and returns only an
-allow/deny result. The route is not exposed by Traefik; dependency failures
-return `503` and product APIs fail closed. A pre-created external Docker
-network named `ensombl-auth-product-decisions` exposes only the control plane
-under alias `ensombl-auth-control` to product API containers; raw Ory services
-never join it.
+allow/deny result. Dependency failures return `503` and product APIs fail
+closed. Traefik also exposes the exact invitation, membership, identity
+migration, and token-introspection routes. Introspection is proxied by the
+control plane so Hydra admin never joins the public network; it requires the
+same environment-specific read-only authorization secret and client ID.
+Every other `/internal/*` path stays private and returns `404`.
 
 Traefik middleware emits anti-framing, MIME-sniffing, no-referrer, and
 production HSTS headers. Browser auth/UI paths are forced `no-store`; OIDC
@@ -39,34 +45,55 @@ preserved. The local development stack continues to use its small Caddy router.
 
 1. FreightClaims starts Authorization Code + PKCE at Hydra.
 2. Hydra sends a one-time login challenge to `/ui/oauth2/login`.
-3. The control application validates the challenge through Hydra admin and the
+3. The control application resolves the trusted Hydra client through the
+   reviewed product catalog and moves the browser to
+   `auth.freightclaims.ensombl.io`; Hydra's issuer and protocol endpoints remain
+   on `auth.ensombl.io`.
+4. The control application validates the challenge through Hydra admin and the
    browser's host-only Kratos session through `sessions/whoami`.
-4. If there is no Kratos session, the browser enters the Kratos login flow.
-5. The control application checks `auth_control.identity_gates` even when Hydra
+5. If there is no Kratos session, the browser enters the FreightClaims-branded
+   Kratos login flow.
+6. The control application checks `auth_control.identity_gates` even when Hydra
    says the login can be skipped.
-6. A required reset enters Kratos settings. Kratos itself rejects a password
+7. A required reset enters Kratos settings. Kratos itself rejects a password
    equal to the current password. The synchronous password-settings hook first
    revokes every Kratos session for the identity and only then clears the gate
    exactly once. The user authenticates again with the replacement password; a
    revocation failure leaves the gate set.
-7. The control application asks Keto whether
+8. The control application asks Keto whether
    `Product:freightclaims#access@User:<identity-id>` is allowed. Any dependency
    failure denies admission.
-8. The control application accepts Hydra login with the Kratos UUID as
+9. The control application accepts Hydra login with the Kratos UUID as
    `subject`.
-9. Consent repeats identity, reset, and product checks. Only configured
+10. Consent repeats identity, reset, and product checks. Only configured
    first-party clients are auto-approved; unknown clients require explicit
    consent.
-10. Hydra returns an authorization code to the exact FreightClaims BFF
+11. Hydra returns an authorization code to the exact FreightClaims BFF
     callback. Angular never sees an access or refresh token.
 
 ## Logout scope
 
 RP-initiated logout ends only the named product's Hydra/application session.
 The control application accepts or rejects the Hydra logout challenge and does
-not terminate the host-only Kratos identity cookie. The global Ensombl identity
-therefore remains available for SSO into other products. A separate,
-user-explicit global sign-out flow is future work.
+not terminate any host-only Kratos identity cookie. Identity records and
+credentials are global, but browser sessions are deliberately separate per
+auth hostname; no `.ensombl.io` parent cookie is used. A separate,
+user-explicit sign-out-across-hosts flow is future work.
+
+## Product-aware auth email
+
+Kratos stores the Traefik-injected `X-Ensombl-Auth-Product` marker with each
+queued recovery or verification message. Public routers overwrite that marker,
+and private invitation dispatch derives it from the already-authenticated
+product client. Arbitrary sender names are never accepted.
+
+Neither Kratos public process watches the shared queue. One `kratos-courier`
+worker posts queued messages to the non-public control endpoint using its own
+bearer secret. The control plane resolves the marker through
+`products.json` and sends with the Resend API. The sender address is always
+`noreply@notifications.ensombl.io`; the display name is `Ensombl` by default
+and `FreightClaims` for FreightClaims-originated flows. A missing marker uses
+the reviewed default; an unknown marker fails closed.
 
 ## Migration control contract
 

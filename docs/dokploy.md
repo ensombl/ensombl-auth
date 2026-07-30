@@ -8,9 +8,10 @@ These are deliberate external gates; the repository cannot safely invent them:
    `Ensombl/ensombl-auth`. Configure the only Compose deployment to watch the
    protected `main` branch directly. There is no staging auth stack or release
    branch. Do not configure any registry publication.
-2. Create DNS for `auth.ensombl.io`. The checked-in Traefik labels attach the
+2. Create DNS for `auth.ensombl.io` and
+   `auth.freightclaims.ensombl.io`. The checked-in Traefik labels attach the
    exact public routes to Dokploy's `websecure` entrypoint and `letsencrypt`
-   resolver. TLS must be valid before any user import.
+   resolver. TLS must be valid on both names before any user import.
 3. Create the Bitwarden Secrets Manager project `ensombl-auth-prod` and a
    read-only machine account scoped only to that project.
 4. Configure a verified `ensombl.io` sender in Resend. Recovery, verification,
@@ -39,6 +40,8 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `ORY_HOOK_SECRET` | settings-hook bearer; same in Kratos and control app |
 | `MIGRATION_API_SECRET` | only the hardened migration workload |
 | `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
+| `AUTH_COURIER_SECRET` | independent Kratos-courier to control-plane bearer |
+| `RESEND_API_KEY` | sending-only key for global auth email |
 | `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | staging API read-only tenant decisions |
 | `FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
 | `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | staging API invitations and tenant membership desired state |
@@ -47,15 +50,13 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production migration worker identity synchronization |
 | `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF client; distinct from production |
 | `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from staging |
-| `SMTP_CONNECTION_URI` | Resend SMTPS URI: `smtps://resend:<URL-encoded API key>@smtp.resend.com:465` |
 
-`SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
-still be injected with the environment.
-
-The Resend API key used as the SMTP password should be scoped to sending. This
-auth stack does not receive FreightClaims inbound email and does not need the
-FreightClaims API's Resend key or webhook secret. Resend's current SMTP
-settings are documented at <https://resend.com/docs/send-with-smtp>.
+The Resend API key is used through the HTTPS email API and should be scoped to
+sending. This auth stack does not receive FreightClaims inbound email and does
+not need the FreightClaims API's Resend key or webhook secret. The reviewed
+product catalog fixes the sender address at
+`noreply@notifications.ensombl.io` and selects only the configured display name
+(`Ensombl` by default, `FreightClaims` for FreightClaims).
 
 The machine-readable inventory is
 `deploy/secrets/manifest.json`. Shared `.env` files are forbidden.
@@ -89,8 +90,11 @@ environment to Dokploy, deploy, verify health, then revoke the old value.
 2. Inject exactly the keys in `deploy/secrets/manifest.json` using the approved
    Bitwarden-to-Dokploy handoff above.
 3. Do not create a separate Dokploy domain or port mapping. The Compose labels
-   route only the allowlisted paths on `auth.ensombl.io`; PostgreSQL, Ory admin,
-   Keto, and internal control paths have no public router.
+   route only the allowlisted paths on the two declared auth hostnames;
+   PostgreSQL, Ory admin, Keto, the courier endpoint, and all non-product
+   internal control paths have no public router. The five exact product routes
+   are reachable only over HTTPS and reject requests without their
+   client-specific bearer secret.
 4. Set persistent storage for the `auth-postgres` volume.
 5. Enable Dokploy auto-deploy for pushes to `main`. Dokploy builds
    `apps/control-plane/Dockerfile` locally;
@@ -99,7 +103,8 @@ environment to Dokploy, deploy, verify health, then revoke the old value.
 6. Wait for PostgreSQL role reconciliation, the three Ory migration jobs, the
    auth-control migration and privilege reconciliation, and
    `product-reconcile` to complete successfully.
-7. Confirm `invitation-reconciler` is healthy. It continuously retries only
+7. Confirm the singleton `kratos-courier` and `invitation-reconciler` are
+   healthy. The latter continuously retries only
    persisted invitation activations; the `invitation-reconcile` profile is the
    operator-triggered one-shot form.
 
@@ -108,7 +113,8 @@ environment to Dokploy, deploy, verify health, then revoke the old value.
 `main` is the production source of truth. Protect it with required checks and
 review. Once a reviewed commit reaches `main`, Dokploy pulls that exact Git
 revision, builds the checked-in source, and reconciles the one global stack at
-`auth.ensombl.io`.
+`auth.ensombl.io` with its FreightClaims browser edge at
+`auth.freightclaims.ensombl.io`.
 
 Dokploy owns the build and deployment. GitHub receives no Bitwarden, Dokploy,
 SMTP, database, or Ory credentials and never builds or publishes an image.
@@ -148,19 +154,27 @@ Verify all of the following:
 ```text
 GET https://auth.ensombl.io/healthz                    -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
+GET https://auth.freightclaims.ensombl.io/healthz      -> 200
 GET https://auth.ensombl.io/admin/anything             -> 404
 GET https://auth.ensombl.io/internal/anything          -> 404
+GET https://auth.freightclaims.ensombl.io/internal/anything -> 404
 ```
 
 - OIDC discovery returns issuer and endpoints on exactly
   `https://auth.ensombl.io`.
+- FreightClaims login and recovery render on
+  `https://auth.freightclaims.ensombl.io`, while OAuth/OIDC protocol endpoints
+  and token issuer remain on `https://auth.ensombl.io`.
 - `freightclaims-staging-web` contains only
   `https://app.staging.freightclaims.ensombl.io/auth/callback` and audience
   `freightclaims-staging`.
 - `freightclaims-production-web` contains only
   `https://app.freightclaims.ensombl.io/auth/callback` and audience
   `freightclaims-production`.
-- Recovery email reaches a controlled test mailbox and its code can be used.
+- Default recovery email reaches a controlled test mailbox as
+  `Ensombl <noreply@notifications.ensombl.io>`, and FreightClaims recovery
+  reaches it as
+  `FreightClaims <noreply@notifications.ensombl.io>`; both codes can be used.
 - A reset-gated test identity can authenticate but cannot obtain a Hydra code
   until it chooses a different password.
 - A user without the `Product:freightclaims` admission is denied even with a

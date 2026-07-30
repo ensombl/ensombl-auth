@@ -6,6 +6,8 @@ export function safeReturnUrl(value: string | null, fallback = '/'): string {
   const configured = config()
   const allowedOrigins = new Set([
     new URL(configured.PUBLIC_AUTH_URL).origin,
+    configured.defaultAuthBrand.authOrigin,
+    ...[...configured.authBrandByProduct.values()].map((brand) => brand.authOrigin),
     ...configured.returnOrigins,
   ])
 

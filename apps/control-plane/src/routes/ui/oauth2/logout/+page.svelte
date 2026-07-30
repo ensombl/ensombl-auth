@@ -9,8 +9,8 @@ let { data } = $props()
     <Brand />
     <h1>Sign out of {data.clientName}?</h1>
     <p class="muted">
-      This ends your session with {data.clientName}. Your Ensombl identity session remains active
-      for other products.
+      This ends your session with {data.clientName}. Your shared identity remains signed in on
+      this auth hostname.
     </p>
     <div class="actions">
       <form method="POST" action="?/confirm">

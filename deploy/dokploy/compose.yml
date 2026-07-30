@@ -16,6 +16,8 @@ x-control-environment: &control-environment
   ORY_HOOK_SECRET: ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
   MIGRATION_API_SECRET: ${MIGRATION_API_SECRET:?Inject MIGRATION_API_SECRET from Bitwarden}
   INVITATION_RECONCILER_SECRET: ${INVITATION_RECONCILER_SECRET:?Inject INVITATION_RECONCILER_SECRET from Bitwarden}
+  AUTH_COURIER_SECRET: ${AUTH_COURIER_SECRET:?Inject AUTH_COURIER_SECRET from Bitwarden}
+  RESEND_API_KEY: ${RESEND_API_KEY:?Inject RESEND_API_KEY from Bitwarden}
   FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET from Bitwarden}
   FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET from Bitwarden}
   FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET: ${FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET:?Inject FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET from Bitwarden}
@@ -28,9 +30,6 @@ x-kratos-environment: &kratos-environment
   DSN: postgres://kratos:${KRATOS_DB_PASSWORD:?Inject KRATOS_DB_PASSWORD from Bitwarden}@postgres:5432/kratos?sslmode=disable
   SECRETS_COOKIE_0: ${KRATOS_COOKIE_SECRET:?Inject KRATOS_COOKIE_SECRET from Bitwarden}
   SECRETS_CIPHER_0: ${KRATOS_CIPHER_SECRET:?Inject KRATOS_CIPHER_SECRET from Bitwarden}
-  COURIER_SMTP_CONNECTION_URI: ${SMTP_CONNECTION_URI:?Inject SMTP_CONNECTION_URI from Bitwarden}
-  COURIER_SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:?Inject SMTP_FROM_ADDRESS from Bitwarden}
-  COURIER_SMTP_FROM_NAME: ${SMTP_FROM_NAME:?Inject SMTP_FROM_NAME from Bitwarden}
   SELFSERVICE_FLOWS_SETTINGS_AFTER_PASSWORD_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
   SELFSERVICE_FLOWS_RECOVERY_AFTER_HOOKS_0_CONFIG_AUTH_CONFIG_VALUE: Bearer ${ORY_HOOK_SECRET:?Inject ORY_HOOK_SECRET from Bitwarden}
 
@@ -130,7 +129,7 @@ services:
 
   kratos:
     image: oryd/kratos:v26.2.0
-    command: ["serve", "--watch-courier", "--config", "/etc/config/kratos/kratos.yml"]
+    command: ["serve", "--config", "/etc/config/kratos/kratos.yml"]
     restart: unless-stopped
     environment:
       <<: *kratos-environment
@@ -150,9 +149,48 @@ services:
       traefik.http.routers.ensombl-auth-kratos.rule: Host(`auth.ensombl.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
       traefik.http.routers.ensombl-auth-kratos.entrypoints: websecure
       traefik.http.routers.ensombl-auth-kratos.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-kratos.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
+      traefik.http.routers.ensombl-auth-kratos.middlewares: ensombl-auth-product-default@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
       traefik.http.routers.ensombl-auth-kratos.service: ensombl-auth-kratos
+      traefik.http.middlewares.ensombl-auth-product-default.headers.customrequestheaders.X-Ensombl-Auth-Product: ensombl
       traefik.http.services.ensombl-auth-kratos.loadbalancer.server.port: "4433"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  kratos-freightclaims:
+    image: oryd/kratos:v26.2.0
+    command:
+      [
+        "serve",
+        "--config",
+        "/etc/config/kratos/kratos.yml",
+        "--config",
+        "/etc/config/kratos/freightclaims.yml",
+      ]
+    restart: unless-stopped
+    environment:
+      <<: *kratos-environment
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ../ory/kratos:/etc/config/kratos:ro
+    networks:
+      - dokploy-network
+      - db-kratos
+      - control-private
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.rule: Host(`auth.freightclaims.ensombl.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.middlewares: ensombl-auth-product-freightclaims@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
+      traefik.http.routers.ensombl-auth-kratos-freightclaims.service: ensombl-auth-kratos-freightclaims
+      traefik.http.middlewares.ensombl-auth-product-freightclaims.headers.customrequestheaders.X-Ensombl-Auth-Product: freightclaims
+      traefik.http.services.ensombl-auth-kratos-freightclaims.loadbalancer.server.port: "4433"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
       interval: 5s
@@ -297,9 +335,6 @@ services:
       keto:
         condition: service_healthy
     networks:
-      product-decisions:
-        aliases:
-          - ensombl-auth-control
       dokploy-network:
       db-control:
       kratos-admin:
@@ -309,11 +344,16 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: Host(`auth.ensombl.io`) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
+      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
       traefik.http.routers.ensombl-auth-control.entrypoints: websecure
       traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
       traefik.http.routers.ensombl-auth-control.service: ensombl-auth-control
+      traefik.http.routers.ensombl-auth-product-api.rule: Host(`auth.ensombl.io`) && (Path(`/internal/authorization/check`) || Path(`/internal/invitations`) || Path(`/internal/tenants/memberships`) || Path(`/internal/migration/identities`) || Path(`/internal/oauth2/introspect`))
+      traefik.http.routers.ensombl-auth-product-api.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-product-api.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-product-api.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker
+      traefik.http.routers.ensombl-auth-product-api.service: ensombl-auth-control
       traefik.http.middlewares.ensombl-auth-security.headers.contenttypenosniff: "true"
       traefik.http.middlewares.ensombl-auth-security.headers.framedeny: "true"
       traefik.http.middlewares.ensombl-auth-security.headers.referrerpolicy: no-referrer
@@ -327,6 +367,22 @@ services:
       interval: 10s
       timeout: 5s
       retries: 30
+
+  kratos-courier:
+    image: oryd/kratos:v26.2.0
+    command: ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"]
+    restart: unless-stopped
+    environment:
+      <<: *kratos-environment
+      COURIER_HTTP_REQUEST_CONFIG_AUTH_CONFIG_VALUE: Bearer ${AUTH_COURIER_SECRET:?Inject AUTH_COURIER_SECRET from Bitwarden}
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    volumes:
+      - ../ory/kratos:/etc/config/kratos:ro
+    networks:
+      - db-kratos
+      - control-private
 
   invitation-reconciler:
     build: *control-build
@@ -450,6 +506,3 @@ networks:
     internal: true
   control-private:
     internal: true
-  product-decisions:
-    external: true
-    name: ensombl-auth-product-decisions

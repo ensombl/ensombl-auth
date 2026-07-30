@@ -4,6 +4,7 @@ import { z } from 'zod'
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 const clientIdentifier = z.string().regex(/^[A-Za-z0-9._-]+$/)
 const admissionScope = z.string().regex(/^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$/)
+const emailAddress = z.string().email().max(320)
 const httpsOrLoopbackUrl = z
   .string()
   .url()
@@ -11,7 +12,9 @@ const httpsOrLoopbackUrl = z
     const url = new URL(value)
     return (
       url.protocol === 'https:' ||
-      (url.protocol === 'http:' && ['localhost', '127.0.0.1', '::1'].includes(url.hostname))
+      (url.protocol === 'http:' &&
+        (['localhost', '127.0.0.1', '::1'].includes(url.hostname) ||
+          url.hostname.endsWith('.localhost')))
     )
   }, 'Product URLs must use HTTPS except for loopback development')
 
@@ -47,12 +50,23 @@ const clientSchema = z
     }
   })
 
+const authBrandSchema = z.object({
+  display_name: z.string().min(1).max(100),
+  auth_origin: httpsOrLoopbackUrl,
+  email_from_name: z.string().min(1).max(100),
+})
+
 const catalogSchema = z.object({
-  schema_version: z.literal(1),
+  schema_version: z.literal(2),
+  email_from_address: emailAddress,
+  default_auth_brand: authBrandSchema.extend({
+    id: identifier,
+  }),
   products: z
     .array(
       z.object({
         id: identifier,
+        auth_brand: authBrandSchema,
         return_origins: z.array(httpsOrLoopbackUrl).min(1),
         clients: z.array(clientSchema).min(1),
       }),
@@ -60,7 +74,18 @@ const catalogSchema = z.object({
     .min(1),
 })
 
+export interface AuthBrand {
+  readonly id: string
+  readonly displayName: string
+  readonly authOrigin: string
+  readonly emailFromName: string
+}
+
 export interface ProductCatalogConfiguration {
+  readonly emailFromAddress: string
+  readonly defaultAuthBrand: AuthBrand
+  readonly authBrandByProduct: ReadonlyMap<string, AuthBrand>
+  readonly authBrandByHostname: ReadonlyMap<string, AuthBrand>
   readonly admissionScopeByClient: ReadonlyMap<string, string>
   readonly authorizationSecretEnvironmentByClient: ReadonlyMap<string, string>
   readonly identityManagementSecretEnvironmentByClient: ReadonlyMap<string, string>
@@ -73,6 +98,16 @@ export interface ProductCatalogConfiguration {
 
 export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   const catalog = catalogSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
+  const defaultAuthBrand: AuthBrand = {
+    id: catalog.default_auth_brand.id,
+    displayName: catalog.default_auth_brand.display_name,
+    authOrigin: new URL(catalog.default_auth_brand.auth_origin).origin,
+    emailFromName: catalog.default_auth_brand.email_from_name,
+  }
+  const authBrandByProduct = new Map<string, AuthBrand>()
+  const authBrandByHostname = new Map<string, AuthBrand>([
+    [new URL(defaultAuthBrand.authOrigin).hostname, defaultAuthBrand],
+  ])
   const clientProductMap = new Map<string, string>()
   const admissionScopeByClient = new Map<string, string>()
   const authorizationSecretEnvironmentByClient = new Map<string, string>()
@@ -84,6 +119,25 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   const audiences = new Set<string>()
 
   for (const product of catalog.products) {
+    if (product.id === defaultAuthBrand.id) {
+      throw new Error(`Product ID conflicts with the default auth brand: ${product.id}`)
+    }
+    const authBrand: AuthBrand = {
+      id: product.id,
+      displayName: product.auth_brand.display_name,
+      authOrigin: new URL(product.auth_brand.auth_origin).origin,
+      emailFromName: product.auth_brand.email_from_name,
+    }
+    const authHostname = new URL(authBrand.authOrigin).hostname
+    const existingBrand = authBrandByHostname.get(authHostname)
+    if (existingBrand && existingBrand.authOrigin !== authBrand.authOrigin) {
+      throw new Error(`Auth hostname uses conflicting origins: ${authHostname}`)
+    }
+    if (existingBrand && existingBrand.id !== defaultAuthBrand.id) {
+      throw new Error(`Duplicate product auth hostname: ${authHostname}`)
+    }
+    authBrandByProduct.set(product.id, authBrand)
+    if (!existingBrand) authBrandByHostname.set(authHostname, authBrand)
     for (const value of product.return_origins) {
       const url = new URL(value)
       if (url.pathname !== '/' || url.search || url.hash || url.username || url.password) {
@@ -124,6 +178,10 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   }
 
   return {
+    emailFromAddress: catalog.email_from_address,
+    defaultAuthBrand,
+    authBrandByProduct,
+    authBrandByHostname,
     admissionScopeByClient,
     authorizationSecretEnvironmentByClient,
     identityManagementSecretEnvironmentByClient,

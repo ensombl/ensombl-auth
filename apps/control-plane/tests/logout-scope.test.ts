@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { resolve } from 'node:path'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const ory = vi.hoisted(() => ({
   acceptLogout: vi.fn(),
@@ -8,13 +9,44 @@ const ory = vi.hoisted(() => ({
 
 vi.mock('$lib/server/ory', () => ory)
 
-import { actions } from '../src/routes/ui/oauth2/logout/+page.server'
+import { resetConfigForTest } from '../src/lib/server/config'
+import { actions, load } from '../src/routes/ui/oauth2/logout/+page.server'
+
+const originalEnvironment = { ...process.env }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  process.env.PRODUCT_CATALOG_PATH = resolve(process.cwd(), '../../deploy/products/products.json')
+  resetConfigForTest()
+})
+
+afterEach(() => {
+  process.env = { ...originalEnvironment }
+  resetConfigForTest()
 })
 
 describe('application logout scope', () => {
+  it('moves a FreightClaims logout challenge to the branded auth hostname', async () => {
+    ory.getLogoutRequest.mockResolvedValue({
+      challenge: 'logout-challenge',
+      client: {
+        client_id: 'freightclaims-staging-web',
+        client_name: 'FreightClaims',
+      },
+      rp_initiated: true,
+    })
+
+    await expect(
+      load({
+        url: new URL('https://auth.ensombl.io/ui/oauth2/logout?logout_challenge=logout-challenge'),
+      } as Parameters<typeof load>[0]),
+    ).rejects.toMatchObject({
+      status: 303,
+      location:
+        'https://auth.freightclaims.ensombl.io/ui/oauth2/logout?logout_challenge=logout-challenge',
+    })
+  })
+
   it('accepts only the Hydra application logout and retains the Kratos identity session', async () => {
     ory.acceptLogout.mockResolvedValue({
       redirect_to: 'https://app.freightclaims.ensombl.io/',

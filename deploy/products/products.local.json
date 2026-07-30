@@ -1,8 +1,20 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "email_from_address": "noreply@notifications.ensombl.io",
+  "default_auth_brand": {
+    "id": "ensombl",
+    "display_name": "Ensombl",
+    "auth_origin": "http://localhost:24455",
+    "email_from_name": "Ensombl"
+  },
   "products": [
     {
       "id": "freightclaims",
+      "auth_brand": {
+        "display_name": "FreightClaims",
+        "auth_origin": "http://localhost:24455",
+        "email_from_name": "FreightClaims"
+      },
       "return_origins": ["http://localhost:4200"],
       "clients": [
         {

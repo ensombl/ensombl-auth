@@ -1,6 +1,6 @@
 import { error, redirect } from '@sveltejs/kit'
 import { admissionScopeForClient, evaluateAdmission, productForClient } from '$lib/server/admission'
-import { config } from '$lib/server/config'
+import { authBrandForProduct } from '$lib/server/auth-brand'
 import { acceptLogin, getKratosSession, getLoginRequest, rejectLogin } from '$lib/server/ory'
 import type { PageServerLoad } from './$types'
 
@@ -10,19 +10,23 @@ export const load: PageServerLoad = async ({ url, request }) => {
 
   const login = await getLoginRequest(challenge)
   const product = productForClient(login.client)
+  const authBrand = authBrandForProduct(product)
+  if (url.origin !== authBrand.authOrigin) {
+    redirect(303, new URL(`${url.pathname}${url.search}`, authBrand.authOrigin).toString())
+  }
   const admissionScope = admissionScopeForClient(login.client)
   const cookie = request.headers.get('cookie')
   const session = await getKratosSession(cookie)
 
   if (!session) {
-    const start = new URL('self-service/login/browser', `${config().PUBLIC_AUTH_URL}/`)
+    const start = new URL('self-service/login/browser', `${authBrand.authOrigin}/`)
     start.searchParams.set('return_to', url.toString())
     redirect(303, start.toString())
   }
 
   const admission = await evaluateAdmission(session, admissionScope)
   if (admission === 'reset_required') {
-    const settings = new URL('self-service/settings/browser', `${config().PUBLIC_AUTH_URL}/`)
+    const settings = new URL('self-service/settings/browser', `${authBrand.authOrigin}/`)
     settings.searchParams.set('return_to', url.toString())
     redirect(303, settings.toString())
   }

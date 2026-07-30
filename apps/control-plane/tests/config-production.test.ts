@@ -18,6 +18,8 @@ function setProductionEnvironment(): void {
     ORY_HOOK_SECRET: 'production-hook-secret-that-is-not-the-default',
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
+    AUTH_COURIER_SECRET: 'production-courier-secret-that-is-not-the-default',
+    RESEND_API_KEY: 'production-resend-api-key',
     FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET:
       'stage-authorization-decision-secret-that-is-long-enough',
     FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET:
@@ -66,6 +68,8 @@ describe('production configuration', () => {
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
+      'AUTH_COURIER_SECRET',
+      'RESEND_API_KEY',
       'PRODUCT_CATALOG_PATH',
     ]) {
       delete process.env[key]
@@ -98,6 +102,7 @@ describe('production configuration', () => {
     ['ORY_HOOK_SECRET', 'local-only-hook-secret-32-bytes'],
     ['MIGRATION_API_SECRET', 'local-only-migration-api-secret'],
     ['INVITATION_RECONCILER_SECRET', 'local-only-invitation-reconciler-secret'],
+    ['AUTH_COURIER_SECRET', 'local-only-auth-courier-secret-that-is-long-enough'],
   ])('rejects the development value for %s', (key, value) => {
     setProductionEnvironment()
     process.env[key] = value
@@ -111,6 +116,7 @@ describe('production configuration', () => {
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
+      'AUTH_COURIER_SECRET',
     ] as const
 
     for (let left = 0; left < keys.length; left += 1) {

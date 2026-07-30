@@ -1,7 +1,9 @@
 # Ensombl global identity
 
 This repository is the source of truth for the global self-hosted Ory control
-plane at `https://auth.ensombl.io`.
+plane. `https://auth.ensombl.io` is the canonical OIDC issuer and default
+Ensombl UI; `https://auth.freightclaims.ensombl.io` is the current
+FreightClaims-branded browser entrypoint.
 
 It is intentionally separate from every product repository. A Kratos identity
 can be admitted to more than one Ensombl product, while Hydra clients, exact
@@ -10,8 +12,8 @@ isolated.
 
 ## What runs here
 
-- Ory Kratos for identities, passwords, MFA, recovery, verification, settings,
-  and browser identity sessions.
+- Ory Kratos for shared identities, passwords, MFA, recovery, verification,
+  settings, and host-scoped browser identity sessions.
 - Ory Hydra for OAuth 2.0/OIDC and product-specific machine clients.
 - Ory Keto for global and product authorization relationships.
 - A source-built SvelteKit control application for Kratos self-service screens,
@@ -20,6 +22,9 @@ isolated.
 - PostgreSQL for the three Ory stores and the small auth-control database.
 - Checked-in Dokploy Traefik routes for the exact public control, Kratos, and
   Hydra paths. Ory admin APIs and control endpoints have no public router.
+- One singleton Kratos courier and an internal, product-aware Resend boundary.
+  Auth email always uses `noreply@notifications.ensombl.io`; the display name
+  comes from the reviewed product catalog and defaults to `Ensombl`.
 
 The application uses Node 24, pnpm 11, TypeScript, SvelteKit, and Turborepo,
 matching the relevant runtime and frontend patterns in Exhibit A. No project
@@ -91,10 +96,11 @@ this fixture is separate from the audited Stage and Production importers.
   hook revokes every identity session before clearing the reset gate
   idempotently; the user then authenticates again with the replacement
   password.
-- Ory cookies are host-only for `auth.ensombl.io`. No `.ensombl.io` parent
-  cookie is used.
-- Internal APIs require independent bearer secrets and Dokploy Traefik has no
-  router for `/internal/*`.
+- Ory cookies are host-only for each configured auth hostname. No
+  `.ensombl.io` parent cookie is used, so the identity is global while browser
+  sessions remain isolated by auth hostname.
+- The five product-facing HTTPS routes require independent, client-scoped
+  bearer secrets. Dokploy Traefik exposes no other `/internal/*` route.
 - Passwords, ciphertext, password hashes, OAuth tokens, recovery codes, and
   secrets are never written to application logs or the auth-control database.
 - Identity batches enter only through a source-built stdin/tmpfs one-shot. A
@@ -144,5 +150,8 @@ FreightClaims currently declares two confidential clients:
 
 Both use Authorization Code, refresh tokens, and
 `openid offline_access email profile`. Their Bitwarden-managed secrets are
-independent. When FreightClaims moves to its final customer domain, update the
-catalog and Kratos return-origin allowlist in one reviewed deployment.
+independent. Both environments currently use the branded browser origin
+`https://auth.freightclaims.ensombl.io`, while the token issuer remains
+`https://auth.ensombl.io`. When FreightClaims moves to its final customer
+domain, update the catalog, Kratos edge override, return-origin allowlist, DNS,
+and Traefik host rules in one reviewed deployment.

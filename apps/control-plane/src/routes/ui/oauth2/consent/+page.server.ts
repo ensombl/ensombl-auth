@@ -5,6 +5,7 @@ import {
   identityClaims,
   productForClient,
 } from '$lib/server/admission'
+import { authBrandForProduct } from '$lib/server/auth-brand'
 import { config } from '$lib/server/config'
 import { acceptConsent, getConsentRequest, getKratosSession, rejectConsent } from '$lib/server/ory'
 import type { Actions, PageServerLoad } from './$types'
@@ -46,6 +47,12 @@ async function approve(challenge: string, cookie: string | null) {
 export const load: PageServerLoad = async ({ url, request }) => {
   const challenge = url.searchParams.get('consent_challenge')
   if (!challenge) error(400, 'Missing consent challenge')
+
+  const requestedConsent = await getConsentRequest(challenge)
+  const authBrand = authBrandForProduct(productForClient(requestedConsent.client))
+  if (url.origin !== authBrand.authOrigin) {
+    redirect(303, new URL(`${url.pathname}${url.search}`, authBrand.authOrigin).toString())
+  }
 
   const { consent } = await context(challenge, request.headers.get('cookie'))
   if (consent.skip || config().trustedClientIds.has(consent.client.client_id)) {

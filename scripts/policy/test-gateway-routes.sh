@@ -30,18 +30,26 @@ jq -e '
   .services as $services
   | ($services | has("gateway") | not)
     and ($services.kratos.networks | has("dokploy-network"))
+    and ($services["kratos-freightclaims"].networks | has("dokploy-network"))
     and ($services["hydra-public"].networks | has("dokploy-network"))
     and ($services["control-plane"].networks | has("dokploy-network"))
-    and ($services["control-plane"].networks | has("product-decisions"))
-    and (
-      $services["control-plane"].networks["product-decisions"].aliases
-      | index("ensombl-auth-control")
-    )
     and ($services["hydra-admin"].networks | has("dokploy-network") | not)
     and (
       $services.kratos.labels["traefik.http.routers.ensombl-auth-kratos.rule"]
       | contains("PathPrefix(`/self-service/`)")
     )
+    and (
+      $services["kratos-freightclaims"].labels["traefik.http.routers.ensombl-auth-kratos-freightclaims.rule"]
+      | contains("Host(`auth.freightclaims.ensombl.io`)")
+    )
+    and (
+      $services["kratos-freightclaims"].labels["traefik.http.middlewares.ensombl-auth-product-freightclaims.headers.customrequestheaders.X-Ensombl-Auth-Product"]
+      == "freightclaims"
+    )
+    and ($services.kratos.command | index("--watch-courier") | not)
+    and ($services["kratos-freightclaims"].command | index("--watch-courier") | not)
+    and ($services["kratos-courier"].command == ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"])
+    and ($services["kratos-courier"].networks | has("dokploy-network") | not)
     and (
       $services["hydra-public"].labels["traefik.http.routers.ensombl-auth-hydra.rule"]
       | contains("PathPrefix(`/oauth2/`)")
@@ -59,6 +67,10 @@ jq -e '
       | contains("PathPrefix(`/_app/`)")
     )
     and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
+      | contains("Host(`auth.freightclaims.ensombl.io`)")
+    )
+    and (
       $services["control-plane"].depends_on["product-reconcile"].condition
       == "service_completed_successfully"
     )
@@ -67,8 +79,15 @@ jq -e '
       | contains("/internal")
       | not
     )
-    and (.networks["product-decisions"].name == "ensombl-auth-product-decisions")
-    and (.networks["product-decisions"].external == true)
+    and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-product-api.rule"]
+      == "Host(`auth.ensombl.io`) && (Path(`/internal/authorization/check`) || Path(`/internal/invitations`) || Path(`/internal/tenants/memberships`) || Path(`/internal/migration/identities`) || Path(`/internal/oauth2/introspect`))"
+    )
+    and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-product-api.rule"]
+      | contains("/internal/courier")
+      | not
+    )
     and (
       $services["control-plane"].labels
       | has("traefik.http.middlewares.ensombl-auth-security.headers.framedeny")
