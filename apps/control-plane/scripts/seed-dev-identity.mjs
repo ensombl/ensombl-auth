@@ -7,7 +7,7 @@ const identityContract = {
   email: 'developer@freightclaims.test',
   password: 'FreightClaims-Dev-2026!',
   externalId: 'local-dev:freightclaims-human',
-  product: 'freightclaims',
+  admissionScope: 'freightclaims:local',
 }
 
 if (process.env.NODE_ENV === 'production') {
@@ -89,7 +89,7 @@ const granted = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
   headers: { 'content-type': 'application/json' },
   body: JSON.stringify({
     namespace: 'Product',
-    object: identityContract.product,
+    object: identityContract.admissionScope,
     relation: 'members',
     subject_id: identity.id,
   }),

@@ -5,8 +5,15 @@ import {
   hasProductAdmissionStrict,
   setTenantMembership,
 } from '../src/lib/server/keto'
+import type { TenantRolePolicy } from '../src/lib/server/product-catalog'
 
 const originalEnvironment = { ...process.env }
+const rolePolicy: TenantRolePolicy = {
+  roles: new Map([
+    ['member', { id: 'member', permissions: new Set(['access']) }],
+    ['tenant_admin', { id: 'tenant_admin', permissions: new Set(['access', 'administer']) }],
+  ]),
+}
 
 afterEach(() => {
   process.env = { ...originalEnvironment }
@@ -39,7 +46,7 @@ describe('Keto admission reads', () => {
 })
 
 describe('Keto tenant membership desired state', () => {
-  it('removes administrator access before granting a demoted member relation', async () => {
+  it('removes every existing role before granting the desired role', async () => {
     process.env.KETO_WRITE_URL = 'http://keto.test'
     resetConfigForTest()
     const calls: Array<{ method: string; url: URL; body: unknown }> = []
@@ -57,50 +64,33 @@ describe('Keto tenant membership desired state', () => {
 
     await setTenantMembership({
       identityId: 'bb86046e-c922-44a3-a85f-ba21042c2897',
-      organizationId: '01900000-0000-7000-8000-000000000001',
+      tenantId: '01900000-0000-7000-8000-000000000001',
       product: 'freightclaims',
-      relation: 'members',
+      role: 'member',
+      rolePolicy,
       state: 'active',
     })
 
     expect(calls.map((call) => [call.method, call.body])).toEqual([
-      [
-        'PUT',
-        {
-          namespace: 'Tenant',
-          object: 'freightclaims:01900000-0000-7000-8000-000000000001',
-          relation: 'product',
-          subject_set: { namespace: 'Product', object: 'freightclaims', relation: '' },
-        },
-      ],
-      [
-        'PUT',
-        {
-          namespace: 'Tenant',
-          object: 'freightclaims:01900000-0000-7000-8000-000000000001',
-          relation: 'organization',
-          subject_set: {
-            namespace: 'Organization',
-            object: 'freightclaims:01900000-0000-7000-8000-000000000001',
-            relation: '',
-          },
-        },
-      ],
+      ['DELETE', null],
       ['DELETE', null],
       [
         'PUT',
         {
-          namespace: 'Organization',
-          object: 'freightclaims:01900000-0000-7000-8000-000000000001',
-          relation: 'members',
+          namespace: 'TenantRole',
+          object: 'freightclaims:MDE5MDAwMDAtMDAwMC03MDAwLTgwMDAtMDAwMDAwMDAwMDAx:member',
+          relation: 'assignees',
           subject_id: 'bb86046e-c922-44a3-a85f-ba21042c2897',
         },
       ],
     ])
-    expect(calls[2]?.url.searchParams.get('relation')).toBe('administrators')
+    expect(calls.slice(0, 2).map((call) => call.url.searchParams.get('relation'))).toEqual([
+      'assignees',
+      'assignees',
+    ])
   })
 
-  it('removes both organization relations when access is revoked', async () => {
+  it('removes every configured tenant role when access is revoked', async () => {
     process.env.KETO_WRITE_URL = 'http://keto.test'
     resetConfigForTest()
     const calls: URL[] = []
@@ -114,15 +104,13 @@ describe('Keto tenant membership desired state', () => {
 
     await setTenantMembership({
       identityId: 'bb86046e-c922-44a3-a85f-ba21042c2897',
-      organizationId: '01900000-0000-7000-8000-000000000001',
+      tenantId: '01900000-0000-7000-8000-000000000001',
       product: 'freightclaims',
-      relation: 'members',
+      role: 'member',
+      rolePolicy,
       state: 'revoked',
     })
 
-    expect(calls.map((url) => url.searchParams.get('relation'))).toEqual([
-      'administrators',
-      'members',
-    ])
+    expect(calls.map((url) => url.searchParams.get('relation'))).toEqual(['assignees', 'assignees'])
   })
 })

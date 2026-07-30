@@ -9,8 +9,8 @@ const bodySchema = z
   .object({
     client_id: z.string().regex(/^[A-Za-z0-9._-]+$/),
     identity_id: z.string().uuid(),
-    organization_id: z.string().uuid(),
-    relation: z.enum(['members', 'administrators']),
+    tenant_id: z.string().trim().min(1).max(200),
+    role: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
     state: z.enum(['active', 'revoked']),
   })
   .strict()
@@ -21,17 +21,22 @@ export const PUT: RequestHandler = async ({ request }) => {
 
   const current = config()
   const admissionScope = current.admissionScopeByClient.get(parsed.data.client_id)
+  const rolePolicy = current.tenantRolePolicyByAdmissionScope.get(admissionScope ?? '')
   const expectedSecret = current.identityManagementSecrets.get(parsed.data.client_id)
-  if (!admissionScope || !expectedSecret || !hasBearer(request, expectedSecret)) {
+  if (!admissionScope || !rolePolicy || !expectedSecret || !hasBearer(request, expectedSecret)) {
     return json({ error: 'unauthorized' }, { status: 401 })
+  }
+  if (!rolePolicy.roles.has(parsed.data.role)) {
+    return json({ error: 'invalid_role' }, { status: 400 })
   }
 
   try {
     await setTenantMembership({
       identityId: parsed.data.identity_id,
-      organizationId: parsed.data.organization_id,
+      tenantId: parsed.data.tenant_id,
       product: admissionScope,
-      relation: parsed.data.relation,
+      role: parsed.data.role,
+      rolePolicy,
       state: parsed.data.state,
     })
     return new Response(null, { status: 204 })

@@ -140,11 +140,13 @@ courier call. Retries with the same key resume a failed identity lookup or
 recovery dispatch; reusing the key with different request data is rejected.
 
 `PUT /internal/tenants/memberships` uses the same product-client capability. It
-applies an idempotent active or revoked desired state to only the caller's
-product tenant. Administrator demotion removes the elevated relation before
-granting ordinary membership, and revocation removes both relations. The
-product service remains responsible for its canonical membership transaction
-and audit record.
+applies an idempotent active or revoked desired role to only the caller's
+product tenant. The catalog supplies `member`, `admin`, and `owner` by default.
+A product can extend those defaults or replace the complete role set and map
+each role to product-owned permissions. Keto stores one product-scoped role
+assignment per identity and tenant; changing a role removes every prior
+assignment before granting the desired one. The product service remains
+responsible for its canonical membership transaction and audit record.
 
 Dispatching an invitation never grants Keto admission. A synchronous Kratos
 post-recovery hook records the successful recovery flow and activates only

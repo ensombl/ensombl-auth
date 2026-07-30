@@ -45,13 +45,14 @@ create table if not exists auth_control.identity_source_memberships (
   source text not null,
   source_user_id text not null,
   admission_scope text not null,
-  organization_id uuid not null,
+  tenant_id text not null
+    check (length(tenant_id) between 1 and 200),
   identity_id uuid not null,
-  relation text not null
-    check (relation in ('members', 'administrators')),
+  role text not null
+    check (role ~ '^[a-z][a-z0-9_-]{0,63}$'),
   last_snapshot text not null,
   updated_at timestamptz not null default now(),
-  primary key (source, source_user_id, admission_scope, organization_id),
+  primary key (source, source_user_id, admission_scope, tenant_id),
   foreign key (source, source_user_id)
     references auth_control.identity_source_aliases (source, source_user_id)
     on delete restrict

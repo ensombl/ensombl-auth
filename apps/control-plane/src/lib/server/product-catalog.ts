@@ -4,6 +4,8 @@ import { z } from 'zod'
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,63}$/)
 const clientIdentifier = z.string().regex(/^[A-Za-z0-9._-]+$/)
 const admissionScope = z.string().regex(/^[a-z][a-z0-9-]*(?::[a-z][a-z0-9-]*)+$/)
+const tenantRoleIdentifier = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/)
+const tenantPermissionIdentifier = z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/)
 const emailAddress = z.string().email().max(320)
 const httpsOrLoopbackUrl = z
   .string()
@@ -56,8 +58,54 @@ const authBrandSchema = z.object({
   email_from_name: z.string().min(1).max(100),
 })
 
+const tenantRolePolicySchema = z
+  .object({
+    mode: z.enum(['extend', 'replace']).default('extend'),
+    roles: z
+      .array(
+        z.object({
+          id: tenantRoleIdentifier,
+          permissions: z.array(tenantPermissionIdentifier).min(1),
+        }),
+      )
+      .default([]),
+  })
+  .superRefine((policy, context) => {
+    const roles = new Set<string>()
+    for (const [index, role] of policy.roles.entries()) {
+      if (roles.has(role.id)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['roles', index, 'id'],
+          message: `Duplicate tenant role: ${role.id}`,
+        })
+      }
+      roles.add(role.id)
+      if (new Set(role.permissions).size !== role.permissions.length) {
+        context.addIssue({
+          code: 'custom',
+          path: ['roles', index, 'permissions'],
+          message: `Tenant role ${role.id} has duplicate permissions`,
+        })
+      }
+      if (!role.permissions.includes('access')) {
+        context.addIssue({
+          code: 'custom',
+          path: ['roles', index, 'permissions'],
+          message: `Tenant role ${role.id} must grant access`,
+        })
+      }
+    }
+    if (policy.mode === 'replace' && policy.roles.length === 0) {
+      context.addIssue({
+        code: 'custom',
+        path: ['roles'],
+        message: 'A replacement tenant role policy must define at least one role',
+      })
+    }
+  })
+
 const catalogSchema = z.object({
-  schema_version: z.literal(2),
   email_from_address: emailAddress,
   default_auth_brand: authBrandSchema.extend({
     id: identifier,
@@ -68,6 +116,7 @@ const catalogSchema = z.object({
         id: identifier,
         auth_brand: authBrandSchema,
         return_origins: z.array(httpsOrLoopbackUrl).min(1),
+        tenant_roles: tenantRolePolicySchema.optional(),
         clients: z.array(clientSchema).min(1),
       }),
     )
@@ -81,6 +130,15 @@ export interface AuthBrand {
   readonly emailFromName: string
 }
 
+export interface TenantRole {
+  readonly id: string
+  readonly permissions: ReadonlySet<string>
+}
+
+export interface TenantRolePolicy {
+  readonly roles: ReadonlyMap<string, TenantRole>
+}
+
 export interface ProductCatalogConfiguration {
   readonly emailFromAddress: string
   readonly defaultAuthBrand: AuthBrand
@@ -92,8 +150,36 @@ export interface ProductCatalogConfiguration {
   readonly identityMigrationSecretEnvironmentByClient: ReadonlyMap<string, string>
   readonly identityMigrationSourceByClient: ReadonlyMap<string, string>
   readonly clientProductMap: ReadonlyMap<string, string>
+  readonly tenantRolePolicyByProduct: ReadonlyMap<string, TenantRolePolicy>
+  readonly tenantRolePolicyByAdmissionScope: ReadonlyMap<string, TenantRolePolicy>
   readonly trustedClientIds: ReadonlySet<string>
   readonly returnOrigins: ReadonlySet<string>
+}
+
+const defaultTenantRoles = [
+  { id: 'member', permissions: ['access'] },
+  { id: 'admin', permissions: ['access', 'administer'] },
+  { id: 'owner', permissions: ['access', 'administer', 'owner'] },
+] as const
+
+function buildTenantRolePolicy(
+  configured: z.infer<typeof tenantRolePolicySchema> | undefined,
+): TenantRolePolicy {
+  const roles = new Map<string, TenantRole>()
+  if (!configured || configured.mode === 'extend') {
+    for (const role of defaultTenantRoles) {
+      roles.set(role.id, { id: role.id, permissions: new Set(role.permissions) })
+    }
+  }
+  for (const role of configured?.roles ?? []) {
+    const existing = roles.get(role.id)
+    roles.set(role.id, {
+      id: role.id,
+      permissions: new Set([...(existing?.permissions ?? []), ...role.permissions]),
+    })
+  }
+
+  return { roles }
 }
 
 export function loadProductCatalog(path: string): ProductCatalogConfiguration {
@@ -114,6 +200,8 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
   const identityManagementSecretEnvironmentByClient = new Map<string, string>()
   const identityMigrationSecretEnvironmentByClient = new Map<string, string>()
   const identityMigrationSourceByClient = new Map<string, string>()
+  const tenantRolePolicyByProduct = new Map<string, TenantRolePolicy>()
+  const tenantRolePolicyByAdmissionScope = new Map<string, TenantRolePolicy>()
   const trustedClientIds = new Set<string>()
   const returnOrigins = new Set<string>()
   const audiences = new Set<string>()
@@ -128,6 +216,8 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
       authOrigin: new URL(product.auth_brand.auth_origin).origin,
       emailFromName: product.auth_brand.email_from_name,
     }
+    const tenantRolePolicy = buildTenantRolePolicy(product.tenant_roles)
+    tenantRolePolicyByProduct.set(product.id, tenantRolePolicy)
     const authHostname = new URL(authBrand.authOrigin).hostname
     const existingBrand = authBrandByHostname.get(authHostname)
     if (existingBrand && existingBrand.authOrigin !== authBrand.authOrigin) {
@@ -157,6 +247,7 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
       }
       clientProductMap.set(client.id, product.id)
       admissionScopeByClient.set(client.id, client.admission_scope)
+      tenantRolePolicyByAdmissionScope.set(client.admission_scope, tenantRolePolicy)
       authorizationSecretEnvironmentByClient.set(client.id, client.authorization_secret_environment)
       identityManagementSecretEnvironmentByClient.set(
         client.id,
@@ -188,6 +279,8 @@ export function loadProductCatalog(path: string): ProductCatalogConfiguration {
     identityMigrationSecretEnvironmentByClient,
     identityMigrationSourceByClient,
     clientProductMap,
+    tenantRolePolicyByProduct,
+    tenantRolePolicyByAdmissionScope,
     trustedClientIds,
     returnOrigins,
   }

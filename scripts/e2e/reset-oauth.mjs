@@ -144,7 +144,7 @@ async function grantProduct(identityId) {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       namespace: 'Product',
-      object: 'freightclaims',
+      object: 'freightclaims:local',
       relation: 'members',
       subject_id: identityId,
     }),
@@ -156,7 +156,7 @@ async function grantProduct(identityId) {
 async function removeProduct(identityId) {
   const url = new URL('/admin/relation-tuples', endpoints.ketoWrite)
   url.searchParams.set('namespace', 'Product')
-  url.searchParams.set('object', 'freightclaims')
+  url.searchParams.set('object', 'freightclaims:local')
   url.searchParams.set('relation', 'members')
   url.searchParams.set('subject_id', identityId)
   await fetch(url, { method: 'DELETE', signal: AbortSignal.timeout(10_000) }).catch(() => {})

@@ -39,9 +39,9 @@ disposable local development stack.
 
 Prerequisites: Node 24, pnpm 11, and Docker with Compose.
 
-This workflow is for maintainers of the global auth platform. FreightClaims
-development owns its own disposable Ory stack and does not clone, compose, or
-seed this repository.
+This workflow is also the canonical disposable auth stack for product
+development. Product repositories pin this repository and start it locally;
+they do not maintain copies of the Ory configuration.
 
 ```bash
 pnpm install
@@ -78,11 +78,25 @@ pnpm identity:seed:dev
 ```
 
 The fixture is `developer@freightclaims.test` with initial password
-`FreightClaims-Dev-2026!` and `Product:freightclaims#access`. It is created
+`FreightClaims-Dev-2026!` and `Product:freightclaims:local#access`. It is created
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
 this fixture is separate from the audited staging and production importers.
+
+## Tenant roles
+
+Every product gets the default tenant role stack unless it declares otherwise:
+
+- `member` grants `access`
+- `admin` grants `access` and `administer`
+- `owner` grants `access`, `administer`, and `owner`
+
+`tenant_roles.mode: "extend"` adds roles or permissions while retaining those
+defaults. `tenant_roles.mode: "replace"` defines the complete product role
+model. FreightClaims replaces the defaults with `member`, `adjuster`, and
+`tenant_admin`; its product service sends those exact role identifiers through
+the private membership API. Tenant IDs are opaque product-owned strings.
 
 ## Security invariants
 
