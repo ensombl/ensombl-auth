@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   authorizeInvitationOperator,
   invitationFormOriginAllowed,
+  invitationOperatorAccess,
 } from '../src/lib/server/invitation-operator'
 import type { KratosSession } from '../src/lib/server/types'
 
@@ -41,6 +42,37 @@ describe('human invitation authorization', () => {
     await expect(
       authorizeInvitationOperator('ory_session=cookie', 'freightclaims', dependencies()),
     ).resolves.toBe('bb86046e-c922-44a3-a85f-ba21042c2897')
+  })
+
+  it('classifies browser access so the admin route can continue authentication', async () => {
+    await expect(
+      invitationOperatorAccess(
+        null,
+        'freightclaims',
+        dependencies({ getKratosSession: vi.fn(async () => null) }),
+      ),
+    ).resolves.toEqual({ state: 'login_required' })
+    await expect(
+      invitationOperatorAccess(
+        'ory_session=cookie',
+        'freightclaims',
+        dependencies({ isResetRequired: vi.fn(async () => true) }),
+      ),
+    ).resolves.toEqual({ state: 'password_reset_required' })
+    await expect(
+      invitationOperatorAccess(
+        'ory_session=cookie',
+        'freightclaims',
+        dependencies({ hasProductAdministrationStrict: vi.fn(async () => false) }),
+      ),
+    ).resolves.toEqual({ state: 'product_administrator_required' })
+    await expect(
+      invitationOperatorAccess(
+        'ory_session=cookie',
+        'freightclaims',
+        dependencies({ getKratosSession: vi.fn(async () => session('aal1')) }),
+      ),
+    ).resolves.toEqual({ state: 'aal2_required' })
   })
 
   it('denies AAL1, reset-gated, and non-administrator operators', async () => {
