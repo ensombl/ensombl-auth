@@ -21,7 +21,7 @@ RUN pnpm --filter @ensombl/auth-control deploy --prod --legacy /app/deployed
 
 FROM node:24-slim AS runner
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends jq tini \
+  && apt-get install -y --no-install-recommends ca-certificates jq tini \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 ENV NODE_ENV=production

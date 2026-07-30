@@ -100,6 +100,15 @@ do
     echo "Hosted image does not contain the verified BWS binary: $dockerfile" >&2
     exit 1
   fi
+
+  if ! awk '
+    /^FROM / { has_ca = 0 }
+    /ca-certificates/ { has_ca = 1 }
+    END { exit !has_ca }
+  ' "$dockerfile"; then
+    echo "Hosted runtime image does not contain CA certificates for BWS: $dockerfile" >&2
+    exit 1
+  fi
 done
 
 echo "Secret transport and Bitwarden manifest policy passed"
