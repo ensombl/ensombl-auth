@@ -8,15 +8,16 @@ are branded Kratos and control-UI edges over the same global identity database.
 
 | Host and path | Destination |
 | --- | --- |
-| all auth hosts: `/ui/*`, `/healthz`, `/` | source-built control application |
+| all auth hosts: `/admin`, `/admin/*`, `/ui/*`, `/healthz`, `/` | source-built control application; admin canonicalizes to `auth.ensombl.io` |
 | all auth hosts: `/self-service/*`, `/sessions/*`, `/schemas/*` | host-configured Kratos public edge |
 | `auth.ensombl.io`: `/oauth2/*`, `/.well-known/*`, `/userinfo` | canonical Hydra public API |
 
 There is no catch-all router. Only the five product endpoints documented below
-match `/internal/*`; every other internal path, `/admin/*`, and Keto API does
-not match a public route. Hydra public and admin listeners are separate
-containers, and Kratos v26.2.0 serves public and admin listeners from one
-process. Traefik routes only the declared public ports and path allowlists.
+match `/internal/*`; every other internal path, Ory admin API, and Keto API does
+not match a public route. `/admin` belongs exclusively to the source-built
+control application. Hydra public and admin listeners are separate containers,
+and Kratos v26.2.0 serves public and admin listeners from one process. Traefik
+routes only the declared public ports and path allowlists.
 All Kratos edges share the dedicated native Kratos database, cookie/cipher
 secrets, identity schema, and reset hooks, but issue host-only browser cookies.
 Kratos, Hydra, Keto, and auth control each use a separate native Dokploy
@@ -151,9 +152,11 @@ incomplete, differently keyed, or email-mismatched collision fails closed.
 
 ## Invitation contract
 
-Human invitation issuance uses the same-origin SvelteKit action at
-`/ui/admin/invitations`. It requires an active AAL2 Kratos session, a clear
-reset gate, and a strict Keto `Product:<product>#administer` decision. The
+The canonical product-administration entry point is `/admin`. After global
+login and any required password reset, it lists only products for which the
+identity passes a strict Keto `Product:<product>#administer` decision. Human
+invitation issuance uses the same-origin SvelteKit action at
+`/admin/invitations`. It additionally requires an AAL2 Kratos session. The
 audited `invited_by` identity is derived from that session.
 
 `POST /internal/invitations` is a separate machine boundary. It requires the

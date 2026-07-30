@@ -182,6 +182,7 @@ GET https://auth.ensombl.io/healthz                         -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
 GET https://auth.freightclaims.com/healthz                  -> 200
 GET https://auth.freightcheck.io/healthz                     -> 200
+GET https://auth.ensombl.io/admin                           -> 303 to login without a session
 GET https://auth.ensombl.io/admin/anything                  -> 404
 GET https://auth.ensombl.io/internal/anything               -> 404
 GET https://auth.freightclaims.com/internal/anything        -> 404

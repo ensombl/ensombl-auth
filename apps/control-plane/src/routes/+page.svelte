@@ -13,7 +13,7 @@ import Brand from '$lib/components/Brand.svelte'
     <div class="actions">
       <a class="secondary" href="/self-service/recovery/browser">Recover account</a>
       <a class="secondary" href="/self-service/settings/browser">Security settings</a>
-      <a class="secondary" href="/ui/admin">Product administration</a>
+      <a class="secondary" href="/admin">Product administration</a>
     </div>
   </section>
 </main>

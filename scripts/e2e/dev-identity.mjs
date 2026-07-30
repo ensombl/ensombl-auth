@@ -66,22 +66,39 @@ const relation = await fetch(relationUrl, { signal: AbortSignal.timeout(5_000) }
 assert(relation.ok, `Keto relation check returned ${relation.status}`)
 assert((await relation.json()).allowed === true, 'Development identity lacks Product admission')
 
+const administrationUrl = new URL(
+  '/relation-tuples/check/openapi',
+  'http://127.0.0.1:24466',
+)
+administrationUrl.searchParams.set('namespace', 'Product')
+administrationUrl.searchParams.set('object', 'freightclaims')
+administrationUrl.searchParams.set('relation', 'administer')
+administrationUrl.searchParams.set('subject_id', second.id)
+const administration = await fetch(administrationUrl, {
+  signal: AbortSignal.timeout(5_000),
+})
+assert(administration.ok, `Keto administration check returned ${administration.status}`)
+assert(
+  (await administration.json()).allowed === true,
+  'Development identity lacks product administration',
+)
+
 const { stdout: gate } = await execFileAsync('docker', [
   'compose',
   'exec',
   '-T',
-  'postgres',
+  'auth-control-postgres',
   'psql',
   '--no-psqlrc',
   '--quiet',
   '--tuples-only',
   '--no-align',
   '--username',
-  'postgres',
+  'auth_control',
   '--dbname',
   'auth_control',
   '--command',
-  `select count(*) from auth_control.identity_gates where identity_id = '${second.id}'::uuid and reset_required`,
+  `select count(*) from public.identity_gates where identity_id = '${second.id}'::uuid and reset_required`,
 ])
 assert(gate.trim() === '0', 'Development identity was conflated with a migration reset gate')
 

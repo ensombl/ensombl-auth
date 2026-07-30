@@ -118,6 +118,23 @@ const granted = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
 })
 if (!granted.ok) throw new Error(`Keto development admission failed (${granted.status})`)
 
+const productAdministration = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
+  method: 'PUT',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    namespace: 'Product',
+    object: product.id,
+    relation: 'administrators',
+    subject_id: identity.id,
+  }),
+  signal: AbortSignal.timeout(5_000),
+})
+if (!productAdministration.ok) {
+  throw new Error(
+    `Keto development product administration failed (${productAdministration.status})`,
+  )
+}
+
 const tenantRole = await fetch(new URL('/admin/relation-tuples', ketoWriteUrl), {
   method: 'PUT',
   headers: { 'content-type': 'application/json' },
