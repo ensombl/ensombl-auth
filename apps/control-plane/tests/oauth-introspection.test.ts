@@ -12,9 +12,9 @@ function request(clientId = 'freightclaims-staging-web', bearer = stagingSecret)
     method: 'POST',
     headers: {
       authorization: `Bearer ${bearer}`,
-      'content-type': 'application/x-www-form-urlencoded',
+      'content-type': 'application/json',
     },
-    body: new URLSearchParams({
+    body: JSON.stringify({
       client_id: clientId,
       token: 'opaque-machine-access-token',
     }),
@@ -73,6 +73,29 @@ describe('product-scoped OAuth introspection', () => {
     } as Parameters<typeof POST>[0])
 
     expect(response.status).toBe(401)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects form-encoded product requests before reaching Hydra', async () => {
+    configure()
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const response = await POST({
+      request: new Request('https://auth.ensombl.io/internal/oauth2/introspect', {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${stagingSecret}`,
+          'content-type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          client_id: 'freightclaims-staging-web',
+          token: 'opaque-machine-access-token',
+        }),
+      }),
+    } as Parameters<typeof POST>[0])
+
+    expect(response.status).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

@@ -46,6 +46,8 @@ HTTPS routes at `auth.ensombl.io`:
 - `POST /internal/oauth2/introspect`
 
 Each route requires its catalog-declared, client-specific bearer secret. The
+introspection route accepts a JSON body containing `client_id` and `token`;
+form encoding is reserved for the control plane's private call to Hydra. The
 identity-management and migration endpoints derive the product from that
 authenticated client, so one product cannot mutate another product's graph or
 identity source. Traefik exposes no other `/internal/*` route: Ory hooks,
