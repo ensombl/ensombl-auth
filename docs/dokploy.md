@@ -39,9 +39,20 @@ registry.
    auth Dokploy installation.
 6. Verify `notifications.ensombl.io` in Resend and create a sending-only API
    key restricted to that domain.
-7. Create the Bitwarden Secrets Manager project `ensombl-auth-prod`.
+7. Create the Bitwarden Secrets Manager project `ensombl-auth`.
+8. Create the Bitwarden machine account `ensombl-auth-runtime` and grant it
+   `Can read` access to only the `ensombl-auth` project.
+9. Generate one access token named
+   `dokploy-auth-primary-<issued-yyyymmdd>` from that machine account.
 
 ## Required Bitwarden values
+
+The Dokploy Compose environment contains exactly two bootstrap values:
+
+| Variable | Secret | Constraint / consumer |
+| --- | --- | --- |
+| `BWS_ACCESS_TOKEN` | yes | `dokploy-auth-primary-<issued-yyyymmdd>` token |
+| `BWS_PROJECT_ID` | no | UUID of the `ensombl-auth` project |
 
 Copy the four internal connection URLs from the corresponding native Dokploy
 database services. They must remain internal and must not use public database
@@ -81,9 +92,27 @@ The machine-readable allowlist is `deploy/secrets/manifest.json`. Generate all
 non-provider secrets independently. Product client capability secrets must be
 pairwise distinct.
 
-Bitwarden remains the source of truth. An audited provisioner copies exactly
-the allowlisted values into the encrypted Dokploy Compose environment. Do not
-put a Bitwarden machine token into the running auth containers.
+Bitwarden is the live source of truth. Every hosted image contains the pinned,
+checksum-verified BWS CLI. At process startup the common wrapper reads the
+`ensombl-auth` project, maps only that process's declared secrets into its
+environment, removes `BWS_ACCESS_TOKEN`, and then replaces itself with the real
+process. Runtime secrets are not copied into the Dokploy environment.
+
+All containers in this Compose deployment use the same token because Kratos,
+Hydra, Keto, and auth control are one reviewed trust boundary. Do not reuse the
+token in another deployment or grant `ensombl-auth-runtime` access to another
+project. A separate Dokploy administration credential belongs in
+`ensombl-dokploy-infrastructure` and is never available to this runtime.
+
+Compose places the bootstrap token in Docker's container configuration.
+Trusted Dokploy and Docker administrators can therefore inspect it even after
+the wrapper removes it from the long-running process environment. Treat
+administrative access to this Dokploy installation as access to the complete
+`ensombl-auth` secrets project.
+
+Bitwarden must be reachable when a container starts. An already-running process
+continues with its loaded environment during a Bitwarden outage, but a restart
+fails closed until retrieval succeeds.
 
 The sender address is always `noreply@notifications.ensombl.io`. The reviewed
 product catalog selects `Ensombl` as the default display name,
@@ -98,12 +127,12 @@ or product application-mail access.
    `deploy/dokploy/compose.yml`.
 3. Select standard Docker Compose mode. Do not select Docker Stack and do not
    configure a container registry.
-4. Copy exactly the values from `deploy/secrets/manifest.json` into the
-   Compose environment.
+4. Set only `BWS_ACCESS_TOKEN` and `BWS_PROJECT_ID` in the Compose environment.
 5. Enable automatic deployment for pushes to `main`.
 6. Do not add Dokploy UI domains or host port mappings. The checked-in Traefik
    labels expose only the three approved auth hostnames and exact public paths.
-7. Deploy only after all four native databases report healthy.
+7. Deploy only after all four native databases report healthy and every
+   required value exists in the `ensombl-auth` project.
 
 The deployment order inside the stack is:
 
@@ -127,10 +156,14 @@ credentials and never builds or publishes a container image.
 For a secret rotation:
 
 1. Generate and store the replacement in Bitwarden.
-2. Synchronize the complete allowlisted environment to Dokploy.
-3. Deploy and verify every affected service.
+2. Redeploy the Compose stack so every process reloads from Bitwarden.
+3. Verify every affected service.
 4. Revoke the old provider credential only after the replacement is observed
    working.
+
+For a `BWS_ACCESS_TOKEN` rotation, create a newly dated token on
+`ensombl-auth-runtime`, replace the one Dokploy environment value, redeploy and
+verify, then revoke the previous token.
 
 Database credentials are rotated through the corresponding native Dokploy
 database service and then copied into the matching internal URL. Treat Hydra

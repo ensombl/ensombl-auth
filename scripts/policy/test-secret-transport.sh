@@ -4,21 +4,53 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$repo_root"
 
-compose_secrets="$(
-  grep -oE '\$\{[A-Z0-9_]+:\?Inject [^}]+ from Bitwarden\}' deploy/dokploy/compose.yml |
-    sed -E 's/^\$\{([A-Z0-9_]+):.*/\1/' |
+manifest_secrets="$(jq -r '.requiredSecrets[]' deploy/secrets/manifest.json | sort -u)"
+bootstrap_environment="$(
+  jq -r \
+    '.hostedBootstrapEnvironment.secret[], .hostedBootstrapEnvironment.nonSecret[]' \
+    deploy/secrets/manifest.json |
     sort -u
 )"
-manifest_secrets="$(jq -r '.requiredSecrets[]' deploy/secrets/manifest.json | sort -u)"
+compose_interpolation="$(
+  grep -oE '\$\{[A-Z0-9_]+' deploy/dokploy/compose.yml |
+    sed 's/^${//' |
+    sort -u
+)"
+rendered_compose="$(./scripts/policy/validate-dokploy-compose.sh --format json)"
+mapped_secrets="$(
+  jq -r '
+    [
+      .services[]
+      | .environment.BWS_SECRET_MAP
+      | split(" ")[]
+      | select(length > 0)
+      | split("=")[1]
+      | sub("^bearer:"; "")
+    ]
+    | unique[]
+  ' <<<"$rendered_compose"
+)"
 
 if ! diff -u \
   <(printf '%s\n' "$manifest_secrets") \
-  <(printf '%s\n' "$compose_secrets"); then
-  echo "Dokploy secret references and the Bitwarden manifest differ" >&2
+  <(printf '%s\n' "$mapped_secrets"); then
+  echo "Hosted BWS secret mappings and the Bitwarden manifest differ" >&2
   exit 1
 fi
 
-if rg -n --glob '*.sh' -- '--secret([ =]|$)' deploy scripts; then
+if ! diff -u \
+  <(printf '%s\n' "$bootstrap_environment") \
+  <(printf '%s\n' "$compose_interpolation"); then
+  echo "Dokploy must receive only the BWS token and non-secret project ID" >&2
+  exit 1
+fi
+
+if rg -n 'DOKPLOY_(API_KEY|AUTH_TOKEN|URL)' deploy/dokploy/compose.yml; then
+  echo "Dokploy administration credentials are forbidden in runtime Compose" >&2
+  exit 1
+fi
+
+if rg -n --glob '*.sh' -- '--(access-token|secret)([ =]|$)' deploy scripts; then
   echo "A secret-bearing command-line flag is forbidden" >&2
   exit 1
 fi
@@ -46,10 +78,28 @@ if rg -n 'process\\.env\\.DATABASE_URL|environment\\.DATABASE_URL' \
 fi
 
 if ! rg -q \
-  'AUTH_CONTROL_MIGRATION_URL:.*AUTH_CONTROL_DATABASE_URL' \
+  'AUTH_CONTROL_MIGRATION_URL=AUTH_CONTROL_DATABASE_URL' \
   deploy/dokploy/compose.yml; then
   echo "The hosted migration job must use the native auth-control database URL" >&2
   exit 1
 fi
+
+if ! rg -q 'unset BWS_ACCESS_TOKEN BWS_PROJECT_ID BWS_SECRET_MAP secrets_json' \
+  deploy/bws/with-secrets.sh; then
+  echo "The runtime wrapper must remove its Bitwarden bootstrap credentials" >&2
+  exit 1
+fi
+
+for dockerfile in \
+  apps/control-plane/Dockerfile \
+  deploy/ory/kratos/Dockerfile \
+  deploy/ory/hydra/Dockerfile \
+  deploy/ory/keto/Dockerfile
+do
+  if ! rg -q 'COPY --from=bws /out/bws /usr/local/bin/bws' "$dockerfile"; then
+    echo "Hosted image does not contain the verified BWS binary: $dockerfile" >&2
+    exit 1
+  fi
+done
 
 echo "Secret transport and Bitwarden manifest policy passed"
