@@ -92,7 +92,7 @@ describe('configuration', () => {
       emailFromName: 'FreightClaims',
     })
     expect(config().authBrandByProduct.get('freightcheck')).toMatchObject({
-      authOrigin: 'https://auth.freightcheck.com',
+      authOrigin: 'https://auth.freightcheck.io',
       emailFromName: 'FreightCheck',
     })
     expect(config().emailFromAddress).toBe('noreply@notifications.ensombl.io')

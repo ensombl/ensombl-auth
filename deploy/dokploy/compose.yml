@@ -171,7 +171,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-kratos-freightcheck.rule: Host(`auth.freightcheck.com`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.rule: Host(`auth.freightcheck.io`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
       traefik.http.routers.ensombl-auth-kratos-freightcheck.entrypoints: websecure
       traefik.http.routers.ensombl-auth-kratos-freightcheck.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-kratos-freightcheck.middlewares: ensombl-auth-product-freightcheck@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
@@ -316,7 +316,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`) || Host(`auth.freightcheck.com`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
+      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`) || Host(`auth.freightcheck.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
       traefik.http.routers.ensombl-auth-control.entrypoints: websecure
       traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker

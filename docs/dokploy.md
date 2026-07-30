@@ -35,7 +35,7 @@ registry.
 4. Configure native database backups to independent object storage and prove
    an isolated restore before importing users.
 5. Create DNS records for `auth.ensombl.io`,
-   `auth.freightclaims.ensombl.io`, and `auth.freightcheck.com` pointing to the
+   `auth.freightclaims.ensombl.io`, and `auth.freightcheck.io` pointing to the
    auth Dokploy installation.
 6. Verify `notifications.ensombl.io` in Resend and create a sending-only API
    key restricted to that domain.
@@ -178,17 +178,17 @@ Verify:
 GET https://auth.ensombl.io/healthz                         -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
 GET https://auth.freightclaims.ensombl.io/healthz           -> 200
-GET https://auth.freightcheck.com/healthz                    -> 200
+GET https://auth.freightcheck.io/healthz                     -> 200
 GET https://auth.ensombl.io/admin/anything                  -> 404
 GET https://auth.ensombl.io/internal/anything               -> 404
 GET https://auth.freightclaims.ensombl.io/internal/anything -> 404
-GET https://auth.freightcheck.com/internal/anything          -> 404
+GET https://auth.freightcheck.io/internal/anything           -> 404
 ```
 
 - OIDC issuer and protocol endpoints use only `https://auth.ensombl.io`.
 - FreightClaims browser login/recovery uses
   `https://auth.freightclaims.ensombl.io`.
-- FreightCheck browser login/recovery uses `https://auth.freightcheck.com`.
+- FreightCheck browser login/recovery uses `https://auth.freightcheck.io`.
 - Staging and production OAuth clients contain only their exact callback and
   audience.
 - Controlled recovery tests receive:

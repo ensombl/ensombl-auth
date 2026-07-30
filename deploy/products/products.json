@@ -68,13 +68,10 @@
       "id": "freightcheck",
       "auth_brand": {
         "display_name": "FreightCheck",
-        "auth_origin": "https://auth.freightcheck.com",
+        "auth_origin": "https://auth.freightcheck.io",
         "email_from_name": "FreightCheck"
       },
-      "return_origins": [
-        "https://app.staging.freightcheck.io",
-        "https://app.freightcheck.io"
-      ],
+      "return_origins": ["https://app.staging.freightcheck.io", "https://app.freightcheck.io"],
       "clients": [
         {
           "id": "freightcheck-staging-web",

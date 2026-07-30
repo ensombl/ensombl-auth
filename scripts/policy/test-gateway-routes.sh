@@ -50,7 +50,7 @@ jq -e '
     )
     and (
       $services["kratos-freightcheck"].labels["traefik.http.routers.ensombl-auth-kratos-freightcheck.rule"]
-      | contains("Host(`auth.freightcheck.com`)")
+      | contains("Host(`auth.freightcheck.io`)")
     )
     and (
       $services["kratos-freightcheck"].labels["traefik.http.middlewares.ensombl-auth-product-freightcheck.headers.customrequestheaders.X-Ensombl-Auth-Product"]
@@ -84,7 +84,7 @@ jq -e '
     )
     and (
       $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
-      | contains("Host(`auth.freightcheck.com`)")
+      | contains("Host(`auth.freightcheck.io`)")
     )
     and (
       $services["control-plane"].depends_on["product-reconcile"].condition

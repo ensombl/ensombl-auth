@@ -3,7 +3,7 @@
 This repository is the source of truth for the global self-hosted Ory control
 plane. `https://auth.ensombl.io` is the canonical OIDC issuer and default
 Ensombl UI. `https://auth.freightclaims.ensombl.io` and
-`https://auth.freightcheck.com` are the FreightClaims- and
+`https://auth.freightcheck.io` are the FreightClaims- and
 FreightCheck-branded browser entrypoints.
 
 It is intentionally separate from every product repository. A Kratos identity
@@ -176,6 +176,6 @@ The hosted product clients are:
 All use Authorization Code, refresh tokens, and
 `openid offline_access email profile`. Their Bitwarden-managed secrets are
 independent. FreightClaims uses `https://auth.freightclaims.ensombl.io`;
-FreightCheck uses `https://auth.freightcheck.com`. The token issuer remains
+FreightCheck uses `https://auth.freightcheck.io`. The token issuer remains
 `https://auth.ensombl.io`. FreightCheck inherits the default
 `member`/`admin`/`owner` tenant roles.
