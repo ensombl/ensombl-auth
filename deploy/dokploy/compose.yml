@@ -260,6 +260,7 @@ services:
         condition: service_healthy
     networks:
       - hydra-admin
+      - secret-egress
     restart: "no"
 
   keto-migrate:
@@ -390,6 +391,7 @@ services:
       - no-new-privileges:true
     networks:
       - control-private
+      - secret-egress
     healthcheck:
       test: ["CMD", "node", "scripts/reconcile-invitations-health.mjs"]
       interval: 30s
@@ -416,6 +418,7 @@ services:
       - no-new-privileges:true
     networks:
       - control-private
+      - secret-egress
     restart: "no"
 
 networks:
@@ -429,3 +432,4 @@ networks:
     internal: true
   control-private:
     internal: true
+  secret-egress:
