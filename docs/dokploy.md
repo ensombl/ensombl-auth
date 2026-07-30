@@ -13,8 +13,8 @@ These are deliberate external gates; the repository cannot safely invent them:
    resolver. TLS must be valid before any user import.
 3. Create the Bitwarden Secrets Manager project `ensombl-auth-prod` and a
    read-only machine account scoped only to that project.
-4. Configure a verified `ensombl.io` SMTP sender. Recovery, verification, and
-   invitations cannot be accepted without working email delivery.
+4. Configure a verified `ensombl.io` sender in Resend. Recovery, verification,
+   and invitations cannot be accepted without working email delivery.
 5. Configure encrypted PostgreSQL backups, a restore drill, volume monitoring,
    and an upgrade maintenance window before staging identities are imported.
 
@@ -47,10 +47,15 @@ PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
 | `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production migration worker identity synchronization |
 | `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF client; distinct from production |
 | `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from staging |
-| `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |
+| `SMTP_CONNECTION_URI` | Resend SMTPS URI: `smtps://resend:<URL-encoded API key>@smtp.resend.com:465` |
 
 `SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
 still be injected with the environment.
+
+The Resend API key used as the SMTP password should be scoped to sending. This
+auth stack does not receive FreightClaims inbound email and does not need the
+FreightClaims API's Resend key or webhook secret. Resend's current SMTP
+settings are documented at <https://resend.com/docs/send-with-smtp>.
 
 The machine-readable inventory is
 `deploy/secrets/manifest.json`. Shared `.env` files are forbidden.
