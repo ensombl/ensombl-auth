@@ -31,6 +31,12 @@ exec env \
   FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET=validation-only-freightclaims-production-identity-migration \
   FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET=validation-only-freightclaims-staging \
   FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET=validation-only-freightclaims-production \
+  FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET=validation-only-freightcheck-staging-authorization \
+  FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET=validation-only-freightcheck-production-authorization \
+  FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET=validation-only-freightcheck-staging-identity-management \
+  FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET=validation-only-freightcheck-production-identity-management \
+  FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET=validation-only-freightcheck-staging \
+  FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET=validation-only-freightcheck-production \
   docker compose \
     --file "$repo_root/deploy/dokploy/compose.yml" \
     config "$@"

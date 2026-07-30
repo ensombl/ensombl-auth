@@ -1,0 +1,22 @@
+serve:
+  public:
+    base_url: https://auth.freightcheck.com/
+
+selfservice:
+  default_browser_return_url: https://auth.freightcheck.com/
+  flows:
+    error:
+      ui_url: https://auth.freightcheck.com/ui/error
+    settings:
+      ui_url: https://auth.freightcheck.com/ui/settings
+    recovery:
+      ui_url: https://auth.freightcheck.com/ui/recovery
+    verification:
+      ui_url: https://auth.freightcheck.com/ui/verification
+    logout:
+      after:
+        default_browser_return_url: https://auth.freightcheck.com/
+    login:
+      ui_url: https://auth.freightcheck.com/ui/login
+    registration:
+      ui_url: https://auth.freightcheck.com/ui/invitation

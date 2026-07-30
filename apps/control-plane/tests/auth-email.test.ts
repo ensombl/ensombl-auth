@@ -37,6 +37,7 @@ describe('auth email branding', () => {
     [undefined, 'Ensombl <noreply@notifications.ensombl.io>'],
     ['ensombl', 'Ensombl <noreply@notifications.ensombl.io>'],
     ['freightclaims', 'FreightClaims <noreply@notifications.ensombl.io>'],
+    ['freightcheck', 'FreightCheck <noreply@notifications.ensombl.io>'],
   ])('selects a reviewed sender for marker %s', async (marker, expectedFrom) => {
     configure()
     const request = vi.fn(

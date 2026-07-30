@@ -27,12 +27,15 @@ afterEach(() => {
 })
 
 describe('OAuth consent branding', () => {
-  it('moves the challenge before checking the host-scoped Kratos session', async () => {
+  it.each([
+    ['freightclaims-staging-web', 'https://auth.freightclaims.ensombl.io'],
+    ['freightcheck-staging-web', 'https://auth.freightcheck.com'],
+  ])('moves the %s challenge before checking the host-scoped Kratos session', async (clientId, authOrigin) => {
     ory.getConsentRequest.mockResolvedValue({
       challenge: 'consent-challenge',
       client: {
-        client_id: 'freightclaims-staging-web',
-        client_name: 'FreightClaims',
+        client_id: clientId,
+        client_name: 'Product',
       },
       requested_scope: ['openid'],
       skip: true,
@@ -48,8 +51,7 @@ describe('OAuth consent branding', () => {
       } as Parameters<typeof load>[0]),
     ).rejects.toMatchObject({
       status: 303,
-      location:
-        'https://auth.freightclaims.ensombl.io/ui/oauth2/consent?consent_challenge=consent-challenge',
+      location: `${authOrigin}/ui/oauth2/consent?consent_challenge=consent-challenge`,
     })
     expect(ory.getKratosSession).not.toHaveBeenCalled()
   })

@@ -26,12 +26,15 @@ afterEach(() => {
 })
 
 describe('application logout scope', () => {
-  it('moves a FreightClaims logout challenge to the branded auth hostname', async () => {
+  it.each([
+    ['freightclaims-staging-web', 'https://auth.freightclaims.ensombl.io'],
+    ['freightcheck-staging-web', 'https://auth.freightcheck.com'],
+  ])('moves a %s logout challenge to the branded auth hostname', async (clientId, authOrigin) => {
     ory.getLogoutRequest.mockResolvedValue({
       challenge: 'logout-challenge',
       client: {
-        client_id: 'freightclaims-staging-web',
-        client_name: 'FreightClaims',
+        client_id: clientId,
+        client_name: 'Product',
       },
       rp_initiated: true,
     })
@@ -42,8 +45,7 @@ describe('application logout scope', () => {
       } as Parameters<typeof load>[0]),
     ).rejects.toMatchObject({
       status: 303,
-      location:
-        'https://auth.freightclaims.ensombl.io/ui/oauth2/logout?logout_challenge=logout-challenge',
+      location: `${authOrigin}/ui/oauth2/logout?logout_challenge=logout-challenge`,
     })
   })
 

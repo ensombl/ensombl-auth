@@ -31,6 +31,7 @@ jq -e '
   | ($services | has("gateway") | not)
     and ($services.kratos.networks | has("dokploy-network"))
     and ($services["kratos-freightclaims"].networks | has("dokploy-network"))
+    and ($services["kratos-freightcheck"].networks | has("dokploy-network"))
     and ($services["hydra-public"].networks | has("dokploy-network"))
     and ($services["control-plane"].networks | has("dokploy-network"))
     and ($services["hydra-admin"].networks | has("dokploy-network"))
@@ -47,8 +48,17 @@ jq -e '
       $services["kratos-freightclaims"].labels["traefik.http.middlewares.ensombl-auth-product-freightclaims.headers.customrequestheaders.X-Ensombl-Auth-Product"]
       == "freightclaims"
     )
+    and (
+      $services["kratos-freightcheck"].labels["traefik.http.routers.ensombl-auth-kratos-freightcheck.rule"]
+      | contains("Host(`auth.freightcheck.com`)")
+    )
+    and (
+      $services["kratos-freightcheck"].labels["traefik.http.middlewares.ensombl-auth-product-freightcheck.headers.customrequestheaders.X-Ensombl-Auth-Product"]
+      == "freightcheck"
+    )
     and ($services.kratos.command | index("--watch-courier") | not)
     and ($services["kratos-freightclaims"].command | index("--watch-courier") | not)
+    and ($services["kratos-freightcheck"].command | index("--watch-courier") | not)
     and ($services["kratos-courier"].command == ["courier", "watch", "--config", "/etc/config/kratos/kratos.yml"])
     and ($services["kratos-courier"].networks | has("dokploy-network"))
     and (($services["kratos-courier"].labels // {}) | has("traefik.enable") | not)
@@ -71,6 +81,10 @@ jq -e '
     and (
       $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
       | contains("Host(`auth.freightclaims.ensombl.io`)")
+    )
+    and (
+      $services["control-plane"].labels["traefik.http.routers.ensombl-auth-control.rule"]
+      | contains("Host(`auth.freightcheck.com`)")
     )
     and (
       $services["control-plane"].depends_on["product-reconcile"].condition

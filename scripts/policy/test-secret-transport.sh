@@ -29,7 +29,12 @@ if rg -ni --glob '*.sh' -- '--set[ =][^ ]*(password|secret)' deploy scripts; the
 fi
 
 if ! rg -q -- '--file /dev/stdin' deploy/ory/hydra/bootstrap-client.sh; then
-  echo "Hydra client bootstrap must receive its document through stdin" >&2
+  echo "Hydra client update must receive its document through stdin" >&2
+  exit 1
+fi
+
+if ! rg -q -- '--post-file=/dev/stdin' deploy/ory/hydra/bootstrap-client.sh; then
+  echo "Hydra client creation must receive its document through stdin" >&2
   exit 1
 fi
 

@@ -3,13 +3,14 @@
 ## Public routing
 
 Dokploy's existing Traefik terminates TLS. Hydra remains a single canonical
-issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` is a branded
-Kratos and control-UI edge over the same global identity database.
+issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` and
+`auth.freightcheck.com` are branded Kratos and control-UI edges over the same
+global identity database.
 
 | Host and path | Destination |
 | --- | --- |
-| both auth hosts: `/ui/*`, `/healthz`, `/` | source-built control application |
-| both auth hosts: `/self-service/*`, `/sessions/*`, `/schemas/*` | host-configured Kratos public edge |
+| all auth hosts: `/ui/*`, `/healthz`, `/` | source-built control application |
+| all auth hosts: `/self-service/*`, `/sessions/*`, `/schemas/*` | host-configured Kratos public edge |
 | `auth.ensombl.io`: `/oauth2/*`, `/.well-known/*`, `/userinfo` | canonical Hydra public API |
 
 There is no catch-all router. Only the five product endpoints documented below
@@ -17,7 +18,7 @@ match `/internal/*`; every other internal path, `/admin/*`, and Keto API does
 not match a public route. Hydra public and admin listeners are separate
 containers, and Kratos v26.2.0 serves public and admin listeners from one
 process. Traefik routes only the declared public ports and path allowlists.
-Both Kratos edges share the dedicated native Kratos database, cookie/cipher
+All Kratos edges share the dedicated native Kratos database, cookie/cipher
 secrets, identity schema, and reset hooks, but issue host-only browser cookies.
 Kratos, Hydra, Keto, and auth control each use a separate native Dokploy
 PostgreSQL service. The dedicated auth Dokploy installation and its shared
@@ -91,9 +92,10 @@ Neither Kratos public process watches the shared queue. One `kratos-courier`
 worker posts queued messages to the non-public control endpoint using its own
 bearer secret. The control plane resolves the marker through
 `products.json` and sends with the Resend API. The sender address is always
-`noreply@notifications.ensombl.io`; the display name is `Ensombl` by default
-and `FreightClaims` for FreightClaims-originated flows. A missing marker uses
-the reviewed default; an unknown marker fails closed.
+`noreply@notifications.ensombl.io`; the display name is `Ensombl` by default,
+`FreightClaims` for FreightClaims-originated flows, and `FreightCheck` for
+FreightCheck-originated flows. A missing marker uses the reviewed default; an
+unknown marker fails closed.
 
 ## Migration control contract
 
