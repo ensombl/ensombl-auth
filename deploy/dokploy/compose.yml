@@ -36,6 +36,10 @@ x-control-environment: &control-environment
   FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET: ${FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET:?Inject FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET from Bitwarden}
   FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET: ${FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET:?Inject FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET from Bitwarden}
   FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET: ${FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET:?Inject FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET from Bitwarden}
+  FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET from Bitwarden}
+  FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET: ${FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET:?Inject FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET from Bitwarden}
+  FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET: ${FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET:?Inject FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET from Bitwarden}
+  FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET: ${FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET:?Inject FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET from Bitwarden}
   PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
 
 x-kratos-environment: &kratos-environment
@@ -133,6 +137,41 @@ services:
       timeout: 3s
       retries: 30
 
+  kratos-freightcheck:
+    build: *kratos-build
+    command:
+      [
+        "serve",
+        "--config",
+        "/etc/config/kratos/kratos.yml",
+        "--config",
+        "/etc/config/kratos/freightcheck.yml",
+      ]
+    restart: unless-stopped
+    environment:
+      <<: *kratos-environment
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    networks:
+      - dokploy-network
+      - control-private
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: dokploy-network
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.rule: Host(`auth.freightcheck.com`) && (PathPrefix(`/self-service/`) || PathPrefix(`/sessions/`) || PathPrefix(`/schemas/`))
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.middlewares: ensombl-auth-product-freightcheck@docker,ensombl-auth-security@docker,ensombl-auth-no-store@docker
+      traefik.http.routers.ensombl-auth-kratos-freightcheck.service: ensombl-auth-kratos-freightcheck
+      traefik.http.middlewares.ensombl-auth-product-freightcheck.headers.customrequestheaders.X-Ensombl-Auth-Product: freightcheck
+      traefik.http.services.ensombl-auth-kratos-freightcheck.loadbalancer.server.port: "4433"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:4434/health/ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
   hydra-migrate:
     build: *hydra-build
     command: ["migrate", "sql", "-e", "--yes"]
@@ -199,6 +238,8 @@ services:
       PRODUCT_CATALOG_PATH: /etc/ensombl/products.json
       FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET: ${FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET:?Inject FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET from Bitwarden}
       FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET: ${FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET:?Inject FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET from Bitwarden}
+      FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET: ${FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET:?Inject FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET from Bitwarden}
+      FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET: ${FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET:?Inject FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET from Bitwarden}
     depends_on:
       hydra-admin:
         condition: service_healthy
@@ -258,7 +299,7 @@ services:
     labels:
       traefik.enable: "true"
       traefik.docker.network: dokploy-network
-      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
+      traefik.http.routers.ensombl-auth-control.rule: (Host(`auth.ensombl.io`) || Host(`auth.freightclaims.ensombl.io`) || Host(`auth.freightcheck.com`)) && (Path(`/`) || Path(`/healthz`) || PathPrefix(`/ui/`) || PathPrefix(`/_app/`))
       traefik.http.routers.ensombl-auth-control.entrypoints: websecure
       traefik.http.routers.ensombl-auth-control.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-control.middlewares: ensombl-auth-security@docker,ensombl-auth-no-store@docker

@@ -63,6 +63,42 @@
           "trusted": true
         }
       ]
+    },
+    {
+      "id": "freightcheck",
+      "auth_brand": {
+        "display_name": "FreightCheck",
+        "auth_origin": "https://auth.freightcheck.com",
+        "email_from_name": "FreightCheck"
+      },
+      "return_origins": [
+        "https://app.staging.freightcheck.io",
+        "https://app.freightcheck.io"
+      ],
+      "clients": [
+        {
+          "id": "freightcheck-staging-web",
+          "display_name": "FreightCheck staging web BFF",
+          "base_url": "https://app.staging.freightcheck.io",
+          "audience": "freightcheck-staging",
+          "admission_scope": "freightcheck:staging",
+          "authorization_secret_environment": "FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET",
+          "secret_environment": "FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET",
+          "trusted": true
+        },
+        {
+          "id": "freightcheck-production-web",
+          "display_name": "FreightCheck production web BFF",
+          "base_url": "https://app.freightcheck.io",
+          "audience": "freightcheck-production",
+          "admission_scope": "freightcheck:production",
+          "authorization_secret_environment": "FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET",
+          "identity_management_secret_environment": "FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET",
+          "secret_environment": "FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET",
+          "trusted": true
+        }
+      ]
     }
   ]
 }

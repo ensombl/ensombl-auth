@@ -34,8 +34,9 @@ registry.
    database port.
 4. Configure native database backups to independent object storage and prove
    an isolated restore before importing users.
-5. Create DNS records for `auth.ensombl.io` and
-   `auth.freightclaims.ensombl.io` pointing to the auth Dokploy installation.
+5. Create DNS records for `auth.ensombl.io`,
+   `auth.freightclaims.ensombl.io`, and `auth.freightcheck.com` pointing to the
+   auth Dokploy installation.
 6. Verify `notifications.ensombl.io` in Resend and create a sending-only API
    key restricted to that domain.
 7. Create the Bitwarden Secrets Manager project `ensombl-auth-prod`.
@@ -69,6 +70,12 @@ ports.
 | `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production identity synchronization |
 | `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF OAuth client |
 | `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF OAuth client |
+| `FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET` | staging decision and introspection client |
+| `FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production decision and introspection client |
+| `FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET` | staging invitations and memberships |
+| `FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET` | production invitations and memberships |
+| `FREIGHTCHECK_STAGING_HYDRA_CLIENT_SECRET` | staging BFF OAuth client |
+| `FREIGHTCHECK_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF OAuth client |
 
 The machine-readable allowlist is `deploy/secrets/manifest.json`. Generate all
 non-provider secrets independently. Product client capability secrets must be
@@ -79,9 +86,10 @@ the allowlisted values into the encrypted Dokploy Compose environment. Do not
 put a Bitwarden machine token into the running auth containers.
 
 The sender address is always `noreply@notifications.ensombl.io`. The reviewed
-product catalog selects `Ensombl` as the default display name and
-`FreightClaims` for FreightClaims-originated auth flows. The auth Resend key
-has no inbound-email or FreightClaims application-mail access.
+product catalog selects `Ensombl` as the default display name,
+`FreightClaims` for FreightClaims-originated auth flows, and `FreightCheck` for
+FreightCheck-originated auth flows. The auth Resend key has no inbound-email
+or product application-mail access.
 
 ## Create the Compose deployment
 
@@ -94,7 +102,7 @@ has no inbound-email or FreightClaims application-mail access.
    Compose environment.
 5. Enable automatic deployment for pushes to `main`.
 6. Do not add Dokploy UI domains or host port mappings. The checked-in Traefik
-   labels expose only the two approved auth hostnames and exact public paths.
+   labels expose only the three approved auth hostnames and exact public paths.
 7. Deploy only after all four native databases report healthy.
 
 The deployment order inside the stack is:
@@ -137,19 +145,23 @@ Verify:
 GET https://auth.ensombl.io/healthz                         -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
 GET https://auth.freightclaims.ensombl.io/healthz           -> 200
+GET https://auth.freightcheck.com/healthz                    -> 200
 GET https://auth.ensombl.io/admin/anything                  -> 404
 GET https://auth.ensombl.io/internal/anything               -> 404
 GET https://auth.freightclaims.ensombl.io/internal/anything -> 404
+GET https://auth.freightcheck.com/internal/anything          -> 404
 ```
 
 - OIDC issuer and protocol endpoints use only `https://auth.ensombl.io`.
 - FreightClaims browser login/recovery uses
   `https://auth.freightclaims.ensombl.io`.
+- FreightCheck browser login/recovery uses `https://auth.freightcheck.com`.
 - Staging and production OAuth clients contain only their exact callback and
   audience.
 - Controlled recovery tests receive:
   - `Ensombl <noreply@notifications.ensombl.io>`
   - `FreightClaims <noreply@notifications.ensombl.io>`
+  - `FreightCheck <noreply@notifications.ensombl.io>`
 - A reset-gated identity cannot obtain a FreightClaims authorization code
   until it chooses a different password.
 - A valid global identity without FreightClaims admission remains denied.

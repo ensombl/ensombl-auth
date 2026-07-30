@@ -55,20 +55,11 @@ if hydra get oauth2-client "$HYDRA_CLIENT_ID" \
       --endpoint "$HYDRA_ADMIN_URL" \
       --file /dev/stdin >/dev/null
 else
-  hydra create oauth2-client \
-    --endpoint "$HYDRA_ADMIN_URL" \
-    --id "$HYDRA_CLIENT_ID" \
-    --secret "$HYDRA_CLIENT_SECRET" \
-    --name "FreightClaims web BFF" \
-    --grant-type authorization_code,refresh_token \
-    --response-type code \
-    --scope openid,offline_access,email,profile \
-    --audience freightclaims \
-    --redirect-uri "${FREIGHTCLAIMS_BASE_URL%/}/auth/callback" \
-    --post-logout-callback "${FREIGHTCLAIMS_BASE_URL%/}/" \
-    --token-endpoint-auth-method client_secret_basic \
-    --metadata '{"ensombl_product":"freightclaims","first_party":true}' \
-    >/dev/null
+  write_client_document |
+    wget -q -O - \
+      --header "Content-Type: application/json" \
+      --post-file=/dev/stdin \
+      "${HYDRA_ADMIN_URL%/}/admin/clients" >/dev/null
 fi
 
 echo "Hydra client is ready: $HYDRA_CLIENT_ID"

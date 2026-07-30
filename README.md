@@ -2,8 +2,9 @@
 
 This repository is the source of truth for the global self-hosted Ory control
 plane. `https://auth.ensombl.io` is the canonical OIDC issuer and default
-Ensombl UI; `https://auth.freightclaims.ensombl.io` is the current
-FreightClaims-branded browser entrypoint.
+Ensombl UI. `https://auth.freightclaims.ensombl.io` and
+`https://auth.freightcheck.com` are the FreightClaims- and
+FreightCheck-branded browser entrypoints.
 
 It is intentionally separate from every product repository. A Kratos identity
 can be admitted to more than one Ensombl product, while Hydra clients, exact
@@ -158,17 +159,18 @@ non-secret global product catalog applied on every deployment. It drives the
 control-plane client/product map, trusted clients, allowed return origins, and
 idempotent Hydra client reconciliation.
 
-FreightClaims currently declares two confidential clients:
+The hosted product clients are:
 
-| Environment | Client | Base origin | Audience |
-| --- | --- | --- | --- |
-| staging | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
-| production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
+| Product | Environment | Client | Base origin | Audience |
+| --- | --- | --- | --- | --- |
+| FreightClaims | staging | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
+| FreightClaims | production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
+| FreightCheck | staging | `freightcheck-staging-web` | `https://app.staging.freightcheck.io` | `freightcheck-staging` |
+| FreightCheck | production | `freightcheck-production-web` | `https://app.freightcheck.io` | `freightcheck-production` |
 
-Both use Authorization Code, refresh tokens, and
+All use Authorization Code, refresh tokens, and
 `openid offline_access email profile`. Their Bitwarden-managed secrets are
-independent. Both environments currently use the branded browser origin
-`https://auth.freightclaims.ensombl.io`, while the token issuer remains
-`https://auth.ensombl.io`. When FreightClaims moves to its final customer
-domain, update the catalog, Kratos edge override, return-origin allowlist, DNS,
-and Traefik host rules in one reviewed deployment.
+independent. FreightClaims uses `https://auth.freightclaims.ensombl.io`;
+FreightCheck uses `https://auth.freightcheck.com`. The token issuer remains
+`https://auth.ensombl.io`. FreightCheck inherits the default
+`member`/`admin`/`owner` tenant roles.

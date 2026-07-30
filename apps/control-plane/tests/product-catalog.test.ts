@@ -98,4 +98,18 @@ describe('product tenant role policies', () => {
     expect(policy?.roles.has('admin')).toBe(false)
     expect(policy?.roles.has('owner')).toBe(false)
   })
+
+  it('gives FreightCheck the default role stack', () => {
+    const policy = loadProductCatalog(
+      resolve(process.cwd(), '../../deploy/products/products.json'),
+    ).tenantRolePolicyByProduct.get('freightcheck')
+
+    expect(
+      [...(policy?.roles.values() ?? [])].map((role) => [role.id, [...role.permissions]]),
+    ).toEqual([
+      ['member', ['access']],
+      ['admin', ['access', 'administer']],
+      ['owner', ['access', 'administer', 'owner']],
+    ])
+  })
 })

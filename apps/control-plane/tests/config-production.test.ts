@@ -32,6 +32,14 @@ function setProductionEnvironment(): void {
       'stage-identity-migration-secret-that-is-long-enough',
     FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET:
       'prod-identity-migration-secret-that-is-long-enough',
+    FREIGHTCHECK_STAGING_AUTHORIZATION_DECISION_SECRET:
+      'freightcheck-stage-authorization-secret-that-is-long-enough',
+    FREIGHTCHECK_PRODUCTION_AUTHORIZATION_DECISION_SECRET:
+      'freightcheck-prod-authorization-secret-that-is-long-enough',
+    FREIGHTCHECK_STAGING_IDENTITY_MANAGEMENT_SECRET:
+      'freightcheck-stage-identity-secret-that-is-long-enough',
+    FREIGHTCHECK_PRODUCTION_IDENTITY_MANAGEMENT_SECRET:
+      'freightcheck-prod-identity-secret-that-is-long-enough',
     PRODUCT_CATALOG_PATH: productCatalogPath,
   })
   resetConfigForTest()

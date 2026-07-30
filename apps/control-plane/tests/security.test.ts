@@ -26,6 +26,9 @@ describe('safeReturnUrl', () => {
     expect(safeReturnUrl('https://app.freightclaims.ensombl.io/claims')).toBe(
       'https://app.freightclaims.ensombl.io/claims',
     )
+    expect(safeReturnUrl('https://app.freightcheck.io/tenants')).toBe(
+      'https://app.freightcheck.io/tenants',
+    )
     expect(safeReturnUrl('https://attacker.example/callback')).toBe('/')
     expect(safeReturnUrl('//attacker.example/callback')).toBe('/')
     expect(safeReturnUrl('https://user:pass@auth.ensombl.io/')).toBe('/')
@@ -70,6 +73,14 @@ describe('configuration', () => {
       'freightclaims:production',
     )
     expect(config().trustedClientIds.has('freightclaims-production-web')).toBe(true)
+    expect(config().clientProductMap.get('freightcheck-production-web')).toBe('freightcheck')
+    expect(config().admissionScopeByClient.get('freightcheck-staging-web')).toBe(
+      'freightcheck:staging',
+    )
+    expect(config().admissionScopeByClient.get('freightcheck-production-web')).toBe(
+      'freightcheck:production',
+    )
+    expect(config().trustedClientIds.has('freightcheck-production-web')).toBe(true)
     expect(config().trustedClientIds.has('unknown-client')).toBe(false)
     expect(config().defaultAuthBrand).toMatchObject({
       id: 'ensombl',
@@ -80,10 +91,17 @@ describe('configuration', () => {
       authOrigin: 'https://auth.freightclaims.ensombl.io',
       emailFromName: 'FreightClaims',
     })
+    expect(config().authBrandByProduct.get('freightcheck')).toMatchObject({
+      authOrigin: 'https://auth.freightcheck.com',
+      emailFromName: 'FreightCheck',
+    })
     expect(config().emailFromAddress).toBe('noreply@notifications.ensombl.io')
     expect(authProductMarkerForAdmission('freightclaims')).toBe('freightclaims')
     expect(authProductMarkerForAdmission('freightclaims:staging')).toBe('freightclaims')
     expect(authProductMarkerForAdmission('freightclaims:production')).toBe('freightclaims')
+    expect(authProductMarkerForAdmission('freightcheck')).toBe('freightcheck')
+    expect(authProductMarkerForAdmission('freightcheck:staging')).toBe('freightcheck')
+    expect(authProductMarkerForAdmission('freightcheck:production')).toBe('freightcheck')
   })
 
   it('makes the explicit client map authoritative over Hydra metadata', () => {
