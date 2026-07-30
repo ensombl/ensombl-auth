@@ -79,7 +79,7 @@ export class ZitadelClient {
   async listOrganizations(): Promise<Organization[]> {
     const response = await this.#request<{ result?: Organization[] }>("/v2/organizations/_search", {
       method: "POST",
-      body: {},
+      body: { query: { limit: 1_000 } },
     });
     return response.result ?? [];
   }
@@ -147,7 +147,7 @@ export class ZitadelClient {
   async listProjects(): Promise<Project[]> {
     const response = await this.#request<{ projects?: Project[] }>(
       "/zitadel.project.v2.ProjectService/ListProjects",
-      { method: "POST", body: {}, connect: true },
+      { method: "POST", body: { pagination: { limit: 1_000 } }, connect: true },
     );
     return response.projects ?? [];
   }
@@ -211,7 +211,7 @@ export class ZitadelClient {
       {
         method: "POST",
         connect: true,
-        body: {},
+        body: { pagination: { limit: 1_000 } },
       },
     );
     return (response.projectGrants ?? []).filter((grant) => grant.projectId === projectId);
@@ -331,7 +331,7 @@ export class ZitadelClient {
       {
         method: "POST",
         connect: true,
-        body: {},
+        body: { pagination: { limit: 1_000 } },
       },
     );
     return (response.authorizations ?? []).filter(
