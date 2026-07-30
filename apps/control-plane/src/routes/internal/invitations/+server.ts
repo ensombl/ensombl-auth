@@ -9,11 +9,13 @@ import {
 } from '$lib/server/invitations'
 import type { RequestHandler } from './$types'
 
-const bodySchema = z.object({
-  email: z.string().email().max(320),
-  product: z.string().min(1).max(100),
-  expires_in_hours: z.number().int().min(1).max(168).default(48),
-})
+const bodySchema = z
+  .object({
+    client_id: z.string().regex(/^[A-Za-z0-9._-]+$/),
+    email: z.string().email().max(320),
+    expires_in_hours: z.number().int().min(1).max(168).default(48),
+  })
+  .strict()
 
 const idempotencyKeySchema = z
   .string()
@@ -22,26 +24,24 @@ const idempotencyKeySchema = z
   .regex(/^[A-Za-z0-9._:-]+$/)
 
 export const POST: RequestHandler = async ({ request }) => {
-  if (!hasBearer(request, config().INVITATION_API_SECRET)) {
-    return json({ error: 'unauthorized' }, { status: 401 })
-  }
-
   const parsed = bodySchema.safeParse(await request.json().catch(() => null))
   const idempotencyKey = idempotencyKeySchema.safeParse(request.headers.get('idempotency-key'))
   if (!parsed.success || !idempotencyKey.success) {
     return json({ error: 'invalid_request' }, { status: 400 })
   }
 
-  const knownProducts = new Set(config().clientProductMap.values())
-  if (!knownProducts.has(parsed.data.product)) {
-    return json({ error: 'unknown_product' }, { status: 400 })
+  const current = config()
+  const admissionScope = current.admissionScopeByClient.get(parsed.data.client_id)
+  const expectedSecret = current.identityManagementSecrets.get(parsed.data.client_id)
+  if (!admissionScope || !expectedSecret || !hasBearer(request, expectedSecret)) {
+    return json({ error: 'unauthorized' }, { status: 401 })
   }
 
   try {
     const result = await issueInvitation({
       email: parsed.data.email.trim().toLowerCase(),
-      product: parsed.data.product,
-      invitedBy: config().INVITATION_SERVICE_ACTOR,
+      product: admissionScope,
+      invitedBy: `service:${parsed.data.client_id}`,
       expiresInHours: parsed.data.expires_in_hours,
       idempotencyKey: idempotencyKey.data,
     })

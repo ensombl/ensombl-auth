@@ -1,4 +1,7 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { z } from 'zod'
+import { loadProductCatalog } from './product-catalog'
 
 const url = z.string().url()
 
@@ -13,12 +16,12 @@ const localDefaults = {
     'postgres://auth_control_runtime:auth_control_runtime_dev@localhost:25432/auth_control',
   ORY_HOOK_SECRET: 'local-only-hook-secret-32-bytes',
   MIGRATION_API_SECRET: 'local-only-migration-api-secret',
-  INVITATION_API_SECRET: 'local-only-invitation-api-secret',
   INVITATION_RECONCILER_SECRET: 'local-only-invitation-reconciler-secret',
-  INVITATION_SERVICE_ACTOR: 'service:local-invitation-api',
-  FREIGHTCLAIMS_BASE_URL: 'http://localhost:4200',
-  CLIENT_PRODUCT_MAP_JSON: '{"freightclaims-local-web":"freightclaims"}',
-  TRUSTED_CLIENT_IDS: 'freightclaims-local-web',
+  PRODUCT_CATALOG_PATH:
+    [
+      resolve(process.cwd(), 'deploy/products/products.local.json'),
+      resolve(process.cwd(), '../../deploy/products/products.local.json'),
+    ].find(existsSync) ?? resolve(process.cwd(), 'deploy/products/products.local.json'),
 } as const
 
 const schema = z.object({
@@ -32,26 +35,24 @@ const schema = z.object({
   DATABASE_URL: z.string().min(1).default(localDefaults.DATABASE_URL),
   ORY_HOOK_SECRET: z.string().min(24).default(localDefaults.ORY_HOOK_SECRET),
   MIGRATION_API_SECRET: z.string().min(24).default(localDefaults.MIGRATION_API_SECRET),
-  INVITATION_API_SECRET: z.string().min(24).default(localDefaults.INVITATION_API_SECRET),
   INVITATION_RECONCILER_SECRET: z
     .string()
     .min(24)
     .default(localDefaults.INVITATION_RECONCILER_SECRET),
-  INVITATION_SERVICE_ACTOR: z
-    .string()
-    .min(1)
-    .max(200)
-    .default(localDefaults.INVITATION_SERVICE_ACTOR),
-  FREIGHTCLAIMS_BASE_URL: url.default(localDefaults.FREIGHTCLAIMS_BASE_URL),
-  CLIENT_PRODUCT_MAP_JSON: z.string().default(localDefaults.CLIENT_PRODUCT_MAP_JSON),
-  TRUSTED_CLIENT_IDS: z.string().default(localDefaults.TRUSTED_CLIENT_IDS),
+  PRODUCT_CATALOG_PATH: z.string().min(1).default(localDefaults.PRODUCT_CATALOG_PATH),
 })
 
 type ParsedConfig = z.infer<typeof schema>
 
 export type AppConfig = ParsedConfig & {
+  admissionScopeByClient: ReadonlyMap<string, string>
+  authorizationDecisionSecrets: ReadonlyMap<string, string>
+  identityManagementSecrets: ReadonlyMap<string, string>
+  identityMigrationSecrets: ReadonlyMap<string, string>
+  identityMigrationSourceByClient: ReadonlyMap<string, string>
   clientProductMap: ReadonlyMap<string, string>
   trustedClientIds: ReadonlySet<string>
+  returnOrigins: ReadonlySet<string>
 }
 
 let cached: AppConfig | undefined
@@ -66,12 +67,8 @@ const productionRequiredKeys = [
   'DATABASE_URL',
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
-  'INVITATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
-  'INVITATION_SERVICE_ACTOR',
-  'FREIGHTCLAIMS_BASE_URL',
-  'CLIENT_PRODUCT_MAP_JSON',
-  'TRUSTED_CLIENT_IDS',
+  'PRODUCT_CATALOG_PATH',
 ] as const satisfies readonly (keyof typeof localDefaults)[]
 
 const internalUrlKeys = [
@@ -85,7 +82,6 @@ const internalUrlKeys = [
 const bearerSecretKeys = [
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
-  'INVITATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
 ] as const satisfies readonly (keyof ParsedConfig)[]
 
@@ -109,11 +105,12 @@ function assertProductionConfig(parsed: ParsedConfig, environment: NodeJS.Proces
     if (!environment[key]?.trim()) violations.push(`${key} must be explicitly configured`)
   }
 
-  for (const key of ['PUBLIC_AUTH_URL', 'FREIGHTCLAIMS_BASE_URL'] as const) {
-    const configured = new URL(parsed[key])
-    if (configured.protocol !== 'https:' || isLocalHostname(configured.hostname)) {
-      violations.push(`${key} must be a non-local HTTPS URL`)
-    }
+  const publicAuthUrl = new URL(parsed.PUBLIC_AUTH_URL)
+  if (publicAuthUrl.protocol !== 'https:' || isLocalHostname(publicAuthUrl.hostname)) {
+    violations.push('PUBLIC_AUTH_URL must be a non-local HTTPS URL')
+  }
+  if (!parsed.PRODUCT_CATALOG_PATH.startsWith('/')) {
+    violations.push('PRODUCT_CATALOG_PATH must be absolute in production')
   }
 
   for (const key of internalUrlKeys) {
@@ -156,17 +153,81 @@ export function config(): AppConfig {
 
   const parsed = schema.parse(process.env)
   assertProductionConfig(parsed, process.env)
-  const mapping = z
-    .record(z.string(), z.string().min(1))
-    .parse(JSON.parse(parsed.CLIENT_PRODUCT_MAP_JSON))
+  const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
+  const authorizationDecisionSecrets = new Map<string, string>()
+  const identityManagementSecrets = new Map<string, string>()
+  const identityMigrationSecrets = new Map<string, string>()
+  for (const [clientId, environmentName] of productCatalog.authorizationSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-authorization-decision-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for authorization decisions`,
+      )
+    }
+    authorizationDecisionSecrets.set(clientId, secret)
+  }
+  for (const [
+    clientId,
+    environmentName,
+  ] of productCatalog.identityManagementSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-identity-management-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for identity management`,
+      )
+    }
+    identityManagementSecrets.set(clientId, secret)
+  }
+  for (const [
+    clientId,
+    environmentName,
+  ] of productCatalog.identityMigrationSecretEnvironmentByClient) {
+    const configured = process.env[environmentName]?.trim()
+    const secret =
+      configured ??
+      (parsed.NODE_ENV === 'production'
+        ? undefined
+        : `local-only-${clientId}-identity-migration-secret`)
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        `${environmentName} must provide at least 32 characters for identity migration`,
+      )
+    }
+    identityMigrationSecrets.set(clientId, secret)
+  }
+  if (
+    parsed.NODE_ENV === 'production' &&
+    new Set(authorizationDecisionSecrets.values()).size !== authorizationDecisionSecrets.size
+  ) {
+    throw new Error('Authorization decision secrets must be pairwise unique')
+  }
+  const productClientSecrets = [
+    ...authorizationDecisionSecrets.values(),
+    ...identityManagementSecrets.values(),
+    ...identityMigrationSecrets.values(),
+  ]
+  if (
+    parsed.NODE_ENV === 'production' &&
+    new Set(productClientSecrets).size !== productClientSecrets.length
+  ) {
+    throw new Error('Product client capability secrets must be pairwise unique')
+  }
   cached = {
     ...parsed,
-    clientProductMap: new Map(Object.entries(mapping)),
-    trustedClientIds: new Set(
-      parsed.TRUSTED_CLIENT_IDS.split(',')
-        .map((value) => value.trim())
-        .filter(Boolean),
-    ),
+    ...productCatalog,
+    authorizationDecisionSecrets,
+    identityManagementSecrets,
+    identityMigrationSecrets,
   }
   return cached
 }

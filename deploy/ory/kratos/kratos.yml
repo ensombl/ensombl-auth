@@ -12,7 +12,8 @@ selfservice:
   default_browser_return_url: https://auth.ensombl.io/
   allowed_return_urls:
     - https://auth.ensombl.io
-    - https://freightclaims.ensombl.io
+    - https://app.staging.freightclaims.ensombl.io
+    - https://app.freightclaims.ensombl.io
 
   methods:
     password:

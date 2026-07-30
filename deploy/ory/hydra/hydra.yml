@@ -7,14 +7,14 @@ urls:
   self:
     issuer: https://auth.ensombl.io/
     public: https://auth.ensombl.io/
-    admin: http://hydra:4445/
+    admin: http://hydra-admin:4445/
   login: https://auth.ensombl.io/ui/oauth2/login
   consent: https://auth.ensombl.io/ui/oauth2/consent
   logout: https://auth.ensombl.io/ui/oauth2/logout
   error: https://auth.ensombl.io/ui/error
   post_logout_redirect: https://auth.ensombl.io/
   identity_provider:
-    url: http://kratos:4434/
+    url: http://kratos-admin:4434/
     publicUrl: https://auth.ensombl.io/
 
 secrets:

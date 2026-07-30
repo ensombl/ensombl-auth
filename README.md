@@ -18,18 +18,23 @@ isolated.
   Hydra login/consent/logout, invitations, product admission, and the migrated
   password reset gate.
 - PostgreSQL for the three Ory stores and the small auth-control database.
-- A same-origin Caddy gateway. Only the gateway is public; all Ory admin APIs
-  and control endpoints remain private.
+- Checked-in Dokploy Traefik routes for the exact public control, Kratos, and
+  Hydra paths. Ory admin APIs and control endpoints have no public router.
 
 The application uses Node 24, pnpm 11, TypeScript, SvelteKit, and Turborepo,
 matching the relevant runtime and frontend patterns in Exhibit A. No project
 container is published to a registry. Dokploy builds the control application
 directly from the reviewed Git revision; the Compose stack only pulls pinned
-upstream Ory, PostgreSQL, and Caddy images.
+upstream Ory and PostgreSQL images. Caddy remains only in the disposable local
+development stack.
 
 ## Local development
 
 Prerequisites: Node 24, pnpm 11, and Docker with Compose.
+
+This workflow is for maintainers of the global auth platform. FreightClaims
+development owns its own disposable Ory stack and does not clone, compose, or
+seed this repository.
 
 ```bash
 pnpm install
@@ -71,7 +76,7 @@ The fixture is `developer@freightclaims.test` with initial password
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
-this fixture is separate from the audited `fc-stage` importer.
+this fixture is separate from the audited Stage and Production importers.
 
 ## Security invariants
 
@@ -88,17 +93,23 @@ this fixture is separate from the audited `fc-stage` importer.
   password.
 - Ory cookies are host-only for `auth.ensombl.io`. No `.ensombl.io` parent
   cookie is used.
-- Internal APIs require independent bearer secrets and the gateway returns 404
-  for `/internal/*`.
+- Internal APIs require independent bearer secrets and Dokploy Traefik has no
+  router for `/internal/*`.
 - Passwords, ciphertext, password hashes, OAuth tokens, recovery codes, and
   secrets are never written to application logs or the auth-control database.
 - Identity batches enter only through a source-built stdin/tmpfs one-shot. A
   user is created inactive, durably reset-gated, and product-admitted before
   activation; split failures resume from a hash-bound ledger.
-- The public gateway is absent from every PostgreSQL and Keto network.
-  Kratos/Hydra admin APIs have no public route; the current edge-listener
-  residual and Hydra split-server follow-up are documented in
-  `docs/architecture.md`.
+- Reviewed Stage and Production batches can map the same legacy source user to
+  one global identity. A later source never replaces an active password or
+  reasserts a reset gate already completed in the earlier environment.
+- Every migrated identity is admitted only to its reviewed product and exact
+  product/organization tenant bindings; product admission alone never grants
+  FreightClaims tenant access.
+- Hydra public and admin listeners run in separate processes and networks.
+  Kratos v26 exposes both listeners from one process, but Traefik routes only
+  its public paths; the resulting shared-network trust boundary is documented
+  in `docs/architecture.md`.
 
 ## Deployment
 
@@ -117,20 +128,21 @@ injected. The checked-in
 [`deploy/secrets/manifest.json`](deploy/secrets/manifest.json) is the complete
 non-secret inventory. Shared `.env` files are forbidden.
 
-## FreightClaims contract
+## Product configuration
 
-The migration-phase product base is fixed at
-`https://freightclaims.ensombl.io`.
+[`deploy/products/products.json`](deploy/products/products.json) is the
+non-secret global product catalog applied on every deployment. It drives the
+control-plane client/product map, trusted clients, allowed return origins, and
+idempotent Hydra client reconciliation.
 
-The bootstrapped confidential Hydra client is:
+FreightClaims currently declares two confidential clients:
 
-- client ID: `freightclaims-web`
-- redirect URI: `https://freightclaims.ensombl.io/auth/callback`
-- post-logout URI: `https://freightclaims.ensombl.io/`
-- grant types: Authorization Code + refresh token
-- scopes: `openid offline_access email profile`
-- access-token audience: `freightclaims`
-- metadata: `ensombl_product=freightclaims`, `first_party=true`
+| Environment | Client | Base origin | Audience |
+| --- | --- | --- | --- |
+| stage | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
+| production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
 
-The client secret must be the same Bitwarden-managed value injected into this
-stack and FreightClaims.
+Both use Authorization Code, refresh tokens, and
+`openid offline_access email profile`. Their Bitwarden-managed secrets are
+independent. When FreightClaims moves to its final customer domain, update the
+catalog and Kratos return-origin allowlist in one reviewed deployment.

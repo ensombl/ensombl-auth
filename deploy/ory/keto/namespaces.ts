@@ -55,7 +55,7 @@ class Organization implements Namespace {
   }
 }
 
-class FreightClaimsTenant implements Namespace {
+class Tenant implements Namespace {
   related: {
     organization: Organization[]
     product: Product[]

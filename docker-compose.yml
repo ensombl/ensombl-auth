@@ -248,7 +248,8 @@ services:
       PGPASSWORD: auth_identity_import_dev
       KRATOS_ADMIN_URL: http://kratos:4434
       KETO_WRITE_URL: http://keto:4467
-      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-stage
+      IDENTITY_IMPORT_ALLOWED_SOURCE: freightclaims-fc-staging
+      IDENTITY_IMPORT_ALLOWED_PRODUCTS: freightclaims
     stdin_open: true
     read_only: true
     tmpfs:
