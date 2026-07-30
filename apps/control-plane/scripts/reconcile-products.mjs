@@ -4,7 +4,7 @@ const catalogPath = required('PRODUCT_CATALOG_PATH')
 const hydraAdminUrl = new URL(required('HYDRA_ADMIN_URL'))
 const catalog = JSON.parse(await readFile(catalogPath, 'utf8'))
 
-if (catalog?.schema_version !== 1 || !Array.isArray(catalog.products)) {
+if (!Array.isArray(catalog?.products)) {
   throw new Error('Unsupported product catalog')
 }
 

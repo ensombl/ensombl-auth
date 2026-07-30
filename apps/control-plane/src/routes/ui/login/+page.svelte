@@ -9,7 +9,7 @@ let { data } = $props()
   <section class="card">
     <Brand />
     <h1>Sign in</h1>
-    <p class="muted">Use your global Ensombl identity.</p>
+    <p class="muted">Use your shared identity.</p>
     <OryFlowForm flow={data.flow} groups={['password', 'totp', 'lookup_secret', 'code']} />
     <p><a href="/self-service/recovery/browser">Forgot your password?</a></p>
   </section>

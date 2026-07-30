@@ -1,5 +1,4 @@
-const localMigrationUrl =
-  'postgres://auth_control_migrator:auth_control_migrator_dev@localhost:25432/auth_control?options=-c%20role%3Dauth_control_owner'
+const localMigrationUrl = 'postgres://auth_control:auth_control_dev@localhost:25432/auth_control'
 
 function invalid(message: string): never {
   throw new Error(`Invalid AUTH_CONTROL_MIGRATION_URL: ${message}`)
@@ -32,17 +31,14 @@ export function migrationDatabaseUrl(environment: NodeJS.ProcessEnv = process.en
   if (!['postgres:', 'postgresql:'].includes(parsed.protocol)) {
     invalid('must use PostgreSQL')
   }
-  if (decodeURIComponent(parsed.username) !== 'auth_control_migrator') {
-    invalid('must authenticate as auth_control_migrator')
+  if (!decodeURIComponent(parsed.username)) {
+    invalid('must include a database user')
   }
   if (!parsed.password) {
     invalid('must include the migrator password')
   }
   if (parsed.pathname !== '/auth_control') {
     invalid('must target the auth_control database')
-  }
-  if (parsed.searchParams.get('options') !== '-c role=auth_control_owner') {
-    invalid('must assume auth_control_owner')
   }
   if (environment.NODE_ENV === 'production' && isLoopback(parsed.hostname)) {
     invalid('must use a non-loopback host in production')

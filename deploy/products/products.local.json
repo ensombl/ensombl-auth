@@ -1,9 +1,37 @@
 {
-  "schema_version": 1,
+  "email_from_address": "noreply@notifications.ensombl.io",
+  "default_auth_brand": {
+    "id": "ensombl",
+    "display_name": "Ensombl",
+    "auth_origin": "http://localhost:24455",
+    "email_from_name": "Ensombl"
+  },
   "products": [
     {
       "id": "freightclaims",
+      "auth_brand": {
+        "display_name": "FreightClaims",
+        "auth_origin": "http://localhost:24455",
+        "email_from_name": "FreightClaims"
+      },
       "return_origins": ["http://localhost:4200"],
+      "tenant_roles": {
+        "mode": "replace",
+        "roles": [
+          {
+            "id": "member",
+            "permissions": ["access"]
+          },
+          {
+            "id": "adjuster",
+            "permissions": ["access"]
+          },
+          {
+            "id": "tenant_admin",
+            "permissions": ["access", "administer"]
+          }
+        ]
+      },
       "clients": [
         {
           "id": "freightclaims-local-web",

@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { productForClient } from '../src/lib/server/admission'
+import { authProductMarkerForAdmission } from '../src/lib/server/auth-brand'
 import { config, resetConfigForTest } from '../src/lib/server/config'
 import { hasBearer } from '../src/lib/server/internal-auth'
 import { safeReturnUrl } from '../src/lib/server/return-url'
@@ -70,6 +71,19 @@ describe('configuration', () => {
     )
     expect(config().trustedClientIds.has('freightclaims-production-web')).toBe(true)
     expect(config().trustedClientIds.has('unknown-client')).toBe(false)
+    expect(config().defaultAuthBrand).toMatchObject({
+      id: 'ensombl',
+      authOrigin: 'https://auth.ensombl.io',
+      emailFromName: 'Ensombl',
+    })
+    expect(config().authBrandByProduct.get('freightclaims')).toMatchObject({
+      authOrigin: 'https://auth.freightclaims.ensombl.io',
+      emailFromName: 'FreightClaims',
+    })
+    expect(config().emailFromAddress).toBe('noreply@notifications.ensombl.io')
+    expect(authProductMarkerForAdmission('freightclaims')).toBe('freightclaims')
+    expect(authProductMarkerForAdmission('freightclaims:staging')).toBe('freightclaims')
+    expect(authProductMarkerForAdmission('freightclaims:production')).toBe('freightclaims')
   })
 
   it('makes the explicit client map authoritative over Hydra metadata', () => {

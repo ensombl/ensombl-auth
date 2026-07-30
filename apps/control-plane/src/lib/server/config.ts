@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { z } from 'zod'
-import { loadProductCatalog } from './product-catalog'
+import { loadProductCatalog, type ProductCatalogConfiguration } from './product-catalog'
 
 const url = z.string().url()
 
@@ -12,11 +12,12 @@ const localDefaults = {
   HYDRA_ADMIN_URL: 'http://localhost:24445',
   KETO_READ_URL: 'http://localhost:24466',
   KETO_WRITE_URL: 'http://localhost:24467',
-  DATABASE_URL:
-    'postgres://auth_control_runtime:auth_control_runtime_dev@localhost:25432/auth_control',
+  DATABASE_URL: 'postgres://auth_control:auth_control_dev@localhost:25432/auth_control',
   ORY_HOOK_SECRET: 'local-only-hook-secret-32-bytes',
   MIGRATION_API_SECRET: 'local-only-migration-api-secret',
   INVITATION_RECONCILER_SECRET: 'local-only-invitation-reconciler-secret',
+  AUTH_COURIER_SECRET: 'local-only-auth-courier-secret-that-is-long-enough',
+  RESEND_API_KEY: 'local-only-resend-api-key',
   PRODUCT_CATALOG_PATH:
     [
       resolve(process.cwd(), 'deploy/products/products.local.json'),
@@ -39,21 +40,19 @@ const schema = z.object({
     .string()
     .min(24)
     .default(localDefaults.INVITATION_RECONCILER_SECRET),
+  AUTH_COURIER_SECRET: z.string().min(32).default(localDefaults.AUTH_COURIER_SECRET),
+  RESEND_API_KEY: z.string().min(1).default(localDefaults.RESEND_API_KEY),
   PRODUCT_CATALOG_PATH: z.string().min(1).default(localDefaults.PRODUCT_CATALOG_PATH),
 })
 
 type ParsedConfig = z.infer<typeof schema>
 
-export type AppConfig = ParsedConfig & {
-  admissionScopeByClient: ReadonlyMap<string, string>
-  authorizationDecisionSecrets: ReadonlyMap<string, string>
-  identityManagementSecrets: ReadonlyMap<string, string>
-  identityMigrationSecrets: ReadonlyMap<string, string>
-  identityMigrationSourceByClient: ReadonlyMap<string, string>
-  clientProductMap: ReadonlyMap<string, string>
-  trustedClientIds: ReadonlySet<string>
-  returnOrigins: ReadonlySet<string>
-}
+export type AppConfig = ParsedConfig &
+  ProductCatalogConfiguration & {
+    authorizationDecisionSecrets: ReadonlyMap<string, string>
+    identityManagementSecrets: ReadonlyMap<string, string>
+    identityMigrationSecrets: ReadonlyMap<string, string>
+  }
 
 let cached: AppConfig | undefined
 
@@ -68,6 +67,8 @@ const productionRequiredKeys = [
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
+  'AUTH_COURIER_SECRET',
+  'RESEND_API_KEY',
   'PRODUCT_CATALOG_PATH',
 ] as const satisfies readonly (keyof typeof localDefaults)[]
 
@@ -83,6 +84,7 @@ const bearerSecretKeys = [
   'ORY_HOOK_SECRET',
   'MIGRATION_API_SECRET',
   'INVITATION_RECONCILER_SECRET',
+  'AUTH_COURIER_SECRET',
 ] as const satisfies readonly (keyof ParsedConfig)[]
 
 function isLocalHostname(hostname: string): boolean {
@@ -154,6 +156,12 @@ export function config(): AppConfig {
   const parsed = schema.parse(process.env)
   assertProductionConfig(parsed, process.env)
   const productCatalog = loadProductCatalog(parsed.PRODUCT_CATALOG_PATH)
+  if (
+    parsed.NODE_ENV === 'production' &&
+    productCatalog.defaultAuthBrand.authOrigin !== new URL(parsed.PUBLIC_AUTH_URL).origin
+  ) {
+    throw new Error('Default auth brand origin must match PUBLIC_AUTH_URL in production')
+  }
   const authorizationDecisionSecrets = new Map<string, string>()
   const identityManagementSecrets = new Map<string, string>()
   const identityMigrationSecrets = new Map<string, string>()

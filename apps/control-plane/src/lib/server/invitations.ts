@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { authProductMarkerForAdmission } from './auth-brand'
 import { config } from './config'
 import { db } from './db'
 import { fetchJson } from './http'
@@ -244,7 +245,8 @@ async function findOrCreateIdentity(email: string): Promise<Identity> {
   )
 }
 
-async function dispatchRecovery(email: string): Promise<void> {
+async function dispatchRecovery(email: string, product: string): Promise<void> {
+  const authProduct = authProductMarkerForAdmission(product)
   const flow = await fetchJson<RecoveryFlow>(
     new URL('self-service/recovery/api', `${config().KRATOS_PUBLIC_INTERNAL_URL}/`),
     { method: 'GET' },
@@ -255,7 +257,10 @@ async function dispatchRecovery(email: string): Promise<void> {
     submit,
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-ensombl-auth-product': authProduct,
+      },
       body: JSON.stringify({ method: 'code', email }),
     },
     [200],
@@ -317,7 +322,7 @@ export async function issueInvitation(
   }
 
   try {
-    await dependencies.dispatchRecovery(claimed.normalizedEmail)
+    await dependencies.dispatchRecovery(claimed.normalizedEmail, claimed.product)
     return {
       invitation: await dependencies.markDispatched(claimed),
       created: reserved.created,

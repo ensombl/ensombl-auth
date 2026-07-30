@@ -33,12 +33,6 @@ if ! rg -q -- '--file /dev/stdin' deploy/ory/hydra/bootstrap-client.sh; then
   exit 1
 fi
 
-if ! rg -q '\\getenv .*_password [A-Z0-9_]+_PASSWORD' \
-  deploy/postgres/reconcile-databases.sh; then
-  echo "PostgreSQL reconcile must load password variables from the environment" >&2
-  exit 1
-fi
-
 if rg -n 'process\\.env\\.DATABASE_URL|environment\\.DATABASE_URL' \
   apps/control-plane/scripts/migrate.ts \
   apps/control-plane/scripts/migration-database-url.ts; then
@@ -47,19 +41,9 @@ if rg -n 'process\\.env\\.DATABASE_URL|environment\\.DATABASE_URL' \
 fi
 
 if ! rg -q \
-  'AUTH_CONTROL_MIGRATION_URL: postgres://auth_control_migrator:' \
+  'AUTH_CONTROL_MIGRATION_URL:.*AUTH_CONTROL_DATABASE_URL' \
   deploy/dokploy/compose.yml; then
-  echo "The hosted migration job must use its dedicated database URL" >&2
-  exit 1
-fi
-
-if rg -n -- '--arg (password|password_hash|secret)' deploy/identity-import; then
-  echo "Identity material must not be copied into jq command arguments" >&2
-  exit 1
-fi
-
-if rg -n -- 'credentials_identifier=\$' deploy/identity-import; then
-  echo "Identity email must not be copied into curl command arguments" >&2
+  echo "The hosted migration job must use the native auth-control database URL" >&2
   exit 1
 fi
 

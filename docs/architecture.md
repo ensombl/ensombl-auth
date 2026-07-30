@@ -2,33 +2,39 @@
 
 ## Public routing
 
-Dokploy's existing Traefik terminates TLS and uses the checked-in Compose labels
-to expose only:
+Dokploy's existing Traefik terminates TLS. Hydra remains a single canonical
+issuer at `auth.ensombl.io`; `auth.freightclaims.ensombl.io` is a branded
+Kratos and control-UI edge over the same global identity database.
 
-| Path | Destination |
+| Host and path | Destination |
 | --- | --- |
-| `/ui/*`, `/healthz`, `/` | source-built control application |
-| `/self-service/*`, `/sessions/*`, `/schemas/*` | Kratos public API |
-| `/oauth2/*`, `/.well-known/*`, `/userinfo` | Hydra public API |
+| both auth hosts: `/ui/*`, `/healthz`, `/` | source-built control application |
+| both auth hosts: `/self-service/*`, `/sessions/*`, `/schemas/*` | host-configured Kratos public edge |
+| `auth.ensombl.io`: `/oauth2/*`, `/.well-known/*`, `/userinfo` | canonical Hydra public API |
 
-There is no catch-all router, so `/internal/*`, `/admin/*`, and Keto APIs do not
-match a public route. Hydra public and admin listeners are separate containers;
-only `hydra-public` joins `dokploy-network`. Kratos v26.2.0 serves public and
-admin listeners from one process, so its container joins both
-`dokploy-network` and the private Kratos-admin network. Traefik routes only
-port 4433 and the public path allowlist, but other workloads on the shared
-Dokploy network remain part of the trusted deployment boundary. Keto and every
-database remain on internal networks.
+There is no catch-all router. Only the five product endpoints documented below
+match `/internal/*`; every other internal path, `/admin/*`, and Keto API does
+not match a public route. Hydra public and admin listeners are separate
+containers, and Kratos v26.2.0 serves public and admin listeners from one
+process. Traefik routes only the declared public ports and path allowlists.
+Both Kratos edges share the dedicated native Kratos database, cookie/cipher
+secrets, identity schema, and reset hooks, but issue host-only browser cookies.
+Kratos, Hydra, Keto, and auth control each use a separate native Dokploy
+PostgreSQL service. The dedicated auth Dokploy installation and its shared
+container network are the trusted deployment boundary; database and admin
+ports have no public router or host port.
 
-Product APIs never receive a raw Keto endpoint. They call the private
+Product APIs never receive a raw Keto endpoint. From their separate
+infrastructure they call the exact HTTPS
 `POST /internal/authorization/check` decision boundary with a client-specific
 bearer secret. The control plane derives the product from the authenticated
 client, constructs a product-namespaced tenant object, and returns only an
-allow/deny result. The route is not exposed by Traefik; dependency failures
-return `503` and product APIs fail closed. A pre-created external Docker
-network named `ensombl-auth-product-decisions` exposes only the control plane
-under alias `ensombl-auth-control` to product API containers; raw Ory services
-never join it.
+allow/deny result. Dependency failures return `503` and product APIs fail
+closed. Traefik also exposes the exact invitation, membership, identity
+migration, and token-introspection routes. Introspection is proxied by the
+control plane so Hydra admin never joins the public network; it requires the
+same environment-specific read-only authorization secret and client ID.
+Every other `/internal/*` path stays private and returns `404`.
 
 Traefik middleware emits anti-framing, MIME-sniffing, no-referrer, and
 production HSTS headers. Browser auth/UI paths are forced `no-store`; OIDC
@@ -39,72 +45,85 @@ preserved. The local development stack continues to use its small Caddy router.
 
 1. FreightClaims starts Authorization Code + PKCE at Hydra.
 2. Hydra sends a one-time login challenge to `/ui/oauth2/login`.
-3. The control application validates the challenge through Hydra admin and the
+3. The control application resolves the trusted Hydra client through the
+   reviewed product catalog and moves the browser to
+   `auth.freightclaims.ensombl.io`; Hydra's issuer and protocol endpoints remain
+   on `auth.ensombl.io`.
+4. The control application validates the challenge through Hydra admin and the
    browser's host-only Kratos session through `sessions/whoami`.
-4. If there is no Kratos session, the browser enters the Kratos login flow.
-5. The control application checks `auth_control.identity_gates` even when Hydra
+5. If there is no Kratos session, the browser enters the FreightClaims-branded
+   Kratos login flow.
+6. The control application checks `auth_control.identity_gates` even when Hydra
    says the login can be skipped.
-6. A required reset enters Kratos settings. Kratos itself rejects a password
+7. A required reset enters Kratos settings. Kratos itself rejects a password
    equal to the current password. The synchronous password-settings hook first
    revokes every Kratos session for the identity and only then clears the gate
    exactly once. The user authenticates again with the replacement password; a
    revocation failure leaves the gate set.
-7. The control application asks Keto whether
+8. The control application asks Keto whether
    `Product:freightclaims#access@User:<identity-id>` is allowed. Any dependency
    failure denies admission.
-8. The control application accepts Hydra login with the Kratos UUID as
+9. The control application accepts Hydra login with the Kratos UUID as
    `subject`.
-9. Consent repeats identity, reset, and product checks. Only configured
+10. Consent repeats identity, reset, and product checks. Only configured
    first-party clients are auto-approved; unknown clients require explicit
    consent.
-10. Hydra returns an authorization code to the exact FreightClaims BFF
+11. Hydra returns an authorization code to the exact FreightClaims BFF
     callback. Angular never sees an access or refresh token.
 
 ## Logout scope
 
 RP-initiated logout ends only the named product's Hydra/application session.
 The control application accepts or rejects the Hydra logout challenge and does
-not terminate the host-only Kratos identity cookie. The global Ensombl identity
-therefore remains available for SSO into other products. A separate,
-user-explicit global sign-out flow is future work.
+not terminate any host-only Kratos identity cookie. Identity records and
+credentials are global, but browser sessions are deliberately separate per
+auth hostname; no `.ensombl.io` parent cookie is used. A separate,
+user-explicit sign-out-across-hosts flow is future work.
+
+## Product-aware auth email
+
+Kratos stores the Traefik-injected `X-Ensombl-Auth-Product` marker with each
+queued recovery or verification message. Public routers overwrite that marker,
+and private invitation dispatch derives it from the already-authenticated
+product client. Arbitrary sender names are never accepted.
+
+Neither Kratos public process watches the shared queue. One `kratos-courier`
+worker posts queued messages to the non-public control endpoint using its own
+bearer secret. The control plane resolves the marker through
+`products.json` and sends with the Resend API. The sender address is always
+`noreply@notifications.ensombl.io`; the display name is `Ensombl` by default
+and `FreightClaims` for FreightClaims-originated flows. A missing marker uses
+the reviewed default; an unknown marker fails closed.
 
 ## Migration control contract
 
-The auth-side boundary is a source-built, one-shot Compose profile with no
-public endpoint. It accepts an operator-prepared manifest only through stdin,
-copies at most 1 MiB into a mode-0700 tmpfs, checks an out-of-band SHA-256 and
-the exact schema, and never logs traits or password hashes. Its database role
-can append/update only import ledger rows and execute a pinned-search-path
-`SECURITY DEFINER` function that can assert `reset_required=true`; it cannot
-read, clear, or otherwise update an identity gate.
+The hosted auth stack does not read a legacy database and contains no password
+decryptor. FreightClaims performs source selection and decryption inside its
+isolated migration worker, immediately converts accepted credentials to the
+reviewed Argon2id contract, and calls the exact HTTPS
+`POST /internal/migration/identities` boundary.
 
-The manifest accepts only the exact Argon2id contract used by the
-FreightClaims migrator: `m=65536,t=3,p=1`, 16-byte salt, and 32-byte hash.
-Plaintext and legacy ciphertext are rejected. The hosted global stack accepts
-only the two explicitly reviewed sources, `freightclaims-fc-staging` and
-`freightclaims-fc-production`; the operator must select the matching source gate for
-each batch. If Production contains an identity already completed by the Stage
-import with the same source user ID and normalized email, the importer reuses
-that active global identity. It does not replace the password or reassert a
-reset gate the user already completed. Any incomplete, differently keyed, or
-email-mismatched cross-source identity fails closed.
+The endpoint requires a client ID and the corresponding catalog-declared
+identity-migration bearer. It derives the product, source environment, and
+admission scope from that authenticated client rather than accepting them as
+caller-controlled fields. Payloads accept only `m=65536,t=3,p=1`, a 16-byte
+salt, and a 32-byte hash. Plaintext and legacy ciphertext are rejected and
+never enter auth logs.
 
-The import order is:
+For each accepted identity the control plane:
 
-1. Validate the complete batch and open its idempotency ledger.
-2. Create/import the Kratos identity and hash in `inactive` state.
-3. Durably assert the reset gate through the true-only function.
-4. Write explicit Keto `Product`, `Organization`, and product/organization
-   `Tenant` relationships.
-5. Activate the Kratos identity.
-6. Commit the identity and batch ledger entries.
+1. Validates the source record and idempotency binding.
+2. Creates or verifies the Kratos identity and imported hash.
+3. Durably asserts the mandatory reset gate.
+4. Writes the reviewed product and tenant relations to Keto.
+5. Activates the identity only after the reset gate and admission exist.
+6. Commits the source alias and membership ledger.
 
-Failure injection exists at every split boundary. Before activation a partial
-identity is inactive; after activation it is already reset-gated and admitted.
-Reruns validate the ledger-bound Kratos external ID, email, and state before
-resuming. The ledger may bind the same global identity to the corresponding
-Stage and Production source records only after the earlier source entry is
-complete. A completed batch hash is a no-op.
+Retries validate the bound Kratos identity, normalized email, source user ID,
+and state before resuming. A production source may reuse a completed staging
+global identity only for the exact reviewed counterpart. It never replaces an
+active password or reasserts a reset gate the user already completed. Any
+incomplete, differently keyed, or email-mismatched collision fails closed.
 
 ## Invitation contract
 
@@ -121,11 +140,13 @@ courier call. Retries with the same key resume a failed identity lookup or
 recovery dispatch; reusing the key with different request data is rejected.
 
 `PUT /internal/tenants/memberships` uses the same product-client capability. It
-applies an idempotent active or revoked desired state to only the caller's
-product tenant. Administrator demotion removes the elevated relation before
-granting ordinary membership, and revocation removes both relations. The
-product service remains responsible for its canonical membership transaction
-and audit record.
+applies an idempotent active or revoked desired role to only the caller's
+product tenant. The catalog supplies `member`, `admin`, and `owner` by default.
+A product can extend those defaults or replace the complete role set and map
+each role to product-owned permissions. Keto stores one product-scoped role
+assignment per identity and tenant; changing a role removes every prior
+assignment before granting the desired one. The product service remains
+responsible for its canonical membership transaction and audit record.
 
 Dispatching an invitation never grants Keto admission. A synchronous Kratos
 post-recovery hook records the successful recovery flow and activates only

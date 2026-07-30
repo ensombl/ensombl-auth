@@ -12,6 +12,7 @@ selfservice:
   default_browser_return_url: https://auth.ensombl.io/
   allowed_return_urls:
     - https://auth.ensombl.io
+    - https://auth.freightclaims.ensombl.io
     - https://app.staging.freightclaims.ensombl.io
     - https://app.freightclaims.ensombl.io
 
@@ -121,11 +122,24 @@ identity:
     - id: default
       url: file:///etc/config/kratos/identity.schema.json
 
+clients:
+  web_hook:
+    header_allowlist:
+      - X-Ensombl-Auth-Product
+
 courier:
-  smtp:
-    connection_uri: smtp://mailpit:1025/?disable_starttls=true
-    from_address: no-reply@ensombl.io
-    from_name: Ensombl
+  delivery_strategy: http
+  http:
+    request_config:
+      url: http://control-plane:3000/internal/courier/email
+      method: POST
+      body: file:///etc/config/kratos/courier-email.jsonnet
+      auth:
+        type: api_key
+        config:
+          name: Authorization
+          value: Bearer local-only-auth-courier-secret-that-is-long-enough
+          in: header
 
 feature_flags:
   use_continue_with_transitions: true

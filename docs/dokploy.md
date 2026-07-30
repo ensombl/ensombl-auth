@@ -1,222 +1,166 @@
 # Dokploy deployment runbook
 
+## Hosted topology
+
+The global auth deployment uses one Dokploy project and one `production`
+environment on its own Dokploy installation.
+
+Create these four native Dokploy PostgreSQL services:
+
+| Dokploy service | Database | User |
+| --- | --- | --- |
+| `auth-kratos-db` | `kratos` | `kratos` |
+| `auth-hydra-db` | `hydra` | `hydra` |
+| `auth-keto-db` | `keto` | `keto` |
+| `auth-control-db` | `auth_control` | `auth_control` |
+
+The repository Compose stack contains no database. It contains only the Ory
+processes, migrations, control plane, singleton courier, and invitation
+reconciler. Each component runs its own versioned schema migration against its
+dedicated native database.
+
+Use Dokploy's standard Docker Compose deployment mode, not Docker Stack. Point
+it at `deploy/dokploy/compose.yml`. Dokploy builds every checked-in Dockerfile
+locally from the selected Git revision. No image is pushed to GHCR or any other
+registry.
+
 ## External prerequisites
 
-These are deliberate external gates; the repository cannot safely invent them:
-
-1. Grant Dokploy read access to the private GitHub repository
-   `Ensombl/ensombl-auth`. Configure the only Compose deployment to watch the
-   protected `main` branch directly. There is no staging auth stack or release
-   branch. Do not configure any registry publication.
-2. Create DNS for `auth.ensombl.io`. The checked-in Traefik labels attach the
-   exact public routes to Dokploy's `websecure` entrypoint and `letsencrypt`
-   resolver. TLS must be valid before any user import.
-3. Create the Bitwarden Secrets Manager project `ensombl-auth-prod` and a
-   read-only machine account scoped only to that project.
-4. Configure a verified `ensombl.io` SMTP sender. Recovery, verification, and
-   invitations cannot be accepted without working email delivery.
-5. Configure encrypted PostgreSQL backups, a restore drill, volume monitoring,
-   and an upgrade maintenance window before staging identities are imported.
+1. Connect the auth Dokploy installation to the private GitHub repository
+   `ensombl/ensombl-auth`.
+2. Configure the Compose deployment to watch protected branch `main`.
+   There is no staging auth deployment or auth release branch.
+3. Create the four native PostgreSQL services above. Do not expose an external
+   database port.
+4. Configure native database backups to independent object storage and prove
+   an isolated restore before importing users.
+5. Create DNS records for `auth.ensombl.io` and
+   `auth.freightclaims.ensombl.io` pointing to the auth Dokploy installation.
+6. Verify `notifications.ensombl.io` in Resend and create a sending-only API
+   key restricted to that domain.
+7. Create the Bitwarden Secrets Manager project `ensombl-auth-prod`.
 
 ## Required Bitwarden values
 
-Generate independent, random values per environment. Password values used in a
-PostgreSQL URL should be URL-safe (64 hex characters is acceptable).
+Copy the four internal connection URLs from the corresponding native Dokploy
+database services. They must remain internal and must not use public database
+ports.
 
 | Secret | Constraint / consumer |
 | --- | --- |
-| `POSTGRES_SUPERUSER_PASSWORD` | reconciled PostgreSQL superuser |
-| `KRATOS_DB_PASSWORD` | Kratos database role |
-| `HYDRA_DB_PASSWORD` | Hydra database role |
-| `KETO_DB_PASSWORD` | Keto database role |
-| `AUTH_CONTROL_MIGRATOR_DB_PASSWORD` | DDL migrator; assumes the `NOLOGIN` owner |
-| `AUTH_CONTROL_RUNTIME_DB_PASSWORD` | least-privilege control application role |
-| `IDENTITY_IMPORT_DB_PASSWORD` | one-shot import ledger and true-only reset assertion |
+| `KRATOS_DATABASE_URL` | internal URL for `auth-kratos-db` |
+| `HYDRA_DATABASE_URL` | internal URL for `auth-hydra-db` |
+| `KETO_DATABASE_URL` | internal URL for `auth-keto-db` |
+| `AUTH_CONTROL_DATABASE_URL` | internal URL for `auth-control-db` |
 | `KRATOS_COOKIE_SECRET` | at least 32 random bytes |
-| `KRATOS_CIPHER_SECRET` | exactly 32 characters for XChaCha20-Poly1305 |
+| `KRATOS_CIPHER_SECRET` | exactly 32 characters |
 | `HYDRA_SYSTEM_SECRET` | at least 32 random bytes |
 | `HYDRA_PAIRWISE_SALT` | at least 32 random bytes; never rotate casually |
-| `ORY_HOOK_SECRET` | settings-hook bearer; same in Kratos and control app |
-| `MIGRATION_API_SECRET` | only the hardened migration workload |
-| `INVITATION_RECONCILER_SECRET` | independent activation-retry worker |
-| `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | staging API read-only tenant decisions |
-| `FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production API read-only tenant decisions |
-| `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | staging API invitations and tenant membership desired state |
-| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET` | production API invitations and tenant membership desired state |
-| `FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET` | staging migration worker identity synchronization |
-| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production migration worker identity synchronization |
-| `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF client; distinct from production |
-| `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF client; distinct from staging |
-| `SMTP_CONNECTION_URI` | authenticated TLS SMTP URI |
+| `ORY_HOOK_SECRET` | private Kratos hook bearer |
+| `MIGRATION_API_SECRET` | private migration control bearer |
+| `INVITATION_RECONCILER_SECRET` | invitation activation retry worker |
+| `AUTH_COURIER_SECRET` | singleton Kratos courier bearer |
+| `RESEND_API_KEY` | auth sending-only Resend key |
+| `FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET` | staging decision and introspection client |
+| `FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET` | production decision and introspection client |
+| `FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET` | staging invitations and memberships |
+| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MANAGEMENT_SECRET` | production invitations and memberships |
+| `FREIGHTCLAIMS_STAGING_IDENTITY_MIGRATION_SECRET` | staging identity synchronization |
+| `FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET` | production identity synchronization |
+| `FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET` | staging BFF OAuth client |
+| `FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET` | production BFF OAuth client |
 
-`SMTP_FROM_ADDRESS` and `SMTP_FROM_NAME` are configuration values but should
-still be injected with the environment.
+The machine-readable allowlist is `deploy/secrets/manifest.json`. Generate all
+non-provider secrets independently. Product client capability secrets must be
+pairwise distinct.
 
-The machine-readable inventory is
-`deploy/secrets/manifest.json`. Shared `.env` files are forbidden.
+Bitwarden remains the source of truth. An audited provisioner copies exactly
+the allowlisted values into the encrypted Dokploy Compose environment. Do not
+put a Bitwarden machine token into the running auth containers.
 
-## Bitwarden to Dokploy handoff
+The sender address is always `noreply@notifications.ensombl.io`. The reviewed
+product catalog selects `Ensombl` as the default display name and
+`FreightClaims` for FreightClaims-originated auth flows. The auth Resend key
+has no inbound-email or FreightClaims application-mail access.
 
-The current Dokploy Compose documentation requires variables to be entered in
-Dokploy's Compose environment; Dokploy writes those values to a runtime `.env`
-file beside the Compose definition. No native Bitwarden Secrets Manager
-integration is documented.
+## Create the Compose deployment
 
-Bitwarden is the source of truth. Dokploy holds the required encrypted runtime
-copy because Compose needs the environment before it can start. Provisioning
-must copy exactly the keys in `deploy/secrets/manifest.json`; do not put the
-Bitwarden machine token itself into Dokploy.
+1. Create one Compose service named `ensombl-auth`.
+2. Select repository `ensombl/ensombl-auth`, branch `main`, and Compose path
+   `deploy/dokploy/compose.yml`.
+3. Select standard Docker Compose mode. Do not select Docker Stack and do not
+   configure a container registry.
+4. Copy exactly the values from `deploy/secrets/manifest.json` into the
+   Compose environment.
+5. Enable automatic deployment for pushes to `main`.
+6. Do not add Dokploy UI domains or host port mappings. The checked-in Traefik
+   labels expose only the two approved auth hostnames and exact public paths.
+7. Deploy only after all four native databases report healthy.
 
-Create a dedicated Dokploy machine account for audited provisioning and
-operations. Store its base URL, account identifier, and API token in a separate
-Bitwarden project for deployment control. Do not mix those credentials into
-`ensombl-auth-prod`, and do not expose them to application containers or the
-GitHub workflow environment.
+The deployment order inside the stack is:
 
-Rotation is explicit: update Bitwarden, re-sync the complete allowlisted
-environment to Dokploy, deploy, verify health, then revoke the old value.
+1. Kratos, Hydra, Keto, and auth-control migrations.
+2. Ory public/admin processes.
+3. Hydra product-client reconciliation.
+4. Control plane.
+5. Singleton Kratos courier and invitation reconciliation worker.
 
-## Create the Dokploy application
+PostgreSQL, Ory admin APIs, Keto, courier ingestion, hooks, reset gates, and
+reconciliation have no public router. Only the reviewed product APIs are
+reachable over HTTPS, and every request requires its environment-specific
+bearer secret.
 
-1. Select Compose, set the repository branch to `main`, and set the Compose
-   path to `deploy/dokploy/compose.yml`. Do not create a second auth deployment
-   or an intermediate release branch.
-2. Inject exactly the keys in `deploy/secrets/manifest.json` using the approved
-   Bitwarden-to-Dokploy handoff above.
-3. Do not create a separate Dokploy domain or port mapping. The Compose labels
-   route only the allowlisted paths on `auth.ensombl.io`; PostgreSQL, Ory admin,
-   Keto, and internal control paths have no public router.
-4. Set persistent storage for the `auth-postgres` volume.
-5. Enable Dokploy auto-deploy for pushes to `main`. Dokploy builds
-   `apps/control-plane/Dockerfile` locally;
-   there is no `image:` name for the project application and nothing is pushed
-   to GHCR or any other registry.
-6. Wait for PostgreSQL role reconciliation, the three Ory migration jobs, the
-   auth-control migration and privilege reconciliation, and
-   `product-reconcile` to complete successfully.
-7. Confirm `invitation-reconciler` is healthy. It continuously retries only
-   persisted invitation activations; the `invitation-reconcile` profile is the
-   operator-triggered one-shot form.
+## Deployment source and secret rotation
 
-## Production deployment
+`main` is the auth production source of truth. GitHub performs source checks
+only; it does not receive Dokploy, Bitwarden, Resend, database, or Ory
+credentials and never builds or publishes a container image.
 
-`main` is the production source of truth. Protect it with required checks and
-review. Once a reviewed commit reaches `main`, Dokploy pulls that exact Git
-revision, builds the checked-in source, and reconciles the one global stack at
-`auth.ensombl.io`.
+For a secret rotation:
 
-Dokploy owns the build and deployment. GitHub receives no Bitwarden, Dokploy,
-SMTP, database, or Ory credentials and never builds or publishes an image.
+1. Generate and store the replacement in Bitwarden.
+2. Synchronize the complete allowlisted environment to Dokploy.
+3. Deploy and verify every affected service.
+4. Revoke the old provider credential only after the replacement is observed
+   working.
 
-## PostgreSQL ownership and rotation
-
-Database creation and password changes do not depend on first-start `initdb`.
-`postgres-reconcile` uses a private shared Unix socket, has no network, and
-converges databases, ownership, login attributes, and desired passwords on
-every deployment. `auth_control_owner` is `NOLOGIN`;
-`auth_control_migrator` assumes it only for migrations; and
-`auth_control_runtime` has explicit non-delete DML grants only on the four
-application tables it uses. The import role can append/update its ledger and
-execute one `SECURITY DEFINER` function that can only assert
-`reset_required=true` plus a boolean-only function that validates an exact
-completed Stage/Production counterpart before identity reuse. It cannot read
-or update the gate table directly.
-The control application receives only its runtime `DATABASE_URL`; the migration
-job separately constructs `AUTH_CONTROL_MIGRATION_URL` from the migrator
-credential. The migration script rejects runtime credentials, a different
-database, or a URL that does not assume the `NOLOGIN` owner. Non-production
-runs accept only loopback migration hosts; production requires an explicit
-non-loopback host.
-
-To rotate a database credential, update exactly that Bitwarden value and
-redeploy all affected services together. The socket reconciler can rotate the
-persisted PostgreSQL superuser credential without knowing its old value. Check
-all reconcile/migration jobs and service health before retiring the old
-deployment. Do not casually rotate Hydra pairwise salt, Kratos cipher/cookie
-keys, or Hydra system secrets; those have protocol/data continuity concerns
-and require a separate rotation plan.
+Database credentials are rotated through the corresponding native Dokploy
+database service and then copied into the matching internal URL. Treat Hydra
+pairwise salt, Hydra system secrets, and Kratos cipher/cookie secrets as
+stateful protocol keys requiring their own reviewed rotation plan.
 
 ## Pre-import gates
 
-Verify all of the following:
+Verify:
 
 ```text
-GET https://auth.ensombl.io/healthz                    -> 200
+GET https://auth.ensombl.io/healthz                         -> 200
 GET https://auth.ensombl.io/.well-known/openid-configuration -> 200
-GET https://auth.ensombl.io/admin/anything             -> 404
-GET https://auth.ensombl.io/internal/anything          -> 404
+GET https://auth.freightclaims.ensombl.io/healthz           -> 200
+GET https://auth.ensombl.io/admin/anything                  -> 404
+GET https://auth.ensombl.io/internal/anything               -> 404
+GET https://auth.freightclaims.ensombl.io/internal/anything -> 404
 ```
 
-- OIDC discovery returns issuer and endpoints on exactly
-  `https://auth.ensombl.io`.
-- `freightclaims-staging-web` contains only
-  `https://app.staging.freightclaims.ensombl.io/auth/callback` and audience
-  `freightclaims-staging`.
-- `freightclaims-production-web` contains only
-  `https://app.freightclaims.ensombl.io/auth/callback` and audience
-  `freightclaims-production`.
-- Recovery email reaches a controlled test mailbox and its code can be used.
-- A reset-gated test identity can authenticate but cannot obtain a Hydra code
+- OIDC issuer and protocol endpoints use only `https://auth.ensombl.io`.
+- FreightClaims browser login/recovery uses
+  `https://auth.freightclaims.ensombl.io`.
+- Staging and production OAuth clients contain only their exact callback and
+  audience.
+- Controlled recovery tests receive:
+  - `Ensombl <noreply@notifications.ensombl.io>`
+  - `FreightClaims <noreply@notifications.ensombl.io>`
+- A reset-gated identity cannot obtain a FreightClaims authorization code
   until it chooses a different password.
-- A user without the `Product:freightclaims` admission is denied even with a
-  valid Kratos session.
-- A backup is restored into an isolated environment and all four databases pass
-  readiness checks.
-- Auth HTML, Kratos self-service, session, and browser OAuth responses include
-  `Cache-Control: no-store`, CSP `frame-ancestors 'none'`, `X-Frame-Options:
-  DENY`, `nosniff`, strict referrer policy, and production HSTS. OIDC discovery
-  retains its upstream caching policy.
+- A valid global identity without FreightClaims admission remains denied.
+- Each of the four native databases has a successful encrypted backup and an
+  isolated restore test.
 
-Do not import either Stage or Production users before these gates pass. Stage
-must first pass the disposable local-auth rehearsal and may then be imported
-only for the approved hosted Stage login test.
+Identity migration is performed through the exact protected
+`POST /internal/migration/identities` API. The hosted auth stack does not
+contain a source database reader, legacy credential decryptor, or direct
+database import job. FreightClaims owns source selection and submits only its
+validated canonical identity batch with the staging or production migration
+capability.
 
-## Audited identity import
-
-Source extraction is intentionally not implemented in this repository.
-FreightClaims first rehearses the selected reader against disposable local
-auth, then prepares the reviewed `freightclaims-fc-staging` or
-`freightclaims-fc-production` batch. The manifest must contain only normalized
-traits, the source user key, allowlisted product grants, exact
-product/organization tenant bindings, and the Argon2id PHC migration contract
-(`m=65536,t=3,p=1`, 16-byte salt, 32-byte hash). Tenant bindings allow only the
-`members` or `administrators` organization relation. The manifest must never
-contain a plaintext password or legacy ciphertext.
-
-Run the source-built `identity-import` profile from the Dokploy-managed Compose
-context with the reviewed revision and approved Bitwarden environment already
-in place. Pipe the manifest over standard input; never copy it into the
-checkout, a Compose volume, an environment variable, or a command argument:
-
-```bash
-source_environment=staging # staging or production
-batch_path="/secure/operator-only/fc-${source_environment}-auth-batch.json"
-batch_sha="$(sha256sum "$batch_path" | awk '{print $1}')"
-docker compose \
-  --file deploy/dokploy/compose.yml \
-  --profile identity-import \
-  run --rm -T \
-  -e "IDENTITY_IMPORT_ALLOWED_SOURCE=freightclaims-fc-${source_environment}" \
-  -e IDENTITY_IMPORT_EXPECTED_SHA256="$batch_sha" \
-  identity-import <"$batch_path"
-unset batch_sha source_environment
-```
-
-If Dokploy does not expose an audited operator shell in its managed checkout,
-stop rather than uploading the file through its UI. Provision an approved
-stdin-capable job runner first. The container reads at most 1 MiB into bounded,
-non-persistent, core-dump-disabled tmpfs, verifies the supplied SHA-256 and
-full schema before mutation, and logs only the batch digest and counts.
-
-Each identity is created inactive, the restricted database function durably
-sets the reset gate, Keto relations are written idempotently, and only then is
-the identity activated and the entry completed. A split failure remains
-inactive and/or reset-gated and is resumed from the ledger on the exact batch
-rerun. A completed batch rerun is a no-op.
-
-When a later Production batch contains the same source user ID and normalized
-email as a completed Stage entry, it reuses the existing active global
-identity. The prior password and the current reset-gate state are preserved,
-so a user who already changed their password during hosted Stage is not forced
-back to the legacy credential or prompted a second time. Any other
-cross-source collision stops the batch.
+Do not import staging or production users before every gate above passes.

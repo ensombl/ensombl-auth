@@ -8,8 +8,8 @@ import type { RequestHandler } from './$types'
 
 const membershipSchema = z
   .object({
-    organization_id: z.string().uuid(),
-    relation: z.enum(['members', 'administrators']),
+    tenant_id: z.string().trim().min(1).max(200),
+    role: z.string().regex(/^[a-z][a-z0-9_-]{0,63}$/),
   })
   .strict()
 
@@ -76,6 +76,17 @@ const bodySchema = z
       }
       sourceUsers.add(identity.source_user_id)
       emails.add(identity.email)
+      const tenants = new Set<string>()
+      for (const [membershipIndex, membership] of identity.memberships.entries()) {
+        if (tenants.has(membership.tenant_id)) {
+          context.addIssue({
+            code: 'custom',
+            path: ['identities', index, 'memberships', membershipIndex, 'tenant_id'],
+            message: 'Duplicate tenant membership',
+          })
+        }
+        tenants.add(membership.tenant_id)
+      }
     }
   })
 
@@ -88,14 +99,23 @@ export const PUT: RequestHandler = async ({ request }) => {
   const source = current.identityMigrationSourceByClient.get(parsed.data.client_id)
   const admissionScope = current.admissionScopeByClient.get(parsed.data.client_id)
   const product = current.clientProductMap.get(parsed.data.client_id)
+  const rolePolicy = current.tenantRolePolicyByProduct.get(product ?? '')
   if (
     !expectedSecret ||
     !source ||
     !admissionScope ||
     !product ||
+    !rolePolicy ||
     !hasBearer(request, expectedSecret)
   ) {
     return json({ error: 'unauthorized' }, { status: 401 })
+  }
+  if (
+    parsed.data.identities.some((identity) =>
+      identity.memberships.some((membership) => !rolePolicy.roles.has(membership.role)),
+    )
+  ) {
+    return json({ error: 'invalid_role' }, { status: 400 })
   }
 
   const compatibleSources = [...current.identityMigrationSourceByClient.entries()]
@@ -124,8 +144,8 @@ export const PUT: RequestHandler = async ({ request }) => {
         ...(identity.password_hash ? { passwordHash: identity.password_hash } : {}),
         state: identity.state,
         memberships: identity.memberships.map((membership) => ({
-          organizationId: membership.organization_id,
-          relation: membership.relation,
+          tenantId: membership.tenant_id,
+          role: membership.role,
         })),
       })),
     })

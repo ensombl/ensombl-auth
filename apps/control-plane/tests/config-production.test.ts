@@ -14,10 +14,12 @@ function setProductionEnvironment(): void {
     HYDRA_ADMIN_URL: 'http://hydra:4445',
     KETO_READ_URL: 'http://keto:4466',
     KETO_WRITE_URL: 'http://keto:4467',
-    DATABASE_URL: 'postgres://auth_control_runtime:production-password@postgres:5432/auth_control',
+    DATABASE_URL: 'postgres://auth_control:production-password@auth-control-db:5432/auth_control',
     ORY_HOOK_SECRET: 'production-hook-secret-that-is-not-the-default',
     MIGRATION_API_SECRET: 'production-migration-secret-that-is-not-the-default',
     INVITATION_RECONCILER_SECRET: 'production-reconciler-secret-that-is-not-the-default',
+    AUTH_COURIER_SECRET: 'production-courier-secret-that-is-not-the-default',
+    RESEND_API_KEY: 'production-resend-api-key',
     FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET:
       'stage-authorization-decision-secret-that-is-long-enough',
     FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET:
@@ -48,8 +50,7 @@ describe('production configuration', () => {
       NODE_ENV: 'production',
       PUBLIC_AUTH_URL: 'https://auth.ensombl.io',
       KRATOS_PUBLIC_INTERNAL_URL: 'http://kratos:4433',
-      DATABASE_URL:
-        'postgres://auth_control_runtime:production-password@postgres:5432/auth_control',
+      DATABASE_URL: 'postgres://auth_control:production-password@auth-control-db:5432/auth_control',
     })
   })
 
@@ -66,6 +67,8 @@ describe('production configuration', () => {
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
+      'AUTH_COURIER_SECRET',
+      'RESEND_API_KEY',
       'PRODUCT_CATALOG_PATH',
     ]) {
       delete process.env[key]
@@ -98,6 +101,7 @@ describe('production configuration', () => {
     ['ORY_HOOK_SECRET', 'local-only-hook-secret-32-bytes'],
     ['MIGRATION_API_SECRET', 'local-only-migration-api-secret'],
     ['INVITATION_RECONCILER_SECRET', 'local-only-invitation-reconciler-secret'],
+    ['AUTH_COURIER_SECRET', 'local-only-auth-courier-secret-that-is-long-enough'],
   ])('rejects the development value for %s', (key, value) => {
     setProductionEnvironment()
     process.env[key] = value
@@ -111,6 +115,7 @@ describe('production configuration', () => {
       'ORY_HOOK_SECRET',
       'MIGRATION_API_SECRET',
       'INVITATION_RECONCILER_SECRET',
+      'AUTH_COURIER_SECRET',
     ] as const
 
     for (let left = 0; left < keys.length; left += 1) {

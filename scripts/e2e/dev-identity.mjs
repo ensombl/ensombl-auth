@@ -59,7 +59,7 @@ const relationUrl = new URL(
   'http://127.0.0.1:24466',
 )
 relationUrl.searchParams.set('namespace', 'Product')
-relationUrl.searchParams.set('object', 'freightclaims')
+relationUrl.searchParams.set('object', 'freightclaims:local')
 relationUrl.searchParams.set('relation', 'access')
 relationUrl.searchParams.set('subject_id', second.id)
 const relation = await fetch(relationUrl, { signal: AbortSignal.timeout(5_000) })

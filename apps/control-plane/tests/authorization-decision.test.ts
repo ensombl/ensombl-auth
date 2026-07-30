@@ -24,7 +24,7 @@ function request(overrides: Record<string, unknown> = {}, bearer = stageSecret):
     body: JSON.stringify({
       client_id: 'freightclaims-staging-web',
       subject_id: 'bb86046e-c922-44a3-a85f-ba21042c2897',
-      organization_id: '01900000-0000-7000-8000-000000000001',
+      tenant_id: '01900000-0000-7000-8000-000000000001',
       permission: 'access',
       ...overrides,
     }),
@@ -55,6 +55,7 @@ describe('product-scoped authorization decisions', () => {
       'freightclaims:staging',
       '01900000-0000-7000-8000-000000000001',
       'access',
+      expect.objectContaining({ roles: expect.any(Map) }),
     )
   })
 
@@ -85,5 +86,21 @@ describe('product-scoped authorization decisions', () => {
 
     expect(response.status).toBe(503)
     await expect(response.json()).resolves.toEqual({ error: 'authorization_unavailable' })
+  })
+
+  it('rejects a permission outside the product role policy', async () => {
+    process.env.PRODUCT_CATALOG_PATH = productCatalogPath
+    process.env.FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET = stageSecret
+    process.env.FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET =
+      'prod-authorization-decision-secret-that-is-long-enough'
+    resetConfigForTest()
+
+    const response = await POST({
+      request: request({ permission: 'owner' }),
+    } as Parameters<typeof POST>[0])
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_permission' })
+    expect(keto.hasTenantPermissionStrict).not.toHaveBeenCalled()
   })
 })

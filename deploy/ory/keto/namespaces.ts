@@ -35,40 +35,12 @@ class Product implements Namespace {
   }
 }
 
-class Organization implements Namespace {
+class TenantRole implements Namespace {
   related: {
-    ensombl: Ensombl[]
-    members: User[]
-    administrators: User[]
+    assignees: User[]
   }
 
   permits = {
-    access: (ctx: Context): boolean =>
-      this.related.members.includes(ctx.subject) ||
-      this.related.administrators.includes(ctx.subject) ||
-      this.related.ensombl.traverse((root) => root.permits.support(ctx)),
-    administer: (ctx: Context): boolean =>
-      this.related.administrators.includes(ctx.subject) ||
-      this.related.ensombl.traverse((root) => root.permits.administer(ctx)),
-    elevate: (ctx: Context): boolean =>
-      this.related.ensombl.traverse((root) => root.permits.administer(ctx)),
-  }
-}
-
-class Tenant implements Namespace {
-  related: {
-    organization: Organization[]
-    product: Product[]
-  }
-
-  permits = {
-    access: (ctx: Context): boolean =>
-      this.related.product.traverse((product) => product.permits.access(ctx)) &&
-      this.related.organization.traverse((org) => org.permits.access(ctx)),
-    administer: (ctx: Context): boolean =>
-      this.related.product.traverse((product) => product.permits.administer(ctx)) ||
-      this.related.organization.traverse((org) => org.permits.administer(ctx)),
-    elevate: (ctx: Context): boolean =>
-      this.related.organization.traverse((org) => org.permits.elevate(ctx)),
+    assigned: (ctx: Context): boolean => this.related.assignees.includes(ctx.subject),
   }
 }

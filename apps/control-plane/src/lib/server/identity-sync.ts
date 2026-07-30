@@ -5,8 +5,8 @@ import { fetchJson } from './http'
 import { grantProductAdmission, revokeProductAdmission, setTenantMembership } from './keto'
 
 export type IdentitySyncMembership = {
-  organizationId: string
-  relation: 'members' | 'administrators'
+  tenantId: string
+  role: string
 }
 
 export type IdentitySyncEntry = {
@@ -241,8 +241,8 @@ async function persistAlias(input: {
 }
 
 async function existingMemberships(source: string, sourceUserId: string) {
-  return db()<Array<{ organization_id: string; relation: 'members' | 'administrators' }>>`
-    select organization_id::text, relation
+  return db()<Array<{ tenant_id: string; role: string }>>`
+    select tenant_id, role
     from auth_control.identity_source_memberships
     where source = ${source}
       and source_user_id = ${sourceUserId}
@@ -269,18 +269,18 @@ async function replaceMembershipLedger(input: {
           source,
           source_user_id,
           admission_scope,
-          organization_id,
+          tenant_id,
           identity_id,
-          relation,
+          role,
           last_snapshot
         )
         values (
           ${input.source},
           ${input.sourceUserId},
           ${input.admissionScope},
-          ${membership.organizationId}::uuid,
+          ${membership.tenantId},
           ${input.identityId}::uuid,
-          ${membership.relation},
+          ${membership.role},
           ${input.snapshot}
         )
       `
@@ -294,26 +294,30 @@ async function synchronizeMemberships(input: {
   desired: IdentitySyncMembership[]
 }): Promise<void> {
   const previous = await existingMemberships(input.alias.source, input.alias.source_user_id)
-  const desiredByOrganization = new Map(
-    input.desired.map((membership) => [membership.organizationId, membership.relation]),
+  const desiredByTenant = new Map(
+    input.desired.map((membership) => [membership.tenantId, membership.role]),
   )
+  const rolePolicy = config().tenantRolePolicyByAdmissionScope.get(input.alias.admission_scope)
+  if (!rolePolicy) throw new IdentitySyncError('tenant_role_policy_missing', 500)
 
   for (const membership of previous) {
-    if (desiredByOrganization.get(membership.organization_id) === membership.relation) continue
+    if (desiredByTenant.get(membership.tenant_id) === membership.role) continue
     await setTenantMembership({
       identityId: input.alias.identity_id,
-      organizationId: membership.organization_id,
+      tenantId: membership.tenant_id,
       product: input.alias.admission_scope,
-      relation: membership.relation,
+      role: membership.role,
+      rolePolicy,
       state: 'revoked',
     })
   }
   for (const membership of input.desired) {
     await setTenantMembership({
       identityId: input.alias.identity_id,
-      organizationId: membership.organizationId,
+      tenantId: membership.tenantId,
       product: input.alias.admission_scope,
-      relation: membership.relation,
+      role: membership.role,
+      rolePolicy,
       state: 'active',
     })
   }

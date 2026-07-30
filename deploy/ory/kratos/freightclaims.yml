@@ -1,0 +1,22 @@
+serve:
+  public:
+    base_url: https://auth.freightclaims.ensombl.io/
+
+selfservice:
+  default_browser_return_url: https://auth.freightclaims.ensombl.io/
+  flows:
+    error:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/error
+    settings:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/settings
+    recovery:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/recovery
+    verification:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/verification
+    logout:
+      after:
+        default_browser_return_url: https://auth.freightclaims.ensombl.io/
+    login:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/login
+    registration:
+      ui_url: https://auth.freightclaims.ensombl.io/ui/invitation

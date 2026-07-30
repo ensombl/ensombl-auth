@@ -1,7 +1,9 @@
 # Ensombl global identity
 
 This repository is the source of truth for the global self-hosted Ory control
-plane at `https://auth.ensombl.io`.
+plane. `https://auth.ensombl.io` is the canonical OIDC issuer and default
+Ensombl UI; `https://auth.freightclaims.ensombl.io` is the current
+FreightClaims-branded browser entrypoint.
 
 It is intentionally separate from every product repository. A Kratos identity
 can be admitted to more than one Ensombl product, while Hydra clients, exact
@@ -10,47 +12,51 @@ isolated.
 
 ## What runs here
 
-- Ory Kratos for identities, passwords, MFA, recovery, verification, settings,
-  and browser identity sessions.
+- Ory Kratos for shared identities, passwords, MFA, recovery, verification,
+  settings, and host-scoped browser identity sessions.
 - Ory Hydra for OAuth 2.0/OIDC and product-specific machine clients.
 - Ory Keto for global and product authorization relationships.
 - A source-built SvelteKit control application for Kratos self-service screens,
   Hydra login/consent/logout, invitations, product admission, and the migrated
   password reset gate.
-- PostgreSQL for the three Ory stores and the small auth-control database.
+- Four isolated PostgreSQL databases: one each for Kratos, Hydra, Keto, and
+  the small auth-control store.
 - Checked-in Dokploy Traefik routes for the exact public control, Kratos, and
   Hydra paths. Ory admin APIs and control endpoints have no public router.
+- One singleton Kratos courier and an internal, product-aware Resend boundary.
+  Auth email always uses `noreply@notifications.ensombl.io`; the display name
+  comes from the reviewed product catalog and defaults to `Ensombl`.
 
 The application uses Node 24, pnpm 11, TypeScript, SvelteKit, and Turborepo,
 matching the relevant runtime and frontend patterns in Exhibit A. No project
 container is published to a registry. Dokploy builds the control application
-directly from the reviewed Git revision; the Compose stack only pulls pinned
-upstream Ory and PostgreSQL images. Caddy remains only in the disposable local
-development stack.
+and thin, configuration-only Ory images directly from the reviewed Git
+revision. Hosted PostgreSQL is provided by four native Dokploy database
+services and is not part of the Compose stack. Caddy remains only in the
+disposable local development stack.
 
 ## Local development
 
 Prerequisites: Node 24, pnpm 11, and Docker with Compose.
 
-This workflow is for maintainers of the global auth platform. FreightClaims
-development owns its own disposable Ory stack and does not clone, compose, or
-seed this repository.
+This workflow is also the canonical disposable auth stack for product
+development. Product repositories pin this repository and start it locally;
+they do not maintain copies of the Ory configuration.
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-`pnpm dev` starts PostgreSQL, Mailpit, Kratos, Hydra, Keto, and the same-origin
-gateway, reconciles database roles, applies the auth-control migration and
-least-privilege grants under an advisory lock, then starts the SvelteKit
-control application and durable invitation-activation reconciler with one
-clean Ctrl-C lifecycle.
+`pnpm dev` starts four isolated PostgreSQL services, Mailpit, Kratos, Hydra,
+Keto, and the same-origin gateway, applies each component's normal versioned
+migration, then starts the SvelteKit control application and durable
+invitation-activation reconciler with one clean Ctrl-C lifecycle.
 
-The application `DATABASE_URL` is runtime-only. Migrations consume only the
-dedicated `AUTH_CONTROL_MIGRATION_URL`; local development supplies a constrained
-migrator default and rejects remote migration hosts, while hosted deployments
-must provide an explicit non-loopback value.
+The auth-control migration consumes only `AUTH_CONTROL_MIGRATION_URL`; local
+development supplies a loopback-only default, while hosted deployments must
+provide the explicit internal URL of the dedicated native auth-control
+database.
 
 Local endpoints:
 
@@ -72,11 +78,26 @@ pnpm identity:seed:dev
 ```
 
 The fixture is `developer@freightclaims.test` with initial password
-`FreightClaims-Dev-2026!` and `Product:freightclaims#access`. It is created
+`FreightClaims-Dev-2026!` and `Product:freightclaims:local#access`. It is created
 inactive, admitted, and then activated without a migration reset gate. Reruns
 reuse the identity and relation and never reset a password the developer has
 changed. The command hard-fails for production or non-loopback dependencies;
-this fixture is separate from the audited Stage and Production importers.
+it also assigns `tenant_admin` in the deterministic local FreightClaims tenant.
+This fixture is separate from the audited staging and production importers.
+
+## Tenant roles
+
+Every product gets the default tenant role stack unless it declares otherwise:
+
+- `member` grants `access`
+- `admin` grants `access` and `administer`
+- `owner` grants `access`, `administer`, and `owner`
+
+`tenant_roles.mode: "extend"` adds roles or permissions while retaining those
+defaults. `tenant_roles.mode: "replace"` defines the complete product role
+model. FreightClaims replaces the defaults with `member`, `adjuster`, and
+`tenant_admin`; its product service sends those exact role identifiers through
+the private membership API. Tenant IDs are opaque product-owned strings.
 
 ## Security invariants
 
@@ -91,16 +112,18 @@ this fixture is separate from the audited Stage and Production importers.
   hook revokes every identity session before clearing the reset gate
   idempotently; the user then authenticates again with the replacement
   password.
-- Ory cookies are host-only for `auth.ensombl.io`. No `.ensombl.io` parent
-  cookie is used.
-- Internal APIs require independent bearer secrets and Dokploy Traefik has no
-  router for `/internal/*`.
+- Ory cookies are host-only for each configured auth hostname. No
+  `.ensombl.io` parent cookie is used, so the identity is global while browser
+  sessions remain isolated by auth hostname.
+- The five product-facing HTTPS routes require independent, client-scoped
+  bearer secrets. Dokploy Traefik exposes no other `/internal/*` route.
 - Passwords, ciphertext, password hashes, OAuth tokens, recovery codes, and
   secrets are never written to application logs or the auth-control database.
-- Identity batches enter only through a source-built stdin/tmpfs one-shot. A
-  user is created inactive, durably reset-gated, and product-admitted before
-  activation; split failures resume from a hash-bound ledger.
-- Reviewed Stage and Production batches can map the same legacy source user to
+- Hosted identity batches enter only through the exact bearer-protected
+  identity-migration API. A user is created inactive, durably reset-gated, and
+  product-admitted before activation; split failures resume from the
+  hash-bound ledger.
+- Reviewed staging and production batches can map the same legacy source user to
   one global identity. A later source never replaces an active password or
   reasserts a reset gate already completed in the earlier environment.
 - Every migrated identity is admitted only to its reviewed product and exact
@@ -139,10 +162,13 @@ FreightClaims currently declares two confidential clients:
 
 | Environment | Client | Base origin | Audience |
 | --- | --- | --- | --- |
-| stage | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
+| staging | `freightclaims-staging-web` | `https://app.staging.freightclaims.ensombl.io` | `freightclaims-staging` |
 | production/migration | `freightclaims-production-web` | `https://app.freightclaims.ensombl.io` | `freightclaims-production` |
 
 Both use Authorization Code, refresh tokens, and
 `openid offline_access email profile`. Their Bitwarden-managed secrets are
-independent. When FreightClaims moves to its final customer domain, update the
-catalog and Kratos return-origin allowlist in one reviewed deployment.
+independent. Both environments currently use the branded browser origin
+`https://auth.freightclaims.ensombl.io`, while the token issuer remains
+`https://auth.ensombl.io`. When FreightClaims moves to its final customer
+domain, update the catalog, Kratos edge override, return-origin allowlist, DNS,
+and Traefik host rules in one reviewed deployment.

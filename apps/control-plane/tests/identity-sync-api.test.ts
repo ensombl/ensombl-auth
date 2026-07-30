@@ -37,8 +37,8 @@ function request(overrides: Record<string, unknown> = {}, bearer = stagingSecret
           state: 'active',
           memberships: [
             {
-              organization_id: '01900000-0000-7000-8000-000000000001',
-              relation: 'members',
+              tenant_id: '01900000-0000-7000-8000-000000000001',
+              role: 'member',
             },
           ],
         },
@@ -94,8 +94,8 @@ describe('deployment-scoped identity synchronization API', () => {
           state: 'active',
           memberships: [
             {
-              organizationId: '01900000-0000-7000-8000-000000000001',
-              relation: 'members',
+              tenantId: '01900000-0000-7000-8000-000000000001',
+              role: 'member',
             },
           ],
         },
@@ -169,5 +169,32 @@ describe('deployment-scoped identity synchronization API', () => {
         memberships: [],
       },
     ])
+  })
+
+  it('rejects a migrated role outside the product policy', async () => {
+    configure()
+
+    const response = await PUT({
+      request: request({
+        identities: [
+          {
+            source_user_id: '44',
+            email: 'owner@example.com',
+            password_hash: passwordHash,
+            state: 'active',
+            memberships: [
+              {
+                tenant_id: '01900000-0000-7000-8000-000000000001',
+                role: 'owner',
+              },
+            ],
+          },
+        ],
+      }),
+    } as Parameters<typeof PUT>[0])
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_role' })
+    expect(identitySync.synchronizeIdentityBatch).not.toHaveBeenCalled()
   })
 })

@@ -1,4 +1,5 @@
 import { config } from './config'
+import type { TenantRolePolicy } from './product-catalog'
 
 async function readProductPermission(
   identityId: string,
@@ -43,25 +44,32 @@ export function hasProductAdministrationStrict(
 export async function hasTenantPermissionStrict(
   identityId: string,
   product: string,
-  organizationId: string,
-  permission: 'access' | 'administer',
+  tenantId: string,
+  permission: string,
+  rolePolicy: TenantRolePolicy,
 ): Promise<boolean> {
-  const url = new URL('relation-tuples/check/openapi', `${config().KETO_READ_URL}/`)
-  url.searchParams.set('namespace', 'Tenant')
-  url.searchParams.set('object', `${product}:${organizationId}`)
-  url.searchParams.set('relation', permission)
-  url.searchParams.set('subject_id', identityId)
+  if (!(await readProductPermission(identityId, product, 'access', true))) return false
 
-  const response = await fetch(url, {
-    headers: { accept: 'application/json' },
-    signal: AbortSignal.timeout(5_000),
-  })
-  if (!response.ok) {
-    console.error('Keto tenant decision failed', { status: response.status })
-    throw new Error('Unable to read tenant permission')
+  for (const role of rolePolicy.roles.values()) {
+    if (!role.permissions.has(permission)) continue
+    const url = new URL('relation-tuples/check/openapi', `${config().KETO_READ_URL}/`)
+    url.searchParams.set('namespace', 'TenantRole')
+    url.searchParams.set('object', tenantRoleObject(product, tenantId, role.id))
+    url.searchParams.set('relation', 'assigned')
+    url.searchParams.set('subject_id', identityId)
+
+    const response = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) {
+      console.error('Keto tenant role decision failed', { status: response.status })
+      throw new Error('Unable to read tenant permission')
+    }
+    const result = (await response.json()) as { allowed?: boolean }
+    if (result.allowed === true) return true
   }
-  const result = (await response.json()) as { allowed?: boolean }
-  return result.allowed === true
+  return false
 }
 
 export async function grantProductAdmission(identityId: string, product: string): Promise<void> {
@@ -103,15 +111,10 @@ export async function revokeProductAdmission(identityId: string, product: string
 }
 
 type RelationTuple = {
-  namespace: 'Organization' | 'Tenant'
+  namespace: 'TenantRole'
   object: string
   relation: string
   subject_id?: string
-  subject_set?: {
-    namespace: 'Organization' | 'Product'
-    object: string
-    relation: ''
-  }
 }
 
 async function putTuple(tuple: RelationTuple): Promise<void> {
@@ -135,9 +138,9 @@ async function putTuple(tuple: RelationTuple): Promise<void> {
 }
 
 async function deleteIdentityTuple(
-  namespace: 'Organization',
+  namespace: 'TenantRole',
   object: string,
-  relation: 'members' | 'administrators',
+  relation: 'assignees',
   identityId: string,
 ): Promise<void> {
   const url = new URL('admin/relation-tuples', `${config().KETO_WRITE_URL}/`)
@@ -160,50 +163,35 @@ async function deleteIdentityTuple(
   }
 }
 
+function tenantRoleObject(product: string, tenantId: string, role: string): string {
+  return `${product}:${Buffer.from(tenantId).toString('base64url')}:${role}`
+}
+
 export async function setTenantMembership(input: {
   identityId: string
-  organizationId: string
+  tenantId: string
   product: string
-  relation: 'members' | 'administrators'
+  role: string
+  rolePolicy: TenantRolePolicy
   state: 'active' | 'revoked'
 }): Promise<void> {
-  const organization = `${input.product}:${input.organizationId}`
-  if (input.state === 'revoked') {
-    await deleteIdentityTuple('Organization', organization, 'administrators', input.identityId)
-    await deleteIdentityTuple('Organization', organization, 'members', input.identityId)
-    return
+  const selectedRole = input.rolePolicy.roles.get(input.role)
+  if (!selectedRole) throw new Error(`Unknown tenant role: ${input.role}`)
+
+  for (const role of input.rolePolicy.roles.keys()) {
+    await deleteIdentityTuple(
+      'TenantRole',
+      tenantRoleObject(input.product, input.tenantId, role),
+      'assignees',
+      input.identityId,
+    )
   }
-
-  const tenant = `${input.product}:${input.organizationId}`
-  await putTuple({
-    namespace: 'Tenant',
-    object: tenant,
-    relation: 'product',
-    subject_set: { namespace: 'Product', object: input.product, relation: '' },
-  })
-  await putTuple({
-    namespace: 'Tenant',
-    object: tenant,
-    relation: 'organization',
-    subject_set: { namespace: 'Organization', object: organization, relation: '' },
-  })
-
-  if (input.relation === 'members') {
-    await deleteIdentityTuple('Organization', organization, 'administrators', input.identityId)
-    await putTuple({
-      namespace: 'Organization',
-      object: organization,
-      relation: 'members',
-      subject_id: input.identityId,
-    })
-    return
-  }
+  if (input.state === 'revoked') return
 
   await putTuple({
-    namespace: 'Organization',
-    object: organization,
-    relation: 'administrators',
+    namespace: 'TenantRole',
+    object: tenantRoleObject(input.product, input.tenantId, input.role),
+    relation: 'assignees',
     subject_id: input.identityId,
   })
-  await deleteIdentityTuple('Organization', organization, 'members', input.identityId)
 }

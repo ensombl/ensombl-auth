@@ -10,13 +10,10 @@ if [ "$#" -eq 0 ]; then
 fi
 
 exec env \
-  POSTGRES_SUPERUSER_PASSWORD=validation-only-postgres-superuser \
-  KRATOS_DB_PASSWORD=validation-only-kratos \
-  HYDRA_DB_PASSWORD=validation-only-hydra \
-  KETO_DB_PASSWORD=validation-only-keto \
-  AUTH_CONTROL_MIGRATOR_DB_PASSWORD=validation-only-control-migrator \
-  AUTH_CONTROL_RUNTIME_DB_PASSWORD=validation-only-control-runtime \
-  IDENTITY_IMPORT_DB_PASSWORD=validation-only-identity-import \
+  KRATOS_DATABASE_URL=postgres://kratos:validation-only@auth-kratos-db:5432/kratos \
+  HYDRA_DATABASE_URL=postgres://hydra:validation-only@auth-hydra-db:5432/hydra \
+  KETO_DATABASE_URL=postgres://keto:validation-only@auth-keto-db:5432/keto \
+  AUTH_CONTROL_DATABASE_URL=postgres://auth_control:validation-only@auth-control-db:5432/auth_control \
   KRATOS_COOKIE_SECRET=validation-only-cookie-secret-32-bytes \
   KRATOS_CIPHER_SECRET="$validation_cipher_secret" \
   HYDRA_SYSTEM_SECRET=validation-only-hydra-system-secret \
@@ -24,6 +21,8 @@ exec env \
   ORY_HOOK_SECRET=validation-only-hook-secret \
   MIGRATION_API_SECRET=validation-only-migration-secret \
   INVITATION_RECONCILER_SECRET=validation-only-reconciler-secret \
+  AUTH_COURIER_SECRET=validation-only-auth-courier-secret-that-is-long-enough \
+  RESEND_API_KEY=validation-only-resend-api-key \
   FREIGHTCLAIMS_STAGING_AUTHORIZATION_DECISION_SECRET=validation-only-freightclaims-staging-authorization \
   FREIGHTCLAIMS_PRODUCTION_AUTHORIZATION_DECISION_SECRET=validation-only-freightclaims-production-authorization \
   FREIGHTCLAIMS_STAGING_IDENTITY_MANAGEMENT_SECRET=validation-only-freightclaims-staging-identity-management \
@@ -32,9 +31,6 @@ exec env \
   FREIGHTCLAIMS_PRODUCTION_IDENTITY_MIGRATION_SECRET=validation-only-freightclaims-production-identity-migration \
   FREIGHTCLAIMS_STAGING_HYDRA_CLIENT_SECRET=validation-only-freightclaims-staging \
   FREIGHTCLAIMS_PRODUCTION_HYDRA_CLIENT_SECRET=validation-only-freightclaims-production \
-  SMTP_CONNECTION_URI=smtps://validation:validation@example.invalid:465/ \
-  SMTP_FROM_ADDRESS=no-reply@example.invalid \
-  SMTP_FROM_NAME=Validation \
   docker compose \
     --file "$repo_root/deploy/dokploy/compose.yml" \
     config "$@"

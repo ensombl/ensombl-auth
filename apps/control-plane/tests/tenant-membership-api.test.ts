@@ -24,8 +24,8 @@ function request(
     body: JSON.stringify({
       client_id: 'freightclaims-local-web',
       identity_id: 'bb86046e-c922-44a3-a85f-ba21042c2897',
-      organization_id: '01900000-0000-7000-8000-000000000001',
-      relation: 'members',
+      tenant_id: '01900000-0000-7000-8000-000000000001',
+      role: 'member',
       state: 'active',
       ...overrides,
     }),
@@ -45,13 +45,15 @@ describe('product-scoped tenant membership management', () => {
     const response = await PUT({ request: request() } as Parameters<typeof PUT>[0])
 
     expect(response.status).toBe(204)
-    expect(keto.setTenantMembership).toHaveBeenCalledExactlyOnceWith({
-      identityId: 'bb86046e-c922-44a3-a85f-ba21042c2897',
-      organizationId: '01900000-0000-7000-8000-000000000001',
-      product: 'freightclaims:local',
-      relation: 'members',
-      state: 'active',
-    })
+    expect(keto.setTenantMembership).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        identityId: 'bb86046e-c922-44a3-a85f-ba21042c2897',
+        tenantId: '01900000-0000-7000-8000-000000000001',
+        product: 'freightclaims:local',
+        role: 'member',
+        state: 'active',
+      }),
+    )
   })
 
   it('rejects another capability secret before writing Keto', async () => {
@@ -72,5 +74,15 @@ describe('product-scoped tenant membership management', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'identity_management_unavailable',
     })
+  })
+
+  it('rejects a role outside the product policy', async () => {
+    const response = await PUT({
+      request: request({ role: 'owner' }),
+    } as Parameters<typeof PUT>[0])
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({ error: 'invalid_role' })
+    expect(keto.setTenantMembership).not.toHaveBeenCalled()
   })
 })
