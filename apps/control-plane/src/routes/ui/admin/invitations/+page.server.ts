@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { error, fail } from '@sveltejs/kit'
+import { error, fail, redirect } from '@sveltejs/kit'
 import { z } from 'zod'
 import { config } from '$lib/server/config'
 import {
   authorizeInvitationOperator,
   invitationFormOriginAllowed,
+  invitationOperatorAccess,
 } from '$lib/server/invitation-operator'
 import {
   InvitationConflictError,
@@ -36,12 +37,45 @@ function requireKnownProduct(product: string): void {
   }
 }
 
+function canonicalAdminUrl(product: string): URL {
+  const target = new URL('/ui/admin/invitations', config().PUBLIC_AUTH_URL)
+  target.searchParams.set('product', product)
+  return target
+}
+
 export const load: PageServerLoad = async ({ url, request }) => {
   const defaultProduct = config().clientProductMap.values().next().value
   if (!defaultProduct) error(503, 'No Ensombl product is configured')
   const product = url.searchParams.get('product') ?? defaultProduct
   requireKnownProduct(product)
-  await authorizeInvitationOperator(cookieHeader(request), product)
+
+  const target = canonicalAdminUrl(product)
+  if (url.origin !== target.origin || url.pathname !== target.pathname) {
+    redirect(303, target.toString())
+  }
+
+  const access = await invitationOperatorAccess(cookieHeader(request), product)
+  if (access.state === 'login_required') {
+    const login = new URL('/self-service/login/browser', config().PUBLIC_AUTH_URL)
+    login.searchParams.set('return_to', target.toString())
+    redirect(303, login.toString())
+  }
+  if (access.state === 'password_reset_required') {
+    const settings = new URL('/self-service/settings/browser', config().PUBLIC_AUTH_URL)
+    settings.searchParams.set('return_to', target.toString())
+    redirect(303, settings.toString())
+  }
+  if (access.state === 'product_administrator_required') {
+    error(403, `Product administrator permission is required for ${product}`)
+  }
+  if (access.state === 'aal2_required') {
+    const login = new URL('/self-service/login/browser', config().PUBLIC_AUTH_URL)
+    login.searchParams.set('aal', 'aal2')
+    login.searchParams.set('refresh', 'true')
+    login.searchParams.set('return_to', target.toString())
+    redirect(303, login.toString())
+  }
+
   return { product, idempotencyKey: randomUUID() }
 }
 
