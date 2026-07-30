@@ -150,7 +150,12 @@ exchange.
 The hosted deployment deliberately fails closed until its secrets have been
 injected. The checked-in
 [`deploy/secrets/manifest.json`](deploy/secrets/manifest.json) is the complete
-non-secret inventory. Shared `.env` files are forbidden.
+non-secret inventory. The `ensombl-auth` Bitwarden Secrets Manager project is
+the live source of truth. Dokploy receives only its read-only
+`ensombl-auth-runtime` access token and the non-secret project UUID. Each
+process loads only its declared mappings at startup, removes the Bitwarden
+token from the child environment, and then starts normally. Shared `.env`
+files are forbidden.
 
 ## Product configuration
 

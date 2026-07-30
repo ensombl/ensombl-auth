@@ -41,7 +41,8 @@ for required_input in \
   apps/control-plane/package.json \
   apps/control-plane/src \
   apps/control-plane/migrations \
-  apps/control-plane/scripts
+  apps/control-plane/scripts \
+  deploy/bws
 do
   if [[ ! -e "$required_input" ]]; then
     echo "Docker build input is missing: $required_input" >&2

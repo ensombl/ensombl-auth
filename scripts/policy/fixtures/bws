@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+
+if [ "${BWS_FIXTURE_DUPLICATE:-}" = '1' ]; then
+  printf '%s\n' \
+    '[{"key":"RAW_SECRET","value":"first"},{"key":"RAW_SECRET","value":"second"}]'
+  exit 0
+fi
+
+printf '%s\n' \
+  '[{"key":"RAW_SECRET","value":"value with spaces and $dollar"},{"key":"TOKEN_SECRET","value":"token-value"}]'

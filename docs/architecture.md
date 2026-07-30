@@ -37,6 +37,26 @@ control plane so Hydra admin never joins the public network; it requires the
 same environment-specific read-only authorization secret and client ID.
 Every other `/internal/*` path stays private and returns `404`.
 
+## Hosted secret bootstrap
+
+The singleton hosted stack reads runtime secrets from the
+`ensombl-auth` Bitwarden Secrets Manager project. The read-only
+`ensombl-auth-runtime` machine account has access only to that project, and the
+Dokploy installation holds one deployment-specific access token plus the
+non-secret project UUID.
+
+Every checked-in runtime image installs the same pinned, checksum-verified BWS
+CLI. Before starting its real process, a common wrapper retrieves the project,
+exports only the service's reviewed mappings, removes the Bitwarden token and
+retrieval payload, and uses `exec` for the final process. Dokploy
+administration credentials are outside this project and never enter the auth
+stack. Secret changes take effect on redeployment; an already-running process
+does not depend on Bitwarden remaining reachable.
+
+The BWS token remains in Docker's stored container configuration even though it
+is absent from the final process environment. Dokploy and Docker administrator
+access is therefore part of the trusted auth-stack boundary.
+
 Traefik middleware emits anti-framing, MIME-sniffing, no-referrer, and
 production HSTS headers. Browser auth/UI paths are forced `no-store`; OIDC
 discovery is deliberately excluded so Hydra's API caching contract is
