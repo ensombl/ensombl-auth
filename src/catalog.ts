@@ -24,6 +24,13 @@ const applicationSchema = z.object({
   development_mode: z.boolean().default(false),
 });
 
+const serviceAccountSchema = z.object({
+  id: z.string().min(1).max(200),
+  username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
+  display_name: z.string().min(1).max(200),
+  role: roleSchema.shape.key,
+});
+
 const productSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
   display_name: z.string().min(1).max(200),
@@ -56,6 +63,7 @@ const productSchema = z.object({
         password: z.string().min(12).max(200),
         role: roleSchema.shape.key,
       }),
+      service_accounts: z.array(serviceAccountSchema).default([]),
     })
     .optional(),
 });
@@ -82,6 +90,55 @@ export const catalogSchema = z
         });
       }
       productIds.add(product.id);
+
+      const roles = new Set(rolesForProduct(catalog, product).map((role) => role.key));
+      if (product.local_fixture && !roles.has(product.local_fixture.user.role)) {
+        context.addIssue({
+          code: "custom",
+          message: `Unknown local user role: ${product.local_fixture.user.role}`,
+          path: ["products", productIndex, "local_fixture", "user", "role"],
+        });
+      }
+      const serviceAccountIds = new Set<string>();
+      const serviceAccountUsernames = new Set<string>();
+      for (const [accountIndex, account] of (
+        product.local_fixture?.service_accounts ?? []
+      ).entries()) {
+        if (!roles.has(account.role)) {
+          context.addIssue({
+            code: "custom",
+            message: `Unknown local service-account role: ${account.role}`,
+            path: [
+              "products",
+              productIndex,
+              "local_fixture",
+              "service_accounts",
+              accountIndex,
+              "role",
+            ],
+          });
+        }
+        for (const [values, value, field] of [
+          [serviceAccountIds, account.id, "id"],
+          [serviceAccountUsernames, account.username, "username"],
+        ] as const) {
+          if (values.has(value)) {
+            context.addIssue({
+              code: "custom",
+              message: `Duplicate local service-account ${field}: ${value}`,
+              path: [
+                "products",
+                productIndex,
+                "local_fixture",
+                "service_accounts",
+                accountIndex,
+                field,
+              ],
+            });
+          }
+          values.add(value);
+        }
+      }
 
       const environments = new Set<string>();
       for (const [applicationIndex, application] of product.applications.entries()) {
