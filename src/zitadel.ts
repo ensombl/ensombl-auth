@@ -662,11 +662,15 @@ export class ZitadelClient {
       body.message.startsWith("No changes");
     const alreadyExists =
       options.allowAlreadyExists === true &&
-      response.status === 409 &&
       typeof body === "object" &&
       body !== null &&
       "code" in body &&
-      (body.code === 6 || body.code === "already_exists");
+      "message" in body &&
+      typeof body.message === "string" &&
+      ((response.status === 409 && (body.code === 6 || body.code === "already_exists")) ||
+        (response.status === 400 &&
+          (body.code === 9 || body.code === "failed_precondition") &&
+          body.message.includes("AlreadyExists")));
     if (!response.ok && !noChanges && !alreadyExists) {
       throw new Error(
         `${options.method ?? "GET"} ${path} returned ${response.status}: ${JSON.stringify(body)}`,

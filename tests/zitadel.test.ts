@@ -151,7 +151,13 @@ describe("ZitadelClient organization domains", () => {
 
   it("accepts a trusted domain that already exists", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ code: 6, message: "Already exists" }, { status: 409 }),
+      Response.json(
+        {
+          code: "failed_precondition",
+          message: "Errors.Instance.Domain.AlreadyExists (COMMA-test)",
+        },
+        { status: 400 },
+      ),
     );
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
