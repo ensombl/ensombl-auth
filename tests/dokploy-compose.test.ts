@@ -10,5 +10,6 @@ describe("Dokploy Compose ownership", () => {
   it("leaves public domains and Traefik networking to Dokploy", () => {
     expect(hostedCompose).not.toContain("traefik.");
     expect(hostedCompose).not.toContain("dokploy-network");
+    expect(hostedCompose).toContain("product-login-root:");
   });
 });
