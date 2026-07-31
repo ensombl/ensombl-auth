@@ -134,6 +134,30 @@ describe("ZitadelClient OIDC applications", () => {
 });
 
 describe("ZitadelClient organization domains", () => {
+  it("adds a native instance trusted domain", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.addTrustedDomain("auth.freightcheck.io");
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe(
+      "/zitadel.instance.v2.InstanceService/AddTrustedDomain",
+    );
+    expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "connect-protocol-version": "1",
+    });
+    expect(requestBody(request)).toEqual({ trustedDomain: "auth.freightcheck.io" });
+  });
+
+  it("accepts a trusted domain that already exists", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ code: 6, message: "Already exists" }, { status: 409 }),
+    );
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.addTrustedDomain("auth.freightclaims.com")).resolves.toBeUndefined();
+  });
+
   it("makes the declared organization domain primary", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")

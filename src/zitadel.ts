@@ -163,6 +163,15 @@ export class ZitadelClient {
     return { id: response.organizationId, name };
   }
 
+  async addTrustedDomain(trustedDomain: string): Promise<void> {
+    await this.#request("/zitadel.instance.v2.InstanceService/AddTrustedDomain", {
+      method: "POST",
+      connect: true,
+      body: { trustedDomain },
+      allowAlreadyExists: true,
+    });
+  }
+
   async ensurePrimaryOrganizationDomain(
     organizationId: string,
     domain: string,

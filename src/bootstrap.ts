@@ -3,7 +3,7 @@ import { rolesForProduct, secretPrefix } from "./catalog.js";
 import type { ApplicationRuntime, BwsRuntimeStore, RuntimeConfig } from "./runtime-config.js";
 import type { ZitadelClient } from "./zitadel.js";
 
-interface ReconcileOptions {
+interface BootstrapOptions {
   readonly existing?: RuntimeConfig;
   readonly bws?: BwsRuntimeStore;
   readonly rotateMissingSecrets: boolean;
@@ -42,7 +42,7 @@ async function persistApplication(
 export async function bootstrapCatalog(
   client: ZitadelClient,
   catalog: Catalog,
-  options: ReconcileOptions,
+  options: BootstrapOptions,
 ): Promise<RuntimeConfig> {
   const organizations = await client.listOrganizations();
   const projects = await client.listProjects();
@@ -66,6 +66,11 @@ export async function bootstrapCatalog(
     catalog.instance_organization.domain,
     obsoleteGeneratedDomainSuffix,
   );
+  for (const trustedDomain of new Set(
+    catalog.products.map((product) => new URL(product.auth_origin).hostname),
+  )) {
+    await client.addTrustedDomain(trustedDomain);
+  }
 
   const consoleApplication = await client.findApplicationByName("Management Console");
   const consoleProject = projects.find(
