@@ -22,7 +22,7 @@
       "email_from_name": "FreightClaims",
       "owner_organization": {
         "name": "FreightClaims",
-        "domain": "identity.freightclaims.ensombl.io"
+        "domain": "freightclaims.com"
       },
       "branding": {
         "primary_color": "#155EEF",
@@ -78,7 +78,7 @@
       "email_from_name": "FreightCheck",
       "owner_organization": {
         "name": "FreightCheck",
-        "domain": "identity.freightcheck.ensombl.io"
+        "domain": "freightcheck.io"
       },
       "branding": {
         "primary_color": "#7F56D9",
