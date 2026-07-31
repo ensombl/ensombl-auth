@@ -25,7 +25,7 @@ const baseCatalog = {
       email_from_name: "FreightCheck",
       owner_organization: {
         name: "FreightCheck",
-        domain: "identity.freightcheck.io",
+        domain: "freightcheck.io",
       },
       branding: {
         primary_color: "#123456",
