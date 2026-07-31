@@ -43,7 +43,7 @@ describe("ZitadelClient OIDC applications", () => {
     });
   });
 
-  it("reconciles existing applications to the product Login V2 base URI", async () => {
+  it("configures applications with the product Login V2 base URI", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
