@@ -93,7 +93,7 @@ services:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
-      CUSTOM_REQUEST_HEADERS: Host:auth.ensombl.io,X-Forwarded-Proto:https
+      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:auth.ensombl.io,Host:auth.ensombl.io,X-Forwarded-Proto:https
     volumes:
       - bootstrap:/zitadel/bootstrap:ro
     networks:
@@ -143,7 +143,7 @@ services:
       traefik.http.routers.ensombl-auth-product-login.service: ensombl-auth-login
       traefik.http.routers.ensombl-auth-product-login.priority: "200"
 
-  product-reconcile:
+  product-bootstrap:
     build:
       context: ../..
       dockerfile: deploy/operator/Dockerfile

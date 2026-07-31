@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { bootstrapCatalog } from "./bootstrap.js";
 import { loadCatalog } from "./catalog.js";
-import { reconcileCatalog } from "./reconcile.js";
 import { BwsRuntimeStore, readRuntimeConfig, writeRuntimeConfig } from "./runtime-config.js";
 import { ZitadelClient } from "./zitadel.js";
 
@@ -35,7 +35,7 @@ async function main(): Promise<void> {
   await bws?.initialize();
 
   const existing = await readRuntimeConfig(outputPath);
-  const runtime = await reconcileCatalog(client, catalog, {
+  const runtime = await bootstrapCatalog(client, catalog, {
     ...(existing ? { existing } : {}),
     ...(bws ? { bws } : {}),
     rotateMissingSecrets: process.env.ZITADEL_ROTATE_MISSING_CLIENT_SECRETS === "true",
@@ -43,7 +43,7 @@ async function main(): Promise<void> {
   await writeRuntimeConfig(outputPath, runtime);
 
   console.log(
-    `Reconciled ${Object.keys(runtime.products).length} product(s); runtime config: ${outputPath}`,
+    `Bootstrapped ${Object.keys(runtime.products).length} product(s); runtime config: ${outputPath}`,
   );
 }
 

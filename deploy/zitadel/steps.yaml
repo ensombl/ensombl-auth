@@ -1,4 +1,7 @@
 FirstInstance:
+  TrustedDomains:
+    - auth.freightclaims.com
+    - auth.freightcheck.io
   Org:
     Machine:
       Pat:

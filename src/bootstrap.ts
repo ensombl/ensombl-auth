@@ -39,7 +39,7 @@ async function persistApplication(
   );
 }
 
-export async function reconcileCatalog(
+export async function bootstrapCatalog(
   client: ZitadelClient,
   catalog: Catalog,
   options: ReconcileOptions,
@@ -79,7 +79,6 @@ export async function reconcileCatalog(
     organizationId: consoleProject.organizationId,
     loginBaseUri: new URL("/ui/v2/login/", catalog.issuer).toString(),
   });
-
   for (const product of catalog.products) {
     const loginBaseUri = new URL("/ui/v2/login/", product.auth_origin).toString();
     let ownerOrganization = organizations.find(
@@ -120,8 +119,7 @@ export async function reconcileCatalog(
         await client.addProjectRole(projectId, role.key, role.display_name);
       } else if (current.displayName !== role.display_name) {
         throw new Error(
-          `Role ${product.id}/${role.key} exists with display name "${current.displayName}"; ` +
-            `update it in the ZITADEL Console before reconciling`,
+          `Role ${product.id}/${role.key} exists with display name "${current.displayName}"`,
         );
       }
     }

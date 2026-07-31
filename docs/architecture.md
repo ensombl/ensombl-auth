@@ -24,7 +24,7 @@ tenant branding. Hostname alone is not treated as tenant identity.
 
 Organization domains are identity-discovery and username-suffix domains, not service hostnames.
 The catalog makes `ensombl.io` primary for the Ensombl organization and the declared
-`identity.<product>.ensombl.io` domain primary for each product owner. The reconciler removes the
+`identity.<product>.ensombl.io` domain primary for each product owner. Bootstrap removes the
 automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's external hostname.
 
 The default product roles are `member`, `admin`, and `owner`. A product may extend or completely
@@ -40,7 +40,7 @@ signed claims and the product database projection; there is no separate authoriz
 
 Machine clients use ZITADEL API applications and standard token introspection. Product management
 uses the environment's declared ZITADEL service account and short-lived client-credentials access
-tokens. The initial IAM-owner PAT exists only inside the auth stack to reconcile the declarative
+tokens. The initial IAM-owner PAT exists only inside the auth stack to apply the declarative
 catalog and is mounted from the private bootstrap volume. Product workloads never receive it.
 
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
@@ -67,11 +67,13 @@ ZITADEL rehashes a verified legacy password using its active password hasher.
 
 ## Branding and email
 
-ZITADEL owns instance, product-owner, and tenant login branding. Product branding is selected by
-the OIDC application. Each application uses its product's `auth_origin` as its Login V2 base URI
-while `auth.ensombl.io` remains the only issuer. The instance-wide Login V2 override stays disabled
-so ZITADEL honors those per-application hosts; the Management Console is explicitly pinned to the
-canonical host. Tenant branding is selected by explicit organization context.
+ZITADEL owns instance, product-owner, and tenant login branding. Each product project enforces its
+owner organization's branding from the first login screen. Each application uses its product's
+`auth_origin` as its Login V2 base URI while `auth.ensombl.io` remains the only issuer. Product
+Login V2 hosts are instance trusted domains; the stock Login V2 proxy sends the canonical instance
+host separately from the browser-facing product host. The instance-wide Login V2 override stays
+disabled so ZITADEL honors those per-application hosts; the Management Console is explicitly pinned
+to the canonical host. Tenant branding is selected by explicit organization context.
 
 ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP.
 Product-initiated invitations are sent by the initiating product with its configured From name;
@@ -80,7 +82,7 @@ generic account recovery has no product context and intentionally uses the Ensom
 ## Runtime and secrets
 
 The hosted stack contains only ZITADEL, Login V2, a one-shot Bitwarden secret loader, and a one-shot
-catalog reconciler. PostgreSQL is a native Dokploy database service. No retired auth database or
+catalog bootstrap. PostgreSQL is a native Dokploy database service. No retired auth database or
 second runtime path is part of this stack.
 
 Dokploy receives only `BWS_ACCESS_TOKEN` and the non-secret `BWS_PROJECT_ID`. The loader writes the

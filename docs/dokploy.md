@@ -8,7 +8,7 @@ not a Compose service.
 - `BWS_ACCESS_TOKEN`: token for the `ensombl-auth` Bitwarden machine account.
 - `BWS_PROJECT_ID`: UUID of the `ensombl-auth` Bitwarden project.
 
-The machine account needs write access only for the first successful catalog reconciliation, which
+The machine account needs write access only for the first successful catalog bootstrap, which
 creates OIDC clients and persists their one-time client secrets. Change it to read-only after the
 first deployment.
 
@@ -19,7 +19,7 @@ first deployment.
 - `ZITADEL_INITIAL_ADMIN_PASSWORD`: initial password for `patrick@ensombl.io`.
 - `RESEND_API_KEY`: sending-only Resend key for `noreply@notifications.ensombl.io`.
 
-The reconciler creates the product runtime entries documented in
+The bootstrap creates the product runtime entries documented in
 [`deploy/secrets/manifest.json`](../deploy/secrets/manifest.json). These are consumed by product
 deployments; they are not injected into the ZITADEL runtime.
 
@@ -35,6 +35,8 @@ Dokploy Traefik terminates TLS. ZITADEL and Login V2 receive h2c/HTTP only on th
   application context selects product branding; the hostname does not become a second issuer.
 - Login V2 is enabled per application, not forced instance-wide. This lets product applications use
   their own login hosts while the ZITADEL Console remains on `auth.ensombl.io`.
+- Product login hosts are native trusted domains on the initial ZITADEL instance. Login V2 sends
+  `auth.ensombl.io` as the instance host while preserving the product hostname as the public host.
 
 ## Recovery
 

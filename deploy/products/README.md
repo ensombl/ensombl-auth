@@ -11,6 +11,6 @@ Each product declares:
   `PROJECT_OWNER` on only that product project;
 - optional disposable local human and service-account fixtures for product integration tests.
 
-The reconciler is additive and idempotent. It never deletes organizations, roles, applications, or
-users. Existing objects with incompatible types or role display names cause a hard failure so an
-operator can review the conflict in the ZITADEL Console.
+The catalog bootstraps a clean ZITADEL instance. There is no compatibility or repair workflow:
+before a greenfield hosted reset, clear the dedicated auth database and generated product secrets,
+then run the bootstrap once.

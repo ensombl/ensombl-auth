@@ -263,7 +263,7 @@ export class ZitadelClient {
           projectRoleAssertion: true,
           authorizationRequired: true,
           projectAccessRequired: true,
-          privateLabelingSetting: "PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY",
+          privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
         },
       },
     );
@@ -279,7 +279,7 @@ export class ZitadelClient {
         projectRoleAssertion: true,
         authorizationRequired: true,
         projectAccessRequired: true,
-        privateLabelingSetting: "PRIVATE_LABELING_SETTING_ALLOW_LOGIN_USER_RESOURCE_OWNER_POLICY",
+        privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
       },
     });
   }

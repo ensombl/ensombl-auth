@@ -126,7 +126,7 @@ services:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
-      CUSTOM_REQUEST_HEADERS: Host:localhost,X-Forwarded-Proto:http
+      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:localhost:24455,Host:localhost,X-Forwarded-Proto:http
     volumes:
       - bootstrap:/zitadel/bootstrap:ro
     networks:
@@ -160,7 +160,7 @@ services:
       traefik.http.routers.ensombl-auth-local-login.service: ensombl-auth-local-login
       traefik.http.routers.ensombl-auth-local-login.priority: "200"
 
-  product-reconcile:
+  product-bootstrap:
     profiles: ["operator"]
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     build:
