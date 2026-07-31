@@ -90,6 +90,31 @@ describe("product catalog", () => {
     expect(secretPrefix(product, application)).toBe("ZITADEL_FREIGHTCHECK_PRODUCTION");
   });
 
+  it("allows the native login-client role for password verification", () => {
+    const application = baseCatalog.products[0]?.applications[0];
+    if (!application) throw new Error("Expected one product application");
+    const catalog = catalogSchema.parse({
+      ...baseCatalog,
+      products: [
+        {
+          ...baseCatalog.products[0],
+          applications: [
+            {
+              ...application,
+              management_service_account: {
+                ...application.management_service_account,
+                instance_roles: ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"],
+              },
+            },
+          ],
+        },
+      ],
+    });
+    expect(
+      catalog.products[0]?.applications[0]?.management_service_account.instance_roles,
+    ).toContain("IAM_LOGIN_CLIENT");
+  });
+
   it("rejects duplicate management service accounts within a product", () => {
     const application = baseCatalog.products[0]?.applications[0];
     if (!application) throw new Error("Expected one product application");
