@@ -69,6 +69,7 @@ interface EmailProvider {
   readonly smtp?: {
     readonly host?: string;
     readonly user?: string;
+    readonly plain?: Record<string, never>;
   };
 }
 
@@ -660,14 +661,13 @@ export class ZitadelClient {
     });
     const providers = response.result ?? [];
     const smtpProviders = providers.filter((provider) => provider.smtp !== undefined);
-    const provider =
-      smtpProviders.find((candidate) => candidate.state === "EMAIL_PROVIDER_ACTIVE") ??
-      smtpProviders[0];
-    if (!provider && providers.length > 0) {
-      throw new Error("The active email provider is not SMTP");
-    }
-
-    const body = {
+    const provider = smtpProviders.find(
+      (candidate) =>
+        candidate.smtp?.host === input.host &&
+        candidate.smtp.user === input.user &&
+        candidate.smtp.plain !== undefined,
+    );
+    const configuration = {
       senderAddress: input.senderAddress,
       senderName: input.senderName,
       tls: input.tls,
@@ -675,27 +675,43 @@ export class ZitadelClient {
       user: input.user,
       replyToAddress: input.replyToAddress,
       description: input.description,
-      plain: { password: input.password },
     };
-    if (!provider) {
+    let providerId = provider?.id;
+    if (!providerId) {
       const created = await this.#request<{ id: string }>("/admin/v1/email/smtp", {
         method: "POST",
-        body,
+        body: { ...configuration, plain: { password: input.password } },
       });
-      return created.id;
+      providerId = created.id;
+    } else {
+      // ZITADEL 4.16.2's full SMTP update generates a duplicate password-column
+      // projection when it includes `plain.password`. Update non-secret fields
+      // first, then rotate the password through the dedicated endpoint.
+      await this.#request(`/admin/v1/email/smtp/${encodeURIComponent(providerId)}`, {
+        method: "PUT",
+        body: configuration,
+      });
     }
 
-    await this.#request(`/admin/v1/email/smtp/${encodeURIComponent(provider.id)}`, {
-      method: "PUT",
-      body,
-    });
-    if (provider.state !== "EMAIL_PROVIDER_ACTIVE") {
-      await this.#request(`/admin/v1/email/${encodeURIComponent(provider.id)}/_activate`, {
+    if (provider?.state !== "EMAIL_PROVIDER_ACTIVE") {
+      await this.#request(`/admin/v1/email/${encodeURIComponent(providerId)}/_activate`, {
         method: "POST",
         body: {},
       });
     }
-    return provider.id;
+    if (provider) {
+      await this.#request(`/admin/v1/email/smtp/${encodeURIComponent(providerId)}/password`, {
+        method: "PUT",
+        body: { password: input.password },
+      });
+    }
+    for (const obsolete of smtpProviders) {
+      if (obsolete.id === providerId) continue;
+      await this.#request(`/admin/v1/email/${encodeURIComponent(obsolete.id)}`, {
+        method: "DELETE",
+      });
+    }
+    return providerId;
   }
 
   async rotateClientSecret(applicationId: string, projectId: string): Promise<string> {

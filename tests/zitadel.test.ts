@@ -220,7 +220,7 @@ describe("ZitadelClient organization domains", () => {
 });
 
 describe("ZitadelClient SMTP email provider", () => {
-  it("repairs the active provider with Resend plain authentication", async () => {
+  it("replaces a broken active provider with Resend plain authentication", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -234,6 +234,8 @@ describe("ZitadelClient SMTP email provider", () => {
           ],
         }),
       )
+      .mockResolvedValueOnce(Response.json({ id: "replacement-provider-id" }))
+      .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
@@ -248,26 +250,32 @@ describe("ZitadelClient SMTP email provider", () => {
         description: "Ensombl system notifications via Resend",
         tls: true,
       }),
-    ).resolves.toBe("smtp-provider-id");
+    ).resolves.toBe("replacement-provider-id");
 
     expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe("/admin/v1/email/_search");
-    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
-      "/admin/v1/email/smtp/smtp-provider-id",
-    );
-    expect(request.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe("/admin/v1/email/smtp");
+    expect(request.mock.calls[1]?.[1]?.method).toBe("POST");
     expect(requestBody(request, 1)).toMatchObject({
       host: "smtp.resend.com:587",
       user: "resend",
       plain: { password: "resend-api-key" },
       tls: true,
     });
+    expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
+      "/admin/v1/email/replacement-provider-id/_activate",
+    );
+    expect(new URL(String(request.mock.calls[3]?.[0])).pathname).toBe(
+      "/admin/v1/email/smtp-provider-id",
+    );
+    expect(request.mock.calls[3]?.[1]?.method).toBe("DELETE");
   });
 
   it("creates an SMTP provider when the instance has none", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(Response.json({ result: [] }))
-      .mockResolvedValueOnce(Response.json({ id: "new-smtp-provider-id" }));
+      .mockResolvedValueOnce(Response.json({ id: "new-smtp-provider-id" }))
+      .mockResolvedValueOnce(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
     await expect(
@@ -285,5 +293,48 @@ describe("ZitadelClient SMTP email provider", () => {
 
     expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe("/admin/v1/email/smtp");
     expect(request.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
+      "/admin/v1/email/new-smtp-provider-id/_activate",
+    );
+  });
+
+  it("updates an existing Resend provider without the ZITADEL password projection bug", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          result: [
+            {
+              id: "smtp-provider-id",
+              state: "EMAIL_PROVIDER_ACTIVE",
+              smtp: {
+                host: "smtp.resend.com:587",
+                user: "resend",
+                plain: {},
+              },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureSmtpEmailProvider({
+      host: "smtp.resend.com:587",
+      user: "resend",
+      password: "rotated-resend-api-key",
+      senderAddress: "noreply@notifications.ensombl.io",
+      senderName: "Ensombl",
+      replyToAddress: "noreply@notifications.ensombl.io",
+      description: "Ensombl system notifications via Resend",
+      tls: true,
+    });
+
+    expect(requestBody(request, 1)).not.toHaveProperty("plain");
+    expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
+      "/admin/v1/email/smtp/smtp-provider-id/password",
+    );
+    expect(requestBody(request, 2)).toEqual({ password: "rotated-resend-api-key" });
   });
 });
