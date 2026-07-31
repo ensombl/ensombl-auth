@@ -13,4 +13,4 @@ COPY tsconfig.json biome.json ./
 COPY src src
 COPY deploy/products deploy/products
 COPY --from=bws /out/bws /usr/local/bin/bws
-ENTRYPOINT ["pnpm", "exec", "tsx", "src/cli.ts"]
+ENTRYPOINT ["node", "node_modules/tsx/dist/cli.mjs", "src/cli.ts"]
