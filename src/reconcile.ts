@@ -147,7 +147,7 @@ export async function reconcileCatalog(
         await client.configureOidcApplication({
           applicationId: current.applicationId,
           projectId,
-          name: application.name,
+          organizationId: ownerOrganization.id,
           baseUrl: application.base_url,
           developmentMode: application.development_mode,
           loginBaseUri,

@@ -9,6 +9,7 @@ function requestBody(request: MockInstance<typeof fetch>) {
   const init = request.mock.calls[0]?.[1];
   if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
   return JSON.parse(init.body) as {
+    loginVersion?: { loginV2?: { baseUri?: string } };
     oidcConfiguration?: {
       loginVersion?: { loginV2?: { baseUri?: string } };
     };
@@ -48,23 +49,24 @@ describe("ZitadelClient OIDC applications", () => {
     await client.configureOidcApplication({
       applicationId: "application-id",
       projectId: "project-id",
-      name: "FreightClaims production web",
+      organizationId: "organization-id",
       baseUrl: "https://app.freightclaims.ensombl.io",
       developmentMode: false,
       loginBaseUri: "https://auth.freightclaims.com/ui/v2/login/",
     });
 
-    expect(requestBody(request).oidcConfiguration?.loginVersion).toEqual({
+    expect(requestBody(request).loginVersion).toEqual({
       loginV2: { baseUri: "https://auth.freightclaims.com/ui/v2/login/" },
+    });
+    expect(request.mock.calls[0]?.[1]?.method).toBe("PUT");
+    expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
+      "x-zitadel-orgid": "organization-id",
     });
   });
 
   it("accepts ZITADEL's idempotent no-changes response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json(
-        { code: "failed_precondition", message: "No changes (COMMAND-test)" },
-        { status: 400 },
-      ),
+      Response.json({ code: 9, message: "No changes (COMMAND-test)" }, { status: 400 }),
     );
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
@@ -72,7 +74,7 @@ describe("ZitadelClient OIDC applications", () => {
       client.configureOidcApplication({
         applicationId: "application-id",
         projectId: "project-id",
-        name: "FreightClaims production web",
+        organizationId: "organization-id",
         baseUrl: "https://app.freightclaims.ensombl.io",
         developmentMode: false,
         loginBaseUri: "https://auth.freightclaims.com/ui/v2/login/",

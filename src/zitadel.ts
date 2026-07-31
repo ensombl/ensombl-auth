@@ -25,6 +25,11 @@ interface Application {
   readonly name: string;
   readonly oidcConfiguration?: {
     readonly clientId: string;
+    readonly loginVersion?: {
+      readonly loginV2?: {
+        readonly baseUri?: string;
+      };
+    };
   };
 }
 
@@ -460,12 +465,13 @@ export class ZitadelClient {
       {
         method: "POST",
         connect: true,
-        body: { query: { projectIds: [projectId] } },
+        body: {
+          pagination: { limit: 1_000 },
+          filters: [{ projectIdFilter: { projectId } }],
+        },
       },
     );
-    return (response.applications ?? []).filter(
-      (application) => application.projectId === projectId,
-    );
+    return response.applications ?? [];
   }
 
   async createOidcApplication(input: {
@@ -501,22 +507,36 @@ export class ZitadelClient {
   async configureOidcApplication(input: {
     readonly applicationId: string;
     readonly projectId: string;
-    readonly name: string;
+    readonly organizationId: string;
     readonly baseUrl: string;
     readonly developmentMode: boolean;
     readonly loginBaseUri: string;
   }): Promise<void> {
-    await this.#request("/zitadel.application.v2.ApplicationService/UpdateApplication", {
-      method: "POST",
-      connect: true,
-      allowNoChanges: true,
-      body: {
-        applicationId: input.applicationId,
-        projectId: input.projectId,
-        name: input.name,
-        oidcConfiguration: oidcApplicationConfiguration(input),
+    const configuration = oidcApplicationConfiguration(input);
+    // ZITADEL v4.16.2's v2 UpdateApplication currently ignores Login V2 URI
+    // changes. The management endpoint persists the same current OIDC model.
+    await this.#request(
+      `/management/v1/projects/${input.projectId}/apps/${input.applicationId}/oidc_config`,
+      {
+        method: "PUT",
+        headers: { "x-zitadel-orgid": input.organizationId },
+        body: {
+          redirectUris: configuration.redirectUris,
+          responseTypes: configuration.responseTypes,
+          grantTypes: configuration.grantTypes,
+          appType: configuration.applicationType,
+          authMethodType: configuration.authMethodType,
+          postLogoutRedirectUris: configuration.postLogoutRedirectUris,
+          devMode: configuration.developmentMode,
+          accessTokenType: configuration.accessTokenType,
+          accessTokenRoleAssertion: configuration.accessTokenRoleAssertion,
+          idTokenRoleAssertion: configuration.idTokenRoleAssertion,
+          idTokenUserinfoAssertion: configuration.idTokenUserinfoAssertion,
+          loginVersion: configuration.loginVersion,
+        },
+        allowNoChanges: true,
       },
-    });
+    );
   }
 
   async rotateClientSecret(applicationId: string, projectId: string): Promise<string> {
@@ -540,7 +560,7 @@ export class ZitadelClient {
       typeof body === "object" &&
       body !== null &&
       "code" in body &&
-      body.code === "failed_precondition" &&
+      (body.code === 9 || body.code === "failed_precondition") &&
       "message" in body &&
       typeof body.message === "string" &&
       body.message.startsWith("No changes");
