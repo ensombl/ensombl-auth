@@ -4,6 +4,10 @@ import { catalogSchema, rolesForProduct, secretPrefix } from "../src/catalog.js"
 const baseCatalog = {
   issuer: "https://auth.example.com",
   console_path: "/ui/console",
+  instance_organization: {
+    name: "Example",
+    domain: "example.com",
+  },
   email: {
     from_address: "noreply@example.com",
     default_from_name: "Example",

@@ -78,21 +78,12 @@ services:
       traefik.http.middlewares.ensombl-auth-security.headers.stsincludesubdomains: "true"
       traefik.http.middlewares.ensombl-auth-admin.redirectregex.regex: ^https://auth\.ensombl\.io/admin/?$
       traefik.http.middlewares.ensombl-auth-admin.redirectregex.replacement: https://auth.ensombl.io/ui/console
-      traefik.http.middlewares.ensombl-auth-alias.redirectregex.regex: ^https://auth\.(freightclaims\.com|freightcheck\.io)/(.*)
-      traefik.http.middlewares.ensombl-auth-alias.redirectregex.replacement: https://auth.ensombl.io/$${2}
-      traefik.http.middlewares.ensombl-auth-alias.redirectregex.permanent: "true"
       traefik.http.routers.ensombl-auth-api.rule: Host(`auth.ensombl.io`) && !PathPrefix(`/ui/v2/login`)
       traefik.http.routers.ensombl-auth-api.entrypoints: websecure
       traefik.http.routers.ensombl-auth-api.tls.certresolver: letsencrypt
       traefik.http.routers.ensombl-auth-api.middlewares: ensombl-auth-admin@docker,ensombl-auth-security@docker
       traefik.http.routers.ensombl-auth-api.service: ensombl-auth-zitadel
       traefik.http.routers.ensombl-auth-api.priority: "100"
-      traefik.http.routers.ensombl-auth-alias.rule: Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)
-      traefik.http.routers.ensombl-auth-alias.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-alias.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-alias.middlewares: ensombl-auth-alias@docker
-      traefik.http.routers.ensombl-auth-alias.service: ensombl-auth-zitadel
-      traefik.http.routers.ensombl-auth-alias.priority: "300"
 
   zitadel-login:
     image: ghcr.io/zitadel/zitadel-login:v4.16.2
@@ -139,6 +130,18 @@ services:
       traefik.http.routers.ensombl-auth-login.middlewares: ensombl-auth-security@docker
       traefik.http.routers.ensombl-auth-login.service: ensombl-auth-login
       traefik.http.routers.ensombl-auth-login.priority: "200"
+      traefik.http.routers.ensombl-auth-product-root.rule: (Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && Path(`/`)
+      traefik.http.routers.ensombl-auth-product-root.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-product-root.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-product-root.middlewares: ensombl-auth-root@docker,ensombl-auth-security@docker
+      traefik.http.routers.ensombl-auth-product-root.service: ensombl-auth-login
+      traefik.http.routers.ensombl-auth-product-root.priority: "300"
+      traefik.http.routers.ensombl-auth-product-login.rule: (Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && PathPrefix(`/ui/v2/login`)
+      traefik.http.routers.ensombl-auth-product-login.entrypoints: websecure
+      traefik.http.routers.ensombl-auth-product-login.tls.certresolver: letsencrypt
+      traefik.http.routers.ensombl-auth-product-login.middlewares: ensombl-auth-security@docker
+      traefik.http.routers.ensombl-auth-product-login.service: ensombl-auth-login
+      traefik.http.routers.ensombl-auth-product-login.priority: "200"
 
   product-reconcile:
     build:

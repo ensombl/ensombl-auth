@@ -22,6 +22,11 @@ A tenant can additionally own colors, logos, fonts, and message text. A product 
 organization scope when the tenant is already known; this is the explicit contract that selects
 tenant branding. Hostname alone is not treated as tenant identity.
 
+Organization domains are identity-discovery and username-suffix domains, not service hostnames.
+The catalog makes `ensombl.io` primary for the Ensombl organization and the declared
+`identity.<product>.ensombl.io` domain primary for each product owner. The reconciler removes the
+automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's external hostname.
+
 The default product roles are `member`, `admin`, and `owner`. A product may extend or completely
 replace that stack in the catalog. FreightClaims currently replaces it with its existing canonical
 roles so the rewrite does not need a second role translation.
@@ -37,6 +42,11 @@ Machine clients use ZITADEL API applications and standard token introspection. P
 uses the environment's declared ZITADEL service account and short-lived client-credentials access
 tokens. The initial IAM-owner PAT exists only inside the auth stack to reconcile the declarative
 catalog and is mounted from the private bootstrap volume. Product workloads never receive it.
+
+ZITADEL Console access uses built-in administrator permissions, not product project roles. The
+seeded `patrick@ensombl.io` user is the initial instance administrator. Product management service
+accounts receive only their declared instance administration permissions and ownership of their
+product project.
 
 ## Legacy password migration
 
@@ -58,7 +68,9 @@ ZITADEL rehashes a verified legacy password using its active password hasher.
 ## Branding and email
 
 ZITADEL owns instance, product-owner, and tenant login branding. Product branding is selected by
-the OIDC application. Tenant branding is selected by explicit organization context.
+the OIDC application. Each application uses its product's `auth_origin` as its Login V2 base URI
+while `auth.ensombl.io` remains the only issuer. Tenant branding is selected by explicit
+organization context.
 
 ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP.
 Product-initiated invitations are sent by the initiating product with its configured From name;

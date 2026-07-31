@@ -29,8 +29,10 @@ Dokploy Traefik terminates TLS. ZITADEL and Login V2 receive h2c/HTTP only on th
 
 - `https://auth.ensombl.io/ui/console` is the ZITADEL Console.
 - `https://auth.ensombl.io/admin` redirects to the Console.
-- `auth.freightclaims.com` and `auth.freightcheck.io` are public product aliases that redirect to
-  the canonical issuer. Product styling is selected by the OIDC application, not the alias.
+- `auth.freightclaims.com` and `auth.freightcheck.io` serve Login V2 for their product applications.
+  The OIDC issuer and API endpoints remain canonical at `auth.ensombl.io`.
+- Each OIDC application receives its product's Login V2 base URI from `auth_origin`. The
+  application context selects product branding; the hostname does not become a second issuer.
 
 ## Recovery
 
