@@ -47,7 +47,7 @@ services:
       ZITADEL_FIRSTINSTANCE_LOGINCLIENTPATPATH: /zitadel/bootstrap/login-client.pat
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: ZITADEL Login
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "true"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://auth.ensombl.io/ui/v2/login/
       ZITADEL_OIDC_DEFAULTLOGINURLV2: https://auth.ensombl.io/ui/v2/login/login?authRequest=
       ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://auth.ensombl.io/ui/v2/login/logout?post_logout_redirect=
