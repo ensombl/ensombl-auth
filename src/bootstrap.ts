@@ -1,5 +1,5 @@
 import type { Catalog, Product, ProductApplication } from "./catalog.js";
-import { rolesForProduct, secretPrefix } from "./catalog.js";
+import { migrationSecretPrefix, rolesForProduct, secretPrefix } from "./catalog.js";
 import type { ApplicationRuntime, BwsRuntimeStore, RuntimeConfig } from "./runtime-config.js";
 import type { ZitadelClient } from "./zitadel.js";
 
@@ -37,6 +37,18 @@ async function persistApplication(
     `${prefix}_MANAGEMENT_CLIENT_SECRET`,
     runtime.managementServiceAccount.clientSecret,
   );
+}
+
+async function persistMigrationServiceAccount(
+  bws: BwsRuntimeStore | undefined,
+  product: Product,
+  account: NonNullable<RuntimeConfig["products"][string]["migrationServiceAccount"]>,
+): Promise<void> {
+  if (!bws) return;
+  const prefix = migrationSecretPrefix(product);
+  await bws.set(`${prefix}_USER_ID`, account.userId);
+  await bws.set(`${prefix}_CLIENT_ID`, account.clientId);
+  await bws.set(`${prefix}_CLIENT_SECRET`, account.clientSecret);
 }
 
 export async function bootstrapCatalog(
@@ -221,15 +233,24 @@ export async function bootstrapCatalog(
             `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
         );
       }
-      await client.ensureAdministrator({
+      await client.deleteAdministrator({
         userId: account.id,
-        resource: { instance: true },
-        roles: account.instance_roles,
+        resource: { organizationId: instanceOrganization.id },
       });
+      if (ownerOrganization.id !== instanceOrganization.id) {
+        await client.deleteAdministrator({
+          userId: account.id,
+          resource: { organizationId: ownerOrganization.id },
+        });
+      }
       await client.ensureAdministrator({
         userId: account.id,
         resource: { projectId },
         roles: ["PROJECT_OWNER"],
+      });
+      await client.deleteAdministrator({
+        userId: account.id,
+        resource: { instance: true },
       });
       applicationRuntime.managementServiceAccount = {
         userId: account.id,
@@ -245,6 +266,55 @@ export async function bootstrapCatalog(
         projectId,
         ownerOrganization.id,
         applicationRuntime,
+      );
+    }
+
+    const migrationAccount = product.migration_service_account;
+    if (migrationAccount) {
+      const existingAccount = await client.getUser(migrationAccount.id);
+      if (!existingAccount) {
+        await client.createServiceAccount({
+          organizationId: ownerOrganization.id,
+          userId: migrationAccount.id,
+          username: migrationAccount.username,
+          displayName: migrationAccount.display_name,
+        });
+      }
+      const previousSecret =
+        existingProduct?.migrationServiceAccount?.clientSecret ??
+        options.bws?.get(`${migrationSecretPrefix(product)}_CLIENT_SECRET`);
+      let clientSecret = existingAccount ? previousSecret : undefined;
+      if (!existingAccount || (!clientSecret && options.rotateMissingSecrets)) {
+        clientSecret = await client.generateServiceAccountSecret(migrationAccount.id);
+      }
+      if (!clientSecret) {
+        throw new Error(
+          `Client secret is missing for migration service account ${product.id}. Set ` +
+            `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
+        );
+      }
+      await client.ensureAdministrator({
+        userId: migrationAccount.id,
+        resource: { projectId },
+        roles: ["PROJECT_OWNER"],
+      });
+      await client.ensureAdministrator({
+        userId: migrationAccount.id,
+        resource: { instance: true },
+        roles: [
+          "IAM_ORG_MANAGER",
+          ...(migrationAccount.verify_imported_passwords ? ["IAM_LOGIN_CLIENT"] : []),
+        ],
+      });
+      productRuntime.migrationServiceAccount = {
+        userId: migrationAccount.id,
+        clientId: migrationAccount.username,
+        clientSecret,
+      };
+      await persistMigrationServiceAccount(
+        options.bws,
+        product,
+        productRuntime.migrationServiceAccount,
       );
     }
 
@@ -274,6 +344,13 @@ export async function bootstrapCatalog(
         tenant.id,
         desiredRoles.map((role) => role.key),
       );
+      for (const application of product.applications) {
+        await client.ensureAdministrator({
+          userId: application.management_service_account.id,
+          resource: { organizationId: tenant.id },
+          roles: ["ORG_USER_MANAGER"],
+        });
+      }
 
       const existingUser = await client.getUser(fixture.user.id);
       if (!existingUser) {

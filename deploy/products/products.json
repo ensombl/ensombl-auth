@@ -46,6 +46,11 @@
           { "key": "tai_api", "display_name": "TAI API" }
         ]
       },
+      "migration_service_account": {
+        "id": "afbead5c-1b97-4d63-8136-32fea6673fde",
+        "username": "freightclaims-migration",
+        "display_name": "FreightClaims migration"
+      },
       "applications": [
         {
           "environment": "staging",
@@ -54,8 +59,7 @@
           "management_service_account": {
             "id": "f1659442-a65a-4da6-bbd7-4efa55b7c7ef",
             "username": "freightclaims-staging-management",
-            "display_name": "FreightClaims staging management",
-            "instance_roles": ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "display_name": "FreightClaims staging management"
           }
         },
         {
@@ -65,8 +69,7 @@
           "management_service_account": {
             "id": "7ea4dd05-da93-4a19-a63b-be7e9bd2bef1",
             "username": "freightclaims-production-management",
-            "display_name": "FreightClaims production management",
-            "instance_roles": ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "display_name": "FreightClaims production management"
           }
         }
       ]
@@ -98,8 +101,7 @@
           "management_service_account": {
             "id": "ed9353c3-d6ac-4f63-91fd-a5a92fbb284b",
             "username": "freightcheck-staging-management",
-            "display_name": "FreightCheck staging management",
-            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "display_name": "FreightCheck staging management"
           }
         },
         {
@@ -109,8 +111,7 @@
           "management_service_account": {
             "id": "245097ab-5609-41b1-99cb-5f9d2efbbdb7",
             "username": "freightcheck-production-management",
-            "display_name": "FreightCheck production management",
-            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "display_name": "FreightCheck production management"
           }
         }
       ]
