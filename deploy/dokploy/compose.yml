@@ -56,7 +56,6 @@ services:
       - runtime-secrets:/run/ensombl-auth:ro
       - bootstrap:/zitadel/bootstrap
     networks:
-      - dokploy-network
       - auth-internal
     depends_on:
       secret-loader:
@@ -67,23 +66,6 @@ services:
       timeout: 30s
       retries: 60
       start_period: 30s
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.services.ensombl-auth-zitadel.loadbalancer.server.port: "8080"
-      traefik.http.services.ensombl-auth-zitadel.loadbalancer.server.scheme: h2c
-      traefik.http.middlewares.ensombl-auth-security.headers.contenttypenosniff: "true"
-      traefik.http.middlewares.ensombl-auth-security.headers.referrerpolicy: no-referrer
-      traefik.http.middlewares.ensombl-auth-security.headers.stsseconds: "31536000"
-      traefik.http.middlewares.ensombl-auth-security.headers.stsincludesubdomains: "true"
-      traefik.http.middlewares.ensombl-auth-admin.redirectregex.regex: ^https://auth\.ensombl\.io/admin/?$
-      traefik.http.middlewares.ensombl-auth-admin.redirectregex.replacement: https://auth.ensombl.io/ui/console
-      traefik.http.routers.ensombl-auth-api.rule: Host(`auth.ensombl.io`) && !PathPrefix(`/ui/v2/login`)
-      traefik.http.routers.ensombl-auth-api.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-api.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-api.middlewares: ensombl-auth-admin@docker,ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-api.service: ensombl-auth-zitadel
-      traefik.http.routers.ensombl-auth-api.priority: "100"
 
   zitadel-login:
     image: ghcr.io/zitadel/zitadel-login:v4.16.2
@@ -97,7 +79,6 @@ services:
     volumes:
       - bootstrap:/zitadel/bootstrap:ro
     networks:
-      - dokploy-network
       - auth-internal
     depends_on:
       zitadel-api:
@@ -113,35 +94,6 @@ services:
       interval: 10s
       timeout: 30s
       retries: 40
-    labels:
-      traefik.enable: "true"
-      traefik.docker.network: dokploy-network
-      traefik.http.services.ensombl-auth-login.loadbalancer.server.port: "3000"
-      traefik.http.middlewares.ensombl-auth-root.replacepath.path: /ui/v2/login/
-      traefik.http.routers.ensombl-auth-root.rule: Host(`auth.ensombl.io`) && Path(`/`)
-      traefik.http.routers.ensombl-auth-root.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-root.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-root.middlewares: ensombl-auth-root@docker,ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-root.service: ensombl-auth-login
-      traefik.http.routers.ensombl-auth-root.priority: "300"
-      traefik.http.routers.ensombl-auth-login.rule: Host(`auth.ensombl.io`) && PathPrefix(`/ui/v2/login`)
-      traefik.http.routers.ensombl-auth-login.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-login.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-login.middlewares: ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-login.service: ensombl-auth-login
-      traefik.http.routers.ensombl-auth-login.priority: "200"
-      traefik.http.routers.ensombl-auth-product-root.rule: (Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && Path(`/`)
-      traefik.http.routers.ensombl-auth-product-root.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-product-root.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-product-root.middlewares: ensombl-auth-root@docker,ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-product-root.service: ensombl-auth-login
-      traefik.http.routers.ensombl-auth-product-root.priority: "300"
-      traefik.http.routers.ensombl-auth-product-login.rule: (Host(`auth.freightclaims.com`) || Host(`auth.freightcheck.io`)) && PathPrefix(`/ui/v2/login`)
-      traefik.http.routers.ensombl-auth-product-login.entrypoints: websecure
-      traefik.http.routers.ensombl-auth-product-login.tls.certresolver: letsencrypt
-      traefik.http.routers.ensombl-auth-product-login.middlewares: ensombl-auth-security@docker
-      traefik.http.routers.ensombl-auth-product-login.service: ensombl-auth-login
-      traefik.http.routers.ensombl-auth-product-login.priority: "200"
 
   product-bootstrap:
     build:
@@ -168,8 +120,6 @@ services:
         condition: service_healthy
 
 networks:
-  dokploy-network:
-    external: true
   auth-internal:
     internal: true
   secret-egress:

@@ -25,10 +25,27 @@ deployments; they are not injected into the ZITADEL runtime.
 
 ## Routing
 
-Dokploy Traefik terminates TLS. ZITADEL and Login V2 receive h2c/HTTP only on the private network.
+Dokploy Traefik terminates TLS. Public routing is owned by the Compose application's **Domains**
+tab; `deploy/dokploy/compose.yml` intentionally contains no Traefik labels or manually declared
+`dokploy-network`. Dokploy injects both when it deploys the registered domains.
+
+Configure these HTTPS domains with a Let's Encrypt certificate:
+
+| Host | Public path | Service | Port | Internal path | Strip path |
+| --- | --- | --- | ---: | --- | --- |
+| `auth.ensombl.io` | `/` | `zitadel-api` | 8080 | `/` | No |
+| `auth.ensombl.io` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
+| `auth.ensombl.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
+| `auth.freightclaims.com` | `/` | `zitadel-login` | 3000 | `/ui/v2/login` | No |
+| `auth.freightclaims.com` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
+| `auth.freightcheck.io` | `/` | `zitadel-login` | 3000 | `/ui/v2/login` | No |
+| `auth.freightcheck.io` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
+
+The more-specific Login V2 and `/admin` paths take precedence over each host's `/` route. A Compose
+redeploy is required after changing any of these domain records.
 
 - `https://auth.ensombl.io/ui/console` is the ZITADEL Console.
-- `https://auth.ensombl.io/admin` redirects to the Console.
+- `https://auth.ensombl.io/admin` is rewritten internally to the Console.
 - `auth.freightclaims.com` and `auth.freightcheck.io` serve Login V2 for their product applications.
   The OIDC issuer and API endpoints remain canonical at `auth.ensombl.io`.
 - Each OIDC application receives its product's Login V2 base URI from `auth_origin`. The
