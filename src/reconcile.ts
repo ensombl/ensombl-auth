@@ -51,8 +51,24 @@ export async function reconcileCatalog(
     consoleUrl: new URL(catalog.console_path, catalog.issuer).toString(),
     products: {},
   };
+  const obsoleteGeneratedDomainSuffix = `.${new URL(catalog.issuer).hostname}`;
+
+  const instanceOrganization = organizations.find(
+    (organization) => organization.name === catalog.instance_organization.name,
+  );
+  if (!instanceOrganization) {
+    throw new Error(
+      `Initial organization ${catalog.instance_organization.name} does not exist in ZITADEL`,
+    );
+  }
+  await client.ensurePrimaryOrganizationDomain(
+    instanceOrganization.id,
+    catalog.instance_organization.domain,
+    obsoleteGeneratedDomainSuffix,
+  );
 
   for (const product of catalog.products) {
+    const loginBaseUri = new URL("/ui/v2/login/", product.auth_origin).toString();
     let ownerOrganization = organizations.find(
       (organization) => organization.name === product.owner_organization.name,
     );
@@ -60,7 +76,11 @@ export async function reconcileCatalog(
       ownerOrganization = await client.createOrganization(product.owner_organization.name);
       organizations.push(ownerOrganization);
     }
-    await client.addOrganizationDomain(ownerOrganization.id, product.owner_organization.domain);
+    await client.ensurePrimaryOrganizationDomain(
+      ownerOrganization.id,
+      product.owner_organization.domain,
+      obsoleteGeneratedDomainSuffix,
+    );
     await client.applyBranding(ownerOrganization.id, product.branding);
 
     let projectId = projects.find(
@@ -112,6 +132,7 @@ export async function reconcileCatalog(
           name: application.name,
           baseUrl: application.base_url,
           developmentMode: application.development_mode,
+          loginBaseUri,
         });
         applicationRuntime = {
           ...created,
@@ -123,6 +144,14 @@ export async function reconcileCatalog(
           },
         };
       } else {
+        await client.configureOidcApplication({
+          applicationId: current.applicationId,
+          projectId,
+          name: application.name,
+          baseUrl: application.base_url,
+          developmentMode: application.development_mode,
+          loginBaseUri,
+        });
         const prefix = secretPrefix(product, application);
         const persistedSecret =
           existingApplication?.clientSecret ?? options.bws?.get(`${prefix}_CLIENT_SECRET`);
@@ -218,7 +247,11 @@ export async function reconcileCatalog(
           `Local fixture organization ${fixture.tenant.name} exists with unexpected ID ${tenant.id}`,
         );
       }
-      await client.addOrganizationDomain(tenant.id, fixture.tenant.domain);
+      await client.ensurePrimaryOrganizationDomain(
+        tenant.id,
+        fixture.tenant.domain,
+        obsoleteGeneratedDomainSuffix,
+      );
       await client.applyBranding(tenant.id, fixture.tenant.branding ?? product.branding);
       await client.ensureProjectGrant(
         projectId,

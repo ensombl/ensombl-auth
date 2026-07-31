@@ -82,6 +82,10 @@ export const catalogSchema = z
   .object({
     issuer: z.url(),
     console_path: z.string().startsWith("/"),
+    instance_organization: z.object({
+      name: z.string().min(1).max(200),
+      domain: z.string().min(1).max(253),
+    }),
     email: z.object({
       from_address: z.email(),
       default_from_name: z.string().min(1).max(200),

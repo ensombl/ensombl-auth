@@ -44,10 +44,36 @@ interface Authorization {
 }
 
 interface RequestOptions {
-  readonly method?: "GET" | "POST" | "PUT" | "PATCH";
+  readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly body?: unknown;
   readonly headers?: Readonly<Record<string, string>>;
   readonly connect?: boolean;
+  readonly allowNoChanges?: boolean;
+  readonly allowAlreadyExists?: boolean;
+}
+
+interface OidcApplicationConfiguration {
+  readonly baseUrl: string;
+  readonly developmentMode: boolean;
+  readonly loginBaseUri: string;
+}
+
+function oidcApplicationConfiguration(input: OidcApplicationConfiguration) {
+  return {
+    redirectUris: [`${input.baseUrl}/auth/callback`],
+    responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+    grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
+    applicationType: "OIDC_APP_TYPE_WEB",
+    authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
+    postLogoutRedirectUris: [`${input.baseUrl}/`],
+    version: "OIDC_VERSION_1_0",
+    developmentMode: input.developmentMode,
+    accessTokenType: "OIDC_TOKEN_TYPE_JWT",
+    accessTokenRoleAssertion: true,
+    idTokenRoleAssertion: true,
+    idTokenUserinfoAssertion: true,
+    loginVersion: { loginV2: { baseUri: input.loginBaseUri } },
+  };
 }
 
 export class ZitadelClient {
@@ -93,17 +119,45 @@ export class ZitadelClient {
     return { id: response.organizationId, name };
   }
 
-  async addOrganizationDomain(organizationId: string, domain: string): Promise<void> {
-    const response = await this.#request<{ domains?: Array<{ domain: string }> }>(
-      `/v2/organizations/${organizationId}/domains/search`,
-      { method: "POST", body: {} },
-    );
-    if (response.domains?.some((entry) => entry.domain === domain)) return;
-
-    await this.#request(`/v2/organizations/${organizationId}/domains`, {
-      method: "POST",
-      body: { domain },
-    });
+  async ensurePrimaryOrganizationDomain(
+    organizationId: string,
+    domain: string,
+    obsoleteGeneratedDomainSuffix?: string,
+  ): Promise<void> {
+    const response = await this.#request<{
+      domains?: Array<{ domain: string; isPrimary?: boolean }>;
+    }>(`/v2/organizations/${organizationId}/domains/search`, { method: "POST", body: {} });
+    const current = response.domains?.find((entry) => entry.domain === domain);
+    if (!current) {
+      await this.#request(`/v2/organizations/${organizationId}/domains`, {
+        method: "POST",
+        body: { domain },
+        // A newly-created organization already owns its generated domain, but
+        // the domains projection can briefly return an empty list.
+        allowAlreadyExists: true,
+      });
+    }
+    if (current?.isPrimary !== true) {
+      await this.#request(
+        `/management/v1/orgs/me/domains/${encodeURIComponent(domain)}/_set_primary`,
+        {
+          method: "POST",
+          headers: { "x-zitadel-orgid": organizationId },
+        },
+      );
+    }
+    for (const entry of response.domains ?? []) {
+      if (
+        entry.domain !== domain &&
+        obsoleteGeneratedDomainSuffix &&
+        entry.domain.endsWith(obsoleteGeneratedDomainSuffix)
+      ) {
+        await this.#request(
+          `/v2/organizations/${organizationId}/domains?domain=${encodeURIComponent(entry.domain)}`,
+          { method: "DELETE" },
+        );
+      }
+    }
   }
 
   async applyBranding(
@@ -419,6 +473,7 @@ export class ZitadelClient {
     readonly name: string;
     readonly baseUrl: string;
     readonly developmentMode: boolean;
+    readonly loginBaseUri: string;
   }): Promise<{
     readonly applicationId: string;
     readonly clientId: string;
@@ -433,21 +488,7 @@ export class ZitadelClient {
       body: {
         projectId: input.projectId,
         name: input.name,
-        oidcConfiguration: {
-          redirectUris: [`${input.baseUrl}/auth/callback`],
-          responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
-          grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
-          applicationType: "OIDC_APP_TYPE_WEB",
-          authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-          postLogoutRedirectUris: [`${input.baseUrl}/`],
-          version: "OIDC_VERSION_1_0",
-          developmentMode: input.developmentMode,
-          accessTokenType: "OIDC_TOKEN_TYPE_JWT",
-          accessTokenRoleAssertion: true,
-          idTokenRoleAssertion: true,
-          idTokenUserinfoAssertion: true,
-          loginVersion: { loginV2: {} },
-        },
+        oidcConfiguration: oidcApplicationConfiguration(input),
       },
     });
     return {
@@ -455,6 +496,27 @@ export class ZitadelClient {
       clientId: response.oidcConfiguration.clientId,
       clientSecret: response.oidcConfiguration.clientSecret,
     };
+  }
+
+  async configureOidcApplication(input: {
+    readonly applicationId: string;
+    readonly projectId: string;
+    readonly name: string;
+    readonly baseUrl: string;
+    readonly developmentMode: boolean;
+    readonly loginBaseUri: string;
+  }): Promise<void> {
+    await this.#request("/zitadel.application.v2.ApplicationService/UpdateApplication", {
+      method: "POST",
+      connect: true,
+      allowNoChanges: true,
+      body: {
+        applicationId: input.applicationId,
+        projectId: input.projectId,
+        name: input.name,
+        oidcConfiguration: oidcApplicationConfiguration(input),
+      },
+    });
   }
 
   async rotateClientSecret(applicationId: string, projectId: string): Promise<string> {
@@ -472,7 +534,24 @@ export class ZitadelClient {
   async #request<T = Record<string, never>>(path: string, options: RequestOptions): Promise<T> {
     const response = await this.#requestRaw(path, options);
     const body = await this.#parseResponse(response);
-    if (!response.ok) {
+    const noChanges =
+      options.allowNoChanges === true &&
+      response.status === 400 &&
+      typeof body === "object" &&
+      body !== null &&
+      "code" in body &&
+      body.code === "failed_precondition" &&
+      "message" in body &&
+      typeof body.message === "string" &&
+      body.message.startsWith("No changes");
+    const alreadyExists =
+      options.allowAlreadyExists === true &&
+      response.status === 409 &&
+      typeof body === "object" &&
+      body !== null &&
+      "code" in body &&
+      (body.code === 6 || body.code === "already_exists");
+    if (!response.ok && !noChanges && !alreadyExists) {
       throw new Error(
         `${options.method ?? "GET"} ${path} returned ${response.status}: ${JSON.stringify(body)}`,
       );

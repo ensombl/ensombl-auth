@@ -1,6 +1,10 @@
 {
   "issuer": "https://auth.ensombl.io",
   "console_path": "/ui/console",
+  "instance_organization": {
+    "name": "Ensombl",
+    "domain": "ensombl.io"
+  },
   "email": {
     "from_address": "noreply@notifications.ensombl.io",
     "default_from_name": "Ensombl"
