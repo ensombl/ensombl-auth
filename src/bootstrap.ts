@@ -210,8 +210,8 @@ export async function bootstrapCatalog(
       const previousManagementSecret =
         existingApplication?.managementServiceAccount?.clientSecret ??
         options.bws?.get(`${secretPrefix(product, application)}_MANAGEMENT_CLIENT_SECRET`);
-      let managementClientSecret = previousManagementSecret;
-      if (!managementClientSecret && (!existingAccount || options.rotateMissingSecrets)) {
+      let managementClientSecret = existingAccount ? previousManagementSecret : undefined;
+      if (!existingAccount || (!managementClientSecret && options.rotateMissingSecrets)) {
         managementClientSecret = await client.generateServiceAccountSecret(account.id);
       }
       if (!managementClientSecret) {
@@ -305,8 +305,8 @@ export async function bootstrapCatalog(
           });
         }
         const previousSecret = existingProduct?.serviceAccounts?.[account.username]?.clientSecret;
-        let clientSecret = previousSecret;
-        if (!clientSecret && options.rotateMissingSecrets) {
+        let clientSecret = existingAccount ? previousSecret : undefined;
+        if (!existingAccount || (!clientSecret && options.rotateMissingSecrets)) {
           clientSecret = await client.generateServiceAccountSecret(account.id);
         }
         if (!clientSecret) {
