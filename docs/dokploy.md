@@ -33,6 +33,8 @@ Dokploy Traefik terminates TLS. ZITADEL and Login V2 receive h2c/HTTP only on th
   The OIDC issuer and API endpoints remain canonical at `auth.ensombl.io`.
 - Each OIDC application receives its product's Login V2 base URI from `auth_origin`. The
   application context selects product branding; the hostname does not become a second issuer.
+- Login V2 is enabled per application, not forced instance-wide. This lets product applications use
+  their own login hosts while the ZITADEL Console remains on `auth.ensombl.io`.
 
 ## Recovery
 

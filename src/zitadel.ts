@@ -24,7 +24,22 @@ interface Application {
   readonly projectId: string;
   readonly name: string;
   readonly oidcConfiguration?: {
-    readonly clientId: string;
+    readonly clientId?: string;
+    readonly redirectUris?: string[];
+    readonly responseTypes?: string[];
+    readonly grantTypes?: string[];
+    readonly applicationType?: string;
+    readonly authMethodType?: string;
+    readonly postLogoutRedirectUris?: string[];
+    readonly developmentMode?: boolean;
+    readonly accessTokenType?: string;
+    readonly accessTokenRoleAssertion?: boolean;
+    readonly idTokenRoleAssertion?: boolean;
+    readonly idTokenUserinfoAssertion?: boolean;
+    readonly clockSkew?: string;
+    readonly additionalOrigins?: string[];
+    readonly skipNativeAppSuccessPage?: boolean;
+    readonly backChannelLogoutUri?: string;
     readonly loginVersion?: {
       readonly loginV2?: {
         readonly baseUri?: string;
@@ -78,6 +93,30 @@ function oidcApplicationConfiguration(input: OidcApplicationConfiguration) {
     idTokenRoleAssertion: true,
     idTokenUserinfoAssertion: true,
     loginVersion: { loginV2: { baseUri: input.loginBaseUri } },
+  };
+}
+
+function managementOidcApplicationConfiguration(
+  configuration: NonNullable<Application["oidcConfiguration"]>,
+  loginBaseUri: string,
+) {
+  return {
+    redirectUris: configuration.redirectUris,
+    responseTypes: configuration.responseTypes,
+    grantTypes: configuration.grantTypes,
+    appType: configuration.applicationType,
+    authMethodType: configuration.authMethodType,
+    postLogoutRedirectUris: configuration.postLogoutRedirectUris,
+    devMode: configuration.developmentMode,
+    accessTokenType: configuration.accessTokenType,
+    accessTokenRoleAssertion: configuration.accessTokenRoleAssertion,
+    idTokenRoleAssertion: configuration.idTokenRoleAssertion,
+    idTokenUserinfoAssertion: configuration.idTokenUserinfoAssertion,
+    clockSkew: configuration.clockSkew,
+    additionalOrigins: configuration.additionalOrigins,
+    skipNativeAppSuccessPage: configuration.skipNativeAppSuccessPage,
+    backChannelLogoutUri: configuration.backChannelLogoutUri,
+    loginVersion: { loginV2: { baseUri: loginBaseUri } },
   };
 }
 
@@ -474,6 +513,28 @@ export class ZitadelClient {
     return response.applications ?? [];
   }
 
+  async findApplicationByName(
+    name: string,
+  ): Promise<{ applicationId: string; projectId: string } | undefined> {
+    const response = await this.#request<{ applications?: Application[] }>(
+      "/zitadel.application.v2.ApplicationService/ListApplications",
+      {
+        method: "POST",
+        connect: true,
+        body: {
+          pagination: { limit: 100 },
+          filters: [{ nameFilter: { name } }],
+        },
+      },
+    );
+    const application = response.applications?.find((candidate) => candidate.name === name);
+    if (!application) return undefined;
+    return {
+      applicationId: application.applicationId,
+      projectId: application.projectId,
+    };
+  }
+
   async createOidcApplication(input: {
     readonly projectId: string;
     readonly name: string;
@@ -520,23 +581,49 @@ export class ZitadelClient {
       {
         method: "PUT",
         headers: { "x-zitadel-orgid": input.organizationId },
-        body: {
-          redirectUris: configuration.redirectUris,
-          responseTypes: configuration.responseTypes,
-          grantTypes: configuration.grantTypes,
-          appType: configuration.applicationType,
-          authMethodType: configuration.authMethodType,
-          postLogoutRedirectUris: configuration.postLogoutRedirectUris,
-          devMode: configuration.developmentMode,
-          accessTokenType: configuration.accessTokenType,
-          accessTokenRoleAssertion: configuration.accessTokenRoleAssertion,
-          idTokenRoleAssertion: configuration.idTokenRoleAssertion,
-          idTokenUserinfoAssertion: configuration.idTokenUserinfoAssertion,
-          loginVersion: configuration.loginVersion,
-        },
+        body: managementOidcApplicationConfiguration(configuration, input.loginBaseUri),
         allowNoChanges: true,
       },
     );
+  }
+
+  async configureOidcApplicationLogin(input: {
+    readonly applicationId: string;
+    readonly projectId: string;
+    readonly organizationId: string;
+    readonly loginBaseUri: string;
+  }): Promise<void> {
+    const response = await this.#request<{ application?: Application }>(
+      "/zitadel.application.v2.ApplicationService/GetApplication",
+      {
+        method: "POST",
+        connect: true,
+        body: { applicationId: input.applicationId },
+      },
+    );
+    if (!response.application?.oidcConfiguration) {
+      throw new Error(`Application ${input.applicationId} is not an OIDC application`);
+    }
+    await this.#request(
+      `/management/v1/projects/${input.projectId}/apps/${input.applicationId}/oidc_config`,
+      {
+        method: "PUT",
+        headers: { "x-zitadel-orgid": input.organizationId },
+        body: managementOidcApplicationConfiguration(
+          response.application.oidcConfiguration,
+          input.loginBaseUri,
+        ),
+        allowNoChanges: true,
+      },
+    );
+  }
+
+  async disableInstanceLoginV2Override(): Promise<void> {
+    await this.#request("/v2/features/instance", {
+      method: "PUT",
+      body: { loginV2: { required: false } },
+      allowNoChanges: true,
+    });
   }
 
   async rotateClientSecret(applicationId: string, projectId: string): Promise<string> {

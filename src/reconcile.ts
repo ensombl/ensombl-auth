@@ -67,6 +67,19 @@ export async function reconcileCatalog(
     obsoleteGeneratedDomainSuffix,
   );
 
+  const consoleApplication = await client.findApplicationByName("Management Console");
+  const consoleProject = projects.find(
+    (project) => project.projectId === consoleApplication?.projectId,
+  );
+  if (!consoleApplication || !consoleProject) {
+    throw new Error("ZITADEL Management Console application does not exist");
+  }
+  await client.configureOidcApplicationLogin({
+    ...consoleApplication,
+    organizationId: consoleProject.organizationId,
+    loginBaseUri: new URL("/ui/v2/login/", catalog.issuer).toString(),
+  });
+
   for (const product of catalog.products) {
     const loginBaseUri = new URL("/ui/v2/login/", product.auth_origin).toString();
     let ownerOrganization = organizations.find(
@@ -323,5 +336,6 @@ export async function reconcileCatalog(
     runtime.products[product.id] = productRuntime;
   }
 
+  await client.disableInstanceLoginV2Override();
   return runtime;
 }

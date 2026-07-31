@@ -69,8 +69,9 @@ ZITADEL rehashes a verified legacy password using its active password hasher.
 
 ZITADEL owns instance, product-owner, and tenant login branding. Product branding is selected by
 the OIDC application. Each application uses its product's `auth_origin` as its Login V2 base URI
-while `auth.ensombl.io` remains the only issuer. Tenant branding is selected by explicit
-organization context.
+while `auth.ensombl.io` remains the only issuer. The instance-wide Login V2 override stays disabled
+so ZITADEL honors those per-application hosts; the Management Console is explicitly pinned to the
+canonical host. Tenant branding is selected by explicit organization context.
 
 ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP.
 Product-initiated invitations are sent by the initiating product with its configured From name;

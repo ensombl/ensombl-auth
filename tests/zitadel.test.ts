@@ -5,10 +5,11 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function requestBody(request: MockInstance<typeof fetch>) {
-  const init = request.mock.calls[0]?.[1];
+function requestBody(request: MockInstance<typeof fetch>, index = 0) {
+  const init = request.mock.calls[index]?.[1];
   if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");
   return JSON.parse(init.body) as {
+    appType?: string;
     loginVersion?: { loginV2?: { baseUri?: string } };
     oidcConfiguration?: {
       loginVersion?: { loginV2?: { baseUri?: string } };
@@ -80,6 +81,55 @@ describe("ZitadelClient OIDC applications", () => {
         loginBaseUri: "https://auth.freightclaims.com/ui/v2/login/",
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it("pins the Management Console to the canonical Login V2 host", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          application: {
+            applicationId: "console-application-id",
+            projectId: "console-project-id",
+            name: "Management Console",
+            oidcConfiguration: {
+              clientId: "console-client-id",
+              redirectUris: ["https://auth.ensombl.io/ui/console/auth/callback"],
+              responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
+              grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
+              applicationType: "OIDC_APP_TYPE_USER_AGENT",
+              authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
+              postLogoutRedirectUris: ["https://auth.ensombl.io/ui/console/signedout"],
+              developmentMode: false,
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.configureOidcApplicationLogin({
+      applicationId: "console-application-id",
+      projectId: "console-project-id",
+      organizationId: "ensombl-organization-id",
+      loginBaseUri: "https://auth.ensombl.io/ui/v2/login/",
+    });
+
+    expect(requestBody(request, 1)).toMatchObject({
+      appType: "OIDC_APP_TYPE_USER_AGENT",
+      loginVersion: {
+        loginV2: { baseUri: "https://auth.ensombl.io/ui/v2/login/" },
+      },
+    });
+  });
+
+  it("disables the instance-wide override so application login hosts apply", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.disableInstanceLoginV2Override();
+
+    expect(requestBody(request)).toEqual({ loginV2: { required: false } });
   });
 });
 
