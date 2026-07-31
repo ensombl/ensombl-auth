@@ -57,9 +57,11 @@ jq -n \
       DomainPolicy: {SMTPSenderAddressMatchesInstanceDomain: false},
       SMTPConfiguration: {
         SMTP: {
-          Host: "smtp.resend.com:465",
-          User: "resend",
-          Password: $resendApiKey
+          Host: "smtp.resend.com:587",
+          PlainAuth: {
+            User: "resend",
+            Password: $resendApiKey
+          }
         },
         TLS: true,
         From: "noreply@notifications.ensombl.io",

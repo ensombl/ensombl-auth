@@ -24,8 +24,9 @@ tenant branding. Hostname alone is not treated as tenant identity.
 
 Organization domains are identity-discovery and username-suffix domains, not service hostnames.
 The catalog makes `ensombl.io` primary for the Ensombl organization and the declared
-`identity.<product>.ensombl.io` domain primary for each product owner. Bootstrap removes the
-automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's external hostname.
+`freightclaims.com` and `freightcheck.io` domains primary for their respective product owners.
+Bootstrap removes the automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's
+external hostname.
 
 The default product roles are `member`, `admin`, and `owner`. A product may extend or completely
 replace that stack in the catalog. FreightClaims currently replaces it with its existing canonical
@@ -75,9 +76,11 @@ host separately from the browser-facing product host. The instance-wide Login V2
 disabled so ZITADEL honors those per-application hosts; the Management Console is explicitly pinned
 to the canonical host. Tenant branding is selected by explicit organization context.
 
-ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP.
-Product-initiated invitations are sent by the initiating product with its configured From name;
-generic account recovery has no product context and intentionally uses the Ensombl default.
+ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP
+with authenticated STARTTLS on port 587. The one-shot catalog bootstrap applies the active provider
+through ZITADEL's Admin API so an existing instance receives the same configuration as a fresh
+instance. Product-initiated invitations are sent by the initiating product with its configured From
+name; generic account recovery has no product context and intentionally uses the Ensombl default.
 
 ## Runtime and secrets
 

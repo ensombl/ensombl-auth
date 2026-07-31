@@ -35,15 +35,18 @@ Configure these HTTPS domains with a Let's Encrypt certificate:
 | --- | --- | --- | ---: | --- | --- |
 | `auth.ensombl.io` | `/` | `zitadel-api` | 8080 | `/` | No |
 | `auth.ensombl.io` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
+| `auth.ensombl.io` | `/admin/v1` | `zitadel-api` | 8080 | `/` | No |
 | `auth.ensombl.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
 | `auth.freightclaims.com` | `/` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightclaims.com` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
 | `auth.freightcheck.io` | `/` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
 
-The more-specific Login V2 and `/admin` paths take precedence over each host's `/` route. A Compose
-redeploy is required after changing any of these domain records. `product-login-root` only redirects
-the exact `/` path to Login V2 and returns 404 for every unrelated product-host path.
+The more-specific Login V2 and `/admin` paths take precedence over each host's `/` route. The native
+`/admin/v1` passthrough must remain more specific than the `/admin` Console shortcut; otherwise the
+shortcut's path rewrite breaks ZITADEL's Admin API. A Compose redeploy is required after changing
+any of these domain records. `product-login-root` only redirects the exact `/` path to Login V2 and
+returns 404 for every unrelated product-host path.
 
 - `https://auth.ensombl.io/ui/console` is the ZITADEL Console.
 - `https://auth.ensombl.io/admin` is rewritten internally to the Console.
