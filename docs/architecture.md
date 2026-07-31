@@ -46,8 +46,18 @@ catalog and is mounted from the private bootstrap volume. Product workloads neve
 
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
 seeded `patrick@ensombl.io` user is the initial instance administrator. Product management service
-accounts receive only their declared instance administration permissions and ownership of their
-product project.
+accounts have no instance administrator role: they receive `PROJECT_OWNER` only on their product
+project and `ORG_USER_MANAGER` only on the tenant organizations served by their application.
+
+ZITADEL v4.16.2 requires an instance-level organization manager to create a new organization; an
+organization-scoped administrator cannot authorize the creation of a resource that does not yet
+exist. FreightClaims therefore has one dedicated migration service account with
+`IAM_ORG_MANAGER` and `PROJECT_OWNER`. It is used only by the asynchronous legacy migration, never
+by an application runtime, and assigns the appropriate staging or production management account as
+`ORG_USER_MANAGER` while creating each tenant. `IAM_ORG_MANAGER` already includes the user
+management needed by the importer, so the migration account receives neither the redundant
+`IAM_USER_MANAGER` role nor `IAM_OWNER`. The disposable local migration account additionally
+receives `IAM_LOGIN_CLIENT` solely for the bounded imported-password verification test.
 
 ## Legacy password migration
 

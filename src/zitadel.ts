@@ -441,10 +441,51 @@ export class ZitadelClient {
 
   async ensureAdministrator(input: {
     readonly userId: string;
-    readonly resource: { readonly instance: true } | { readonly projectId: string };
+    readonly resource:
+      | { readonly instance: true }
+      | { readonly organizationId: string }
+      | { readonly projectId: string };
     readonly roles: string[];
   }): Promise<void> {
     const path = "/zitadel.internal_permission.v2.InternalPermissionService/CreateAdministrator";
+    const administrators = await this.#request<{
+      administrators?: Array<{
+        instance?: boolean;
+        organization?: { id: string };
+        project?: { id: string };
+        roles?: string[];
+        user?: { id: string };
+      }>;
+    }>("/zitadel.internal_permission.v2.InternalPermissionService/ListAdministrators", {
+      method: "POST",
+      connect: true,
+      body: { pagination: { limit: 1_000 } },
+    });
+    const current = administrators.administrators?.find((administrator) => {
+      if (administrator.user?.id !== input.userId) return false;
+      if ("instance" in input.resource) return administrator.instance === true;
+      if ("organizationId" in input.resource) {
+        return administrator.organization?.id === input.resource.organizationId;
+      }
+      return administrator.project?.id === input.resource.projectId;
+    });
+    if (
+      current &&
+      JSON.stringify([...(current.roles ?? [])].sort()) === JSON.stringify([...input.roles].sort())
+    ) {
+      return;
+    }
+    if (current) {
+      await this.#request(
+        "/zitadel.internal_permission.v2.InternalPermissionService/UpdateAdministrator",
+        {
+          method: "POST",
+          connect: true,
+          body: input,
+        },
+      );
+      return;
+    }
     const response = await this.#requestRaw(path, {
       method: "POST",
       connect: true,
@@ -457,6 +498,23 @@ export class ZitadelClient {
     }
     await this.#request(
       "/zitadel.internal_permission.v2.InternalPermissionService/UpdateAdministrator",
+      {
+        method: "POST",
+        connect: true,
+        body: input,
+      },
+    );
+  }
+
+  async deleteAdministrator(input: {
+    readonly userId: string;
+    readonly resource:
+      | { readonly instance: true }
+      | { readonly organizationId: string }
+      | { readonly projectId: string };
+  }): Promise<void> {
+    await this.#request(
+      "/zitadel.internal_permission.v2.InternalPermissionService/DeleteAdministrator",
       {
         method: "POST",
         connect: true,

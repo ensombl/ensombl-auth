@@ -29,6 +29,11 @@ export interface ProductRuntime {
   projectId: string;
   ownerOrganizationId: string;
   applications: Record<string, ApplicationRuntime>;
+  migrationServiceAccount?: {
+    userId: string;
+    clientId: string;
+    clientSecret: string;
+  };
   serviceAccounts?: Record<
     string,
     {

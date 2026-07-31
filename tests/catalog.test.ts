@@ -46,7 +46,6 @@ const baseCatalog = {
             id: "01900000-0000-7000-8000-000000000100",
             username: "freightcheck-production-management",
             display_name: "FreightCheck production management",
-            instance_roles: ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"],
           },
         },
       ],
@@ -90,29 +89,38 @@ describe("product catalog", () => {
     expect(secretPrefix(product, application)).toBe("ZITADEL_FREIGHTCHECK_PRODUCTION");
   });
 
-  it("allows the native login-client role for password verification", () => {
-    const application = baseCatalog.products[0]?.applications[0];
-    if (!application) throw new Error("Expected one product application");
+  it("allows a dedicated local migration account to request bounded password verification", () => {
     const catalog = catalogSchema.parse({
       ...baseCatalog,
       products: [
         {
           ...baseCatalog.products[0],
-          applications: [
-            {
-              ...application,
-              management_service_account: {
-                ...application.management_service_account,
-                instance_roles: ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"],
-              },
-            },
-          ],
+          migration_service_account: {
+            id: "01900000-0000-7000-8000-000000000200",
+            username: "freightcheck-local-migration",
+            display_name: "FreightCheck local migration",
+            verify_imported_passwords: true,
+          },
         },
       ],
     });
-    expect(
-      catalog.products[0]?.applications[0]?.management_service_account.instance_roles,
-    ).toContain("IAM_LOGIN_CLIENT");
+    expect(catalog.products[0]?.migration_service_account?.verify_imported_passwords).toBe(true);
+  });
+
+  it("rejects a migration account that reuses an application management identity", () => {
+    const management = baseCatalog.products[0]?.applications[0]?.management_service_account;
+    if (!management) throw new Error("Expected one product application");
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            migration_service_account: management,
+          },
+        ],
+      }),
+    ).toThrow(/Duplicate product service-account/u);
   });
 
   it("rejects duplicate management service accounts within a product", () => {

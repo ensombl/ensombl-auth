@@ -26,12 +26,14 @@ const applicationSchema = z.object({
     id: z.uuid(),
     username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
     display_name: z.string().min(1).max(200),
-    instance_roles: z
-      .array(z.enum(["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]))
-      .min(1)
-      .max(3)
-      .refine((roles) => new Set(roles).size === roles.length, "Duplicate instance role"),
   }),
+});
+
+const migrationServiceAccountSchema = z.object({
+  id: z.uuid(),
+  username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
+  display_name: z.string().min(1).max(200),
+  verify_imported_passwords: z.boolean().default(false),
 });
 
 const serviceAccountSchema = z.object({
@@ -57,6 +59,7 @@ const productSchema = z.object({
       values: z.array(roleSchema).min(1),
     })
     .optional(),
+  migration_service_account: migrationServiceAccountSchema.optional(),
   applications: z.array(applicationSchema).min(1),
   local_fixture: z
     .object({
@@ -187,6 +190,22 @@ export const catalogSchema = z
           values.add(value);
         }
       }
+      const migrationAccount = product.migration_service_account;
+      if (migrationAccount) {
+        for (const [values, value, field] of [
+          [managementAccountIds, migrationAccount.id, "id"],
+          [managementAccountUsernames, migrationAccount.username, "username"],
+        ] as const) {
+          if (values.has(value)) {
+            context.addIssue({
+              code: "custom",
+              message: `Duplicate product service-account ${field}: ${value}`,
+              path: ["products", productIndex, "migration_service_account", field],
+            });
+          }
+          values.add(value);
+        }
+      }
     }
   });
 
@@ -210,4 +229,8 @@ export function rolesForProduct(catalog: Catalog, product: Product): Role[] {
 
 export function secretPrefix(product: Product, application: ProductApplication): string {
   return `ZITADEL_${product.id}_${application.environment}`.replaceAll("-", "_").toUpperCase();
+}
+
+export function migrationSecretPrefix(product: Product): string {
+  return `ZITADEL_${product.id}_MIGRATION`.replaceAll("-", "_").toUpperCase();
 }

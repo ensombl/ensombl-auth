@@ -46,6 +46,12 @@
           { "key": "tai_api", "display_name": "TAI API" }
         ]
       },
+      "migration_service_account": {
+        "id": "beb5b9f0-e57e-4474-952e-ad539029236e",
+        "username": "freightclaims-local-migration",
+        "display_name": "FreightClaims local migration",
+        "verify_imported_passwords": true
+      },
       "local_fixture": {
         "tenant": {
           "id": "01900000-0000-7000-8000-000000000001",
@@ -93,8 +99,7 @@
           "management_service_account": {
             "id": "e5ba219b-1bbd-40c3-9854-11ce44022a3b",
             "username": "freightclaims-local-management",
-            "display_name": "FreightClaims local management",
-            "instance_roles": ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "display_name": "FreightClaims local management"
           }
         }
       ]
