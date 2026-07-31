@@ -94,7 +94,7 @@
             "id": "e5ba219b-1bbd-40c3-9854-11ce44022a3b",
             "username": "freightclaims-local-management",
             "display_name": "FreightClaims local management",
-            "instance_roles": ["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
+            "instance_roles": ["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]
           }
         }
       ]

@@ -27,9 +27,9 @@ const applicationSchema = z.object({
     username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
     display_name: z.string().min(1).max(200),
     instance_roles: z
-      .array(z.enum(["IAM_ORG_MANAGER", "IAM_USER_MANAGER"]))
+      .array(z.enum(["IAM_LOGIN_CLIENT", "IAM_ORG_MANAGER", "IAM_USER_MANAGER"]))
       .min(1)
-      .max(2)
+      .max(3)
       .refine((roles) => new Set(roles).size === roles.length, "Duplicate instance role"),
   }),
 });
