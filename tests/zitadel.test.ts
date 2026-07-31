@@ -218,3 +218,72 @@ describe("ZitadelClient organization domains", () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 });
+
+describe("ZitadelClient SMTP email provider", () => {
+  it("repairs the active provider with Resend plain authentication", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          result: [
+            {
+              id: "smtp-provider-id",
+              state: "EMAIL_PROVIDER_ACTIVE",
+              smtp: { host: "smtp.resend.com:465" },
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(
+      client.ensureSmtpEmailProvider({
+        host: "smtp.resend.com:587",
+        user: "resend",
+        password: "resend-api-key",
+        senderAddress: "noreply@notifications.ensombl.io",
+        senderName: "Ensombl",
+        replyToAddress: "noreply@notifications.ensombl.io",
+        description: "Ensombl system notifications via Resend",
+        tls: true,
+      }),
+    ).resolves.toBe("smtp-provider-id");
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe("/admin/v1/email/_search");
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/admin/v1/email/smtp/smtp-provider-id",
+    );
+    expect(request.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(requestBody(request, 1)).toMatchObject({
+      host: "smtp.resend.com:587",
+      user: "resend",
+      plain: { password: "resend-api-key" },
+      tls: true,
+    });
+  });
+
+  it("creates an SMTP provider when the instance has none", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ result: [] }))
+      .mockResolvedValueOnce(Response.json({ id: "new-smtp-provider-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(
+      client.ensureSmtpEmailProvider({
+        host: "smtp.resend.com:587",
+        user: "resend",
+        password: "resend-api-key",
+        senderAddress: "noreply@notifications.ensombl.io",
+        senderName: "Ensombl",
+        replyToAddress: "noreply@notifications.ensombl.io",
+        description: "Ensombl system notifications via Resend",
+        tls: true,
+      }),
+    ).resolves.toBe("new-smtp-provider-id");
+
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe("/admin/v1/email/smtp");
+    expect(request.mock.calls[1]?.[1]?.method).toBe("POST");
+  });
+});

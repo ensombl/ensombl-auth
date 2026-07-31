@@ -33,6 +33,20 @@ async function main(): Promise<void> {
   const bwsProjectId = process.env.BWS_PROJECT_ID?.trim();
   const bws = bwsProjectId ? new BwsRuntimeStore(bwsProjectId) : undefined;
   await bws?.initialize();
+  if (bws) {
+    const resendApiKey = bws.get("RESEND_API_KEY");
+    if (!resendApiKey) throw new Error("RESEND_API_KEY is required");
+    await client.ensureSmtpEmailProvider({
+      host: "smtp.resend.com:587",
+      user: "resend",
+      password: resendApiKey,
+      senderAddress: "noreply@notifications.ensombl.io",
+      senderName: "Ensombl",
+      replyToAddress: "noreply@notifications.ensombl.io",
+      description: "Ensombl system notifications via Resend",
+      tls: true,
+    });
+  }
 
   const existing = await readRuntimeConfig(outputPath);
   const runtime = await bootstrapCatalog(client, catalog, {

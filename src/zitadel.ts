@@ -63,6 +63,15 @@ interface Authorization {
   readonly roles?: Array<{ readonly key: string }>;
 }
 
+interface EmailProvider {
+  readonly id: string;
+  readonly state?: string;
+  readonly smtp?: {
+    readonly host?: string;
+    readonly user?: string;
+  };
+}
+
 interface RequestOptions {
   readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly body?: unknown;
@@ -633,6 +642,60 @@ export class ZitadelClient {
       body: { loginV2: { required: false } },
       allowNoChanges: true,
     });
+  }
+
+  async ensureSmtpEmailProvider(input: {
+    readonly host: string;
+    readonly user: string;
+    readonly password: string;
+    readonly senderAddress: string;
+    readonly senderName: string;
+    readonly replyToAddress: string;
+    readonly description: string;
+    readonly tls: boolean;
+  }): Promise<string> {
+    const response = await this.#request<{ result?: EmailProvider[] }>("/admin/v1/email/_search", {
+      method: "POST",
+      body: {},
+    });
+    const providers = response.result ?? [];
+    const smtpProviders = providers.filter((provider) => provider.smtp !== undefined);
+    const provider =
+      smtpProviders.find((candidate) => candidate.state === "EMAIL_PROVIDER_ACTIVE") ??
+      smtpProviders[0];
+    if (!provider && providers.length > 0) {
+      throw new Error("The active email provider is not SMTP");
+    }
+
+    const body = {
+      senderAddress: input.senderAddress,
+      senderName: input.senderName,
+      tls: input.tls,
+      host: input.host,
+      user: input.user,
+      replyToAddress: input.replyToAddress,
+      description: input.description,
+      plain: { password: input.password },
+    };
+    if (!provider) {
+      const created = await this.#request<{ id: string }>("/admin/v1/email/smtp", {
+        method: "POST",
+        body,
+      });
+      return created.id;
+    }
+
+    await this.#request(`/admin/v1/email/smtp/${encodeURIComponent(provider.id)}`, {
+      method: "PUT",
+      body,
+    });
+    if (provider.state !== "EMAIL_PROVIDER_ACTIVE") {
+      await this.#request(`/admin/v1/email/${encodeURIComponent(provider.id)}/_activate`, {
+        method: "POST",
+        body: {},
+      });
+    }
+    return provider.id;
   }
 
   async rotateClientSecret(applicationId: string, projectId: string): Promise<string> {
