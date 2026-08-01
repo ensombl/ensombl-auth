@@ -133,6 +133,42 @@ describe("ZitadelClient OIDC applications", () => {
   });
 });
 
+describe("ZitadelClient project authorization", () => {
+  it("removes an obsolete project role and its dependent assignments", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.removeProjectRole("project-id", "obsolete-role");
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe(
+      "/zitadel.project.v2.ProjectService/RemoveProjectRole",
+    );
+    expect(requestBody(request)).toEqual({
+      projectId: "project-id",
+      roleKey: "obsolete-role",
+    });
+  });
+
+  it("creates a tenant project grant with the declared role vocabulary", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ projectGrants: [] }))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureProjectGrant("project-id", "tenant-id", ["member", "tenant_admin"]);
+
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/zitadel.project.v2.ProjectService/CreateProjectGrant",
+    );
+    expect(requestBody(request, 1)).toEqual({
+      projectId: "project-id",
+      grantedOrganizationId: "tenant-id",
+      roleKeys: ["member", "tenant_admin"],
+    });
+  });
+});
+
 describe("ZitadelClient organization domains", () => {
   it("adds a native instance trusted domain", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
