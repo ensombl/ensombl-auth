@@ -9,11 +9,6 @@
     "from_address": "noreply@notifications.ensombl.io",
     "default_from_name": "Ensombl"
   },
-  "default_roles": [
-    { "key": "member", "display_name": "Member" },
-    { "key": "admin", "display_name": "Administrator" },
-    { "key": "owner", "display_name": "Owner" }
-  ],
   "products": [
     {
       "id": "freightclaims",
@@ -34,18 +29,7 @@
         "background_color_dark": "#101828",
         "font_color_dark": "#F9FAFB"
       },
-      "roles": {
-        "mode": "replace",
-        "values": [
-          { "key": "member", "display_name": "Member" },
-          { "key": "adjuster", "display_name": "Adjuster" },
-          { "key": "tenant_admin", "display_name": "Tenant administrator" },
-          { "key": "platform_support", "display_name": "Platform support" },
-          { "key": "platform_admin", "display_name": "Platform administrator" },
-          { "key": "partner_api", "display_name": "Partner API" },
-          { "key": "tai_api", "display_name": "TAI API" }
-        ]
-      },
+      "roles": [],
       "migration_service_account": {
         "id": "afbead5c-1b97-4d63-8136-32fea6673fde",
         "username": "freightclaims-migration",
@@ -93,6 +77,7 @@
         "background_color_dark": "#1D2939",
         "font_color_dark": "#F9FAFB"
       },
+      "roles": [],
       "applications": [
         {
           "environment": "staging",

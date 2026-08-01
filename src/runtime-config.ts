@@ -40,14 +40,12 @@ export interface ProductRuntime {
       userId: string;
       clientId: string;
       clientSecret: string;
-      role: string;
     }
   >;
   localFixture?: {
-    tenantOrganizationId: string;
+    tenantId: string;
     userId: string;
     email: string;
-    role: string;
   };
 }
 

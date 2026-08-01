@@ -12,11 +12,6 @@ const baseCatalog = {
     from_address: "noreply@example.com",
     default_from_name: "Example",
   },
-  default_roles: [
-    { key: "member", display_name: "Member" },
-    { key: "admin", display_name: "Administrator" },
-    { key: "owner", display_name: "Owner" },
-  ],
   products: [
     {
       id: "freightcheck",
@@ -54,23 +49,20 @@ const baseCatalog = {
 };
 
 describe("product catalog", () => {
-  it("inherits the default member, admin, owner role stack", () => {
+  it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];
     if (!product) throw new Error("Expected one product");
-    expect(rolesForProduct(catalog, product)).toEqual(catalog.default_roles);
+    expect(rolesForProduct(catalog, product)).toEqual([]);
   });
 
-  it("supports a complete product role override", () => {
+  it("supports explicitly declared product-wide roles", () => {
     const catalog = catalogSchema.parse({
       ...baseCatalog,
       products: [
         {
           ...baseCatalog.products[0],
-          roles: {
-            mode: "replace",
-            values: [{ key: "reviewer", display_name: "Reviewer" }],
-          },
+          roles: [{ key: "reviewer", display_name: "Reviewer" }],
         },
       ],
     });
@@ -142,7 +134,7 @@ describe("product catalog", () => {
     ).toThrow(/Duplicate management service-account/u);
   });
 
-  it("requires local service accounts to use declared product roles", () => {
+  it("requires local fixture assignments to use declared product-wide roles", () => {
     expect(() =>
       catalogSchema.parse({
         ...baseCatalog,
@@ -153,21 +145,20 @@ describe("product catalog", () => {
               tenant: {
                 id: "tenant",
                 name: "Local tenant",
-                domain: "local.example.com",
               },
               user: {
                 id: "user",
                 email: "developer@example.com",
                 display_name: "Local developer",
                 password: "Local-password-2026!",
-                role: "owner",
+                roles: [],
               },
               service_accounts: [
                 {
                   id: "machine",
                   username: "local-machine",
                   display_name: "Local machine",
-                  role: "undeclared_role",
+                  roles: ["undeclared_role"],
                 },
               ],
             },

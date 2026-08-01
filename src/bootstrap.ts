@@ -31,7 +31,6 @@ async function persistApplication(
   await bws.set(`${prefix}_APPLICATION_ID`, runtime.applicationId);
   await bws.set(`${prefix}_CLIENT_ID`, runtime.clientId);
   await bws.set(`${prefix}_CLIENT_SECRET`, runtime.clientSecret);
-  await bws.set(`${prefix}_MANAGEMENT_USER_ID`, runtime.managementServiceAccount.userId);
   await bws.set(`${prefix}_MANAGEMENT_CLIENT_ID`, runtime.managementServiceAccount.clientId);
   await bws.set(
     `${prefix}_MANAGEMENT_CLIENT_SECRET`,
@@ -126,10 +125,10 @@ export async function bootstrapCatalog(
         name: product.display_name,
       });
     }
-    await client.configureProject(projectId);
+    const desiredRoles = rolesForProduct(catalog, product);
+    await client.configureProject(projectId, desiredRoles.length > 0);
 
     const roles = await client.listProjectRoles(projectId);
-    const desiredRoles = rolesForProduct(catalog, product);
     const desiredRoleKeys = new Set(desiredRoles.map((role) => role.key));
     for (const role of roles) {
       if (!desiredRoleKeys.has(role.key)) {
@@ -167,6 +166,7 @@ export async function bootstrapCatalog(
           baseUrl: application.base_url,
           developmentMode: application.development_mode,
           loginBaseUri,
+          roleAssertion: desiredRoles.length > 0,
         });
         applicationRuntime = {
           ...created,
@@ -185,6 +185,7 @@ export async function bootstrapCatalog(
           baseUrl: application.base_url,
           developmentMode: application.development_mode,
           loginBaseUri,
+          roleAssertion: desiredRoles.length > 0,
         });
         const prefix = secretPrefix(product, application);
         const persistedSecret =
@@ -250,11 +251,15 @@ export async function bootstrapCatalog(
           roles: ["ORG_USER_MANAGER"],
         });
       }
-      await client.ensureAdministrator({
-        userId: account.id,
-        resource: { projectId },
-        roles: ["PROJECT_OWNER"],
-      });
+      if (desiredRoles.length > 0) {
+        await client.ensureAdministrator({
+          userId: account.id,
+          resource: { projectId },
+          roles: ["PROJECT_OWNER"],
+        });
+      } else {
+        await client.deleteAdministrator({ userId: account.id, resource: { projectId } });
+      }
       await client.deleteAdministrator({
         userId: account.id,
         resource: { instance: true },
@@ -300,19 +305,30 @@ export async function bootstrapCatalog(
             `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
         );
       }
-      await client.ensureAdministrator({
-        userId: migrationAccount.id,
-        resource: { projectId },
-        roles: ["PROJECT_OWNER"],
-      });
-      await client.ensureAdministrator({
-        userId: migrationAccount.id,
-        resource: { instance: true },
-        roles: [
-          "IAM_ORG_MANAGER",
-          ...(migrationAccount.verify_imported_passwords ? ["IAM_LOGIN_CLIENT"] : []),
-        ],
-      });
+      if (desiredRoles.length > 0) {
+        await client.ensureAdministrator({
+          userId: migrationAccount.id,
+          resource: { projectId },
+          roles: ["PROJECT_OWNER"],
+        });
+      } else {
+        await client.deleteAdministrator({
+          userId: migrationAccount.id,
+          resource: { projectId },
+        });
+      }
+      if (migrationAccount.verify_imported_passwords) {
+        await client.ensureAdministrator({
+          userId: migrationAccount.id,
+          resource: { instance: true },
+          roles: ["IAM_LOGIN_CLIENT"],
+        });
+      } else {
+        await client.deleteAdministrator({
+          userId: migrationAccount.id,
+          resource: { instance: true },
+        });
+      }
       await client.ensureAdministrator({
         userId: migrationAccount.id,
         resource: { organizationId: ownerOrganization.id },
@@ -332,37 +348,6 @@ export async function bootstrapCatalog(
 
     if (product.local_fixture) {
       const fixture = product.local_fixture;
-      let tenant = organizations.find(
-        (organization) =>
-          organization.id === fixture.tenant.id || organization.name === fixture.tenant.name,
-      );
-      if (!tenant) {
-        tenant = await client.createOrganization(fixture.tenant.name, fixture.tenant.id);
-        organizations.push(tenant);
-      }
-      if (tenant.id !== fixture.tenant.id) {
-        throw new Error(
-          `Local fixture organization ${fixture.tenant.name} exists with unexpected ID ${tenant.id}`,
-        );
-      }
-      await client.ensurePrimaryOrganizationDomain(
-        tenant.id,
-        fixture.tenant.domain,
-        obsoleteGeneratedDomainSuffix,
-      );
-      await client.applyBranding(tenant.id, fixture.tenant.branding ?? product.branding);
-      await client.ensureProjectGrant(
-        projectId,
-        tenant.id,
-        desiredRoles.map((role) => role.key),
-      );
-      for (const application of product.applications) {
-        await client.ensureAdministrator({
-          userId: application.management_service_account.id,
-          resource: { organizationId: tenant.id },
-          roles: ["ORG_USER_MANAGER"],
-        });
-      }
       const existingUser = await client.getUser(fixture.user.id);
       if (!existingUser) {
         await client.createHumanUser({
@@ -374,12 +359,14 @@ export async function bootstrapCatalog(
           passwordChangeRequired: false,
         });
       }
-      await client.ensureAuthorization({
-        userId: fixture.user.id,
-        projectId,
-        organizationId: tenant.id,
-        roleKeys: [fixture.user.role],
-      });
+      if (fixture.user.roles.length > 0) {
+        await client.ensureAuthorization({
+          userId: fixture.user.id,
+          projectId,
+          organizationId: ownerOrganization.id,
+          roleKeys: fixture.user.roles,
+        });
+      }
       const serviceAccounts: NonNullable<RuntimeConfig["products"][string]["serviceAccounts"]> = {};
       if (fixture.service_accounts.length > 0) productRuntime.serviceAccounts = serviceAccounts;
       for (const account of fixture.service_accounts) {
@@ -403,24 +390,24 @@ export async function bootstrapCatalog(
               `Set ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
           );
         }
-        await client.ensureAuthorization({
-          userId: account.id,
-          projectId,
-          organizationId: tenant.id,
-          roleKeys: [account.role],
-        });
+        if (account.roles.length > 0) {
+          await client.ensureAuthorization({
+            userId: account.id,
+            projectId,
+            organizationId: ownerOrganization.id,
+            roleKeys: account.roles,
+          });
+        }
         serviceAccounts[account.username] = {
           userId: account.id,
           clientId: account.username,
           clientSecret,
-          role: account.role,
         };
       }
       productRuntime.localFixture = {
-        tenantOrganizationId: tenant.id,
+        tenantId: fixture.tenant.id,
         userId: fixture.user.id,
         email: fixture.user.email,
-        role: fixture.user.role,
       };
     }
 

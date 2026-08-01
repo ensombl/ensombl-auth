@@ -13,7 +13,11 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
     loginVersion?: { loginV2?: { baseUri?: string } };
     oidcConfiguration?: {
       loginVersion?: { loginV2?: { baseUri?: string } };
+      accessTokenRoleAssertion?: boolean;
+      idTokenRoleAssertion?: boolean;
     };
+    accessTokenRoleAssertion?: boolean;
+    idTokenRoleAssertion?: boolean;
   };
 }
 
@@ -36,10 +40,15 @@ describe("ZitadelClient OIDC applications", () => {
       baseUrl: "https://app.freightcheck.io",
       developmentMode: false,
       loginBaseUri: "https://auth.freightcheck.io/ui/v2/login/",
+      roleAssertion: false,
     });
 
     expect(requestBody(request).oidcConfiguration?.loginVersion).toEqual({
       loginV2: { baseUri: "https://auth.freightcheck.io/ui/v2/login/" },
+    });
+    expect(requestBody(request).oidcConfiguration).toMatchObject({
+      accessTokenRoleAssertion: false,
+      idTokenRoleAssertion: false,
     });
   });
 
@@ -54,10 +63,15 @@ describe("ZitadelClient OIDC applications", () => {
       baseUrl: "https://app.freightclaims.ensombl.io",
       developmentMode: false,
       loginBaseUri: "https://auth.freightclaims.com/ui/v2/login/",
+      roleAssertion: false,
     });
 
     expect(requestBody(request).loginVersion).toEqual({
       loginV2: { baseUri: "https://auth.freightclaims.com/ui/v2/login/" },
+    });
+    expect(requestBody(request)).toMatchObject({
+      accessTokenRoleAssertion: false,
+      idTokenRoleAssertion: false,
     });
     expect(request.mock.calls[0]?.[1]?.method).toBe("PUT");
     expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
@@ -79,6 +93,7 @@ describe("ZitadelClient OIDC applications", () => {
         baseUrl: "https://app.freightclaims.ensombl.io",
         developmentMode: false,
         loginBaseUri: "https://auth.freightclaims.com/ui/v2/login/",
+        roleAssertion: false,
       }),
     ).resolves.toBeUndefined();
   });
@@ -149,22 +164,20 @@ describe("ZitadelClient project authorization", () => {
     });
   });
 
-  it("creates a tenant project grant with the declared role vocabulary", async () => {
-    const request = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(Response.json({ projectGrants: [] }))
-      .mockResolvedValueOnce(Response.json({}));
+  it("configures a role-free project without an authorization gate", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
-    await client.ensureProjectGrant("project-id", "tenant-id", ["member", "tenant_admin"]);
+    await client.configureProject("project-id", false);
 
-    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
-      "/zitadel.project.v2.ProjectService/CreateProjectGrant",
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe(
+      "/zitadel.project.v2.ProjectService/UpdateProject",
     );
-    expect(requestBody(request, 1)).toEqual({
+    expect(requestBody(request)).toMatchObject({
       projectId: "project-id",
-      grantedOrganizationId: "tenant-id",
-      roleKeys: ["member", "tenant_admin"],
+      projectRoleAssertion: false,
+      authorizationRequired: false,
+      projectAccessRequired: false,
     });
   });
 });

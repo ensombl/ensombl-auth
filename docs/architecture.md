@@ -3,8 +3,8 @@
 ## Identity and tenancy model
 
 One ZITADEL instance is the global Ensombl identity service. Each product organization owns the
-identities admitted to that product. Multi-tenant products use customer organizations and external
-role assignments without duplicating those identities.
+identities admitted to that product. Customer tenancy is application data and is not represented
+by ZITADEL organizations.
 
 | Ensombl concept | ZITADEL object |
 | --- | --- |
@@ -13,16 +13,14 @@ role assignments without duplicating those identities.
 | FreightClaims or FreightCheck | Project |
 | Local, staging, or production BFF | OIDC application |
 | Human admitted to a product | User in the product organization |
-| Customer tenant | Organization receiving a project grant |
-| Per-tenant application role | External project role assignment |
-| Tenant membership and RLS projection | Product database |
+| Customer tenant, membership, and role | Product database |
+| Tenant data isolation | Product database RLS |
 | Admin UI | ZITADEL Console |
 
 Product projects are owned by dedicated product organizations. Enforcing project-owner branding
 therefore makes the login screen deterministic from the OIDC client before the user is known. The
 OIDC request includes the product organization scope, so only identities owned by that product
-organization can log in. Customer organizations are authorization contexts; customer-tenant
-branding belongs to the product UI.
+organization can log in. Customer-tenant selection and branding belong to the product UI.
 
 Organization domains are identity-discovery and username-suffix domains, not service hostnames.
 The catalog makes `ensombl.io` primary for the Ensombl organization and the declared
@@ -30,17 +28,16 @@ The catalog makes `ensombl.io` primary for the Ensombl organization and the decl
 Bootstrap removes the automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's
 external hostname.
 
-The default product roles are `member`, `admin`, and `owner`. A product may extend or completely
-replace that stack in the catalog. FreightClaims replaces it with `member`, `adjuster`,
-`tenant_admin`, `platform_support`, `platform_admin`, `partner_api`, and `tai_api`. The bootstrap
-removes roles outside the resolved catalog so obsolete role definitions cannot survive.
+Products have no default ZITADEL project roles. A product may explicitly declare a role only when
+it represents product-wide authority rather than access to a customer tenant. FreightClaims and
+FreightCheck declare no ZITADEL project roles. Their tenant roles live only in their databases.
 
 ## Authentication
 
 Products use Authorization Code with PKCE through a confidential BFF client. The canonical issuer
-is `https://auth.ensombl.io`. Access and ID tokens contain ZITADEL project roles keyed by their
-organization context. Each product requires the matching database membership and RLS context;
-authentication alone never grants tenant data access.
+is `https://auth.ensombl.io`. The signed subject identifies the human. Each product resolves that
+subject to its own memberships and establishes an RLS context; authentication alone never grants
+tenant data access.
 
 Machine clients use ZITADEL API applications and standard token introspection. Product management
 uses the environment's declared ZITADEL service account and short-lived client-credentials access
@@ -49,14 +46,13 @@ catalog and is mounted from the private bootstrap volume. Product workloads neve
 
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
 seeded `patrick@ensombl.io` user is the initial instance administrator. Product management service
-accounts have no instance administrator role: they receive `PROJECT_OWNER` on their product
-project, `ORG_USER_MANAGER` on the product organization, and the same organization role only on
-customer tenants managed by their environment.
+accounts have no instance administrator role. They receive `ORG_USER_MANAGER` only on the product
+organization so they can invite and manage product identities. A product declaring global project
+roles may additionally require project administration; current products do not.
 
-FreightClaims has one dedicated migration service account with `PROJECT_OWNER` on the FreightClaims
-project, `ORG_USER_MANAGER` on the FreightClaims organization, and `IAM_ORG_MANAGER` so it can
-create legacy tenant organizations. It receives neither `IAM_OWNER` nor general user-management
-permission across the instance. The disposable local account additionally receives
+FreightClaims has one dedicated migration service account with `ORG_USER_MANAGER` on the
+FreightClaims organization. It receives neither `IAM_OWNER`, `IAM_ORG_MANAGER`, nor general
+user-management permission across the instance. The disposable local account additionally receives
 `IAM_LOGIN_CLIENT` solely for the bounded imported-password verification test.
 
 ## Legacy password migration
@@ -72,8 +68,7 @@ The contract was verified against ZITADEL v4.16.2:
 1. the FreightClaims Argon2id PHC was accepted unchanged;
 2. the old password authenticated;
 3. ZITADEL required an immediate password change;
-4. external role assignments gave the same product-owned user different access in multiple
-   customer organizations.
+4. the product database resolved the migrated subject to the correct tenant membership.
 
 ZITADEL rehashes a verified legacy password using its active password hasher.
 
