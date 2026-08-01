@@ -3,10 +3,11 @@
 The global Ensombl identity platform is a self-hosted ZITADEL instance.
 
 - `https://auth.ensombl.io` is the canonical OIDC issuer.
-- ZITADEL organizations model product identity ownership and, for B2B products, customer tenants.
+- ZITADEL organizations model product identity ownership, not application tenants.
 - ZITADEL projects model products; applications model local, staging, and production clients.
-- Project roles carry product-defined access in an organization context; multi-tenant products
-  mirror those assignments into their database for RLS.
+- Each product database owns its tenant records, memberships, roles, permissions, and RLS policy.
+- Project roles are optional and reserved for genuinely product-wide authority; current products
+  declare none.
 - The built-in ZITADEL Console at `/ui/console` is the administrative UI.
 - [`deploy/products/products.json`](deploy/products/products.json) is the non-secret product catalog.
 

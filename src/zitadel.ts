@@ -82,7 +82,7 @@ interface OidcApplicationConfiguration {
   readonly loginBaseUri: string;
 }
 
-function oidcApplicationConfiguration(input: OidcApplicationConfiguration) {
+function oidcApplicationConfiguration(input: OidcApplicationConfiguration, roleAssertion: boolean) {
   return {
     redirectUris: [`${input.baseUrl}/auth/callback`],
     responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
@@ -93,8 +93,8 @@ function oidcApplicationConfiguration(input: OidcApplicationConfiguration) {
     version: "OIDC_VERSION_1_0",
     developmentMode: input.developmentMode,
     accessTokenType: "OIDC_TOKEN_TYPE_JWT",
-    accessTokenRoleAssertion: true,
-    idTokenRoleAssertion: true,
+    accessTokenRoleAssertion: roleAssertion,
+    idTokenRoleAssertion: roleAssertion,
     idTokenUserinfoAssertion: true,
     loginVersion: { loginV2: { baseUri: input.loginBaseUri } },
   };
@@ -283,15 +283,15 @@ export class ZitadelClient {
     return response.projectId;
   }
 
-  async configureProject(projectId: string): Promise<void> {
+  async configureProject(projectId: string, authorizationRequired: boolean): Promise<void> {
     await this.#request("/zitadel.project.v2.ProjectService/UpdateProject", {
       method: "POST",
       connect: true,
       body: {
         projectId,
-        projectRoleAssertion: true,
-        authorizationRequired: true,
-        projectAccessRequired: true,
+        projectRoleAssertion: authorizationRequired,
+        authorizationRequired,
+        projectAccessRequired: authorizationRequired,
         privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
       },
     });
@@ -322,56 +322,6 @@ export class ZitadelClient {
       method: "POST",
       connect: true,
       body: { projectId, roleKey },
-    });
-  }
-
-  async listProjectGrants(projectId: string): Promise<
-    Array<{
-      readonly projectId: string;
-      readonly grantedOrganizationId: string;
-      readonly grantedRoleKeys?: string[];
-    }>
-  > {
-    const response = await this.#request<{
-      projectGrants?: Array<{
-        projectId: string;
-        grantedOrganizationId: string;
-        grantedRoleKeys?: string[];
-      }>;
-    }>("/zitadel.project.v2.ProjectService/ListProjectGrants", {
-      method: "POST",
-      connect: true,
-      body: {
-        pagination: { limit: 1_000 },
-        filters: [{ inProjectIdsFilter: { ids: [projectId] } }],
-      },
-    });
-    return (response.projectGrants ?? []).filter((grant) => grant.projectId === projectId);
-  }
-
-  async ensureProjectGrant(
-    projectId: string,
-    grantedOrganizationId: string,
-    roleKeys: string[],
-  ): Promise<void> {
-    const grants = await this.listProjectGrants(projectId);
-    const current = grants.find((grant) => grant.grantedOrganizationId === grantedOrganizationId);
-    const desired = [...roleKeys].sort();
-    if (!current) {
-      await this.#request("/zitadel.project.v2.ProjectService/CreateProjectGrant", {
-        method: "POST",
-        connect: true,
-        body: { projectId, grantedOrganizationId, roleKeys },
-      });
-      return;
-    }
-    if (JSON.stringify([...(current.grantedRoleKeys ?? [])].sort()) === JSON.stringify(desired)) {
-      return;
-    }
-    await this.#request("/zitadel.project.v2.ProjectService/UpdateProjectGrant", {
-      method: "POST",
-      connect: true,
-      body: { projectId, grantedOrganizationId, roleKeys },
     });
   }
 
@@ -630,6 +580,7 @@ export class ZitadelClient {
     readonly baseUrl: string;
     readonly developmentMode: boolean;
     readonly loginBaseUri: string;
+    readonly roleAssertion: boolean;
   }): Promise<{
     readonly applicationId: string;
     readonly clientId: string;
@@ -644,7 +595,7 @@ export class ZitadelClient {
       body: {
         projectId: input.projectId,
         name: input.name,
-        oidcConfiguration: oidcApplicationConfiguration(input),
+        oidcConfiguration: oidcApplicationConfiguration(input, input.roleAssertion),
       },
     });
     return {
@@ -661,8 +612,9 @@ export class ZitadelClient {
     readonly baseUrl: string;
     readonly developmentMode: boolean;
     readonly loginBaseUri: string;
+    readonly roleAssertion: boolean;
   }): Promise<void> {
-    const configuration = oidcApplicationConfiguration(input);
+    const configuration = oidcApplicationConfiguration(input, input.roleAssertion);
     // ZITADEL v4.16.2's v2 UpdateApplication currently ignores Login V2 URI
     // changes. The management endpoint persists the same current OIDC model.
     await this.#request(

@@ -40,7 +40,7 @@ const serviceAccountSchema = z.object({
   id: z.string().min(1).max(200),
   username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
   display_name: z.string().min(1).max(200),
-  role: roleSchema.shape.key,
+  roles: z.array(roleSchema.shape.key).default([]),
 });
 
 const productSchema = z.object({
@@ -53,12 +53,7 @@ const productSchema = z.object({
     domain: z.string().min(1).max(253),
   }),
   branding: brandingSchema,
-  roles: z
-    .object({
-      mode: z.enum(["extend", "replace"]),
-      values: z.array(roleSchema).min(1),
-    })
-    .optional(),
+  roles: z.array(roleSchema).default([]),
   migration_service_account: migrationServiceAccountSchema.optional(),
   applications: z.array(applicationSchema).min(1),
   local_fixture: z
@@ -66,15 +61,13 @@ const productSchema = z.object({
       tenant: z.object({
         id: z.string().min(1).max(200),
         name: z.string().min(1).max(200),
-        domain: z.string().min(1).max(253),
-        branding: brandingSchema.optional(),
       }),
       user: z.object({
         id: z.string().min(1).max(200),
         email: z.email(),
         display_name: z.string().min(1).max(200),
         password: z.string().min(12).max(200),
-        role: roleSchema.shape.key,
+        roles: z.array(roleSchema.shape.key).default([]),
       }),
       service_accounts: z.array(serviceAccountSchema).default([]),
     })
@@ -93,7 +86,6 @@ export const catalogSchema = z
       from_address: z.email(),
       default_from_name: z.string().min(1).max(200),
     }),
-    default_roles: z.array(roleSchema).min(1),
     products: z.array(productSchema).min(1),
   })
   .superRefine((catalog, context) => {
@@ -108,32 +100,36 @@ export const catalogSchema = z
       }
       productIds.add(product.id);
 
-      const roles = new Set(rolesForProduct(catalog, product).map((role) => role.key));
-      if (product.local_fixture && !roles.has(product.local_fixture.user.role)) {
-        context.addIssue({
-          code: "custom",
-          message: `Unknown local user role: ${product.local_fixture.user.role}`,
-          path: ["products", productIndex, "local_fixture", "user", "role"],
-        });
+      const roles = new Set(product.roles.map((role) => role.key));
+      for (const role of product.local_fixture?.user.roles ?? []) {
+        if (!roles.has(role)) {
+          context.addIssue({
+            code: "custom",
+            message: `Unknown local user role: ${role}`,
+            path: ["products", productIndex, "local_fixture", "user", "roles"],
+          });
+        }
       }
       const serviceAccountIds = new Set<string>();
       const serviceAccountUsernames = new Set<string>();
       for (const [accountIndex, account] of (
         product.local_fixture?.service_accounts ?? []
       ).entries()) {
-        if (!roles.has(account.role)) {
-          context.addIssue({
-            code: "custom",
-            message: `Unknown local service-account role: ${account.role}`,
-            path: [
-              "products",
-              productIndex,
-              "local_fixture",
-              "service_accounts",
-              accountIndex,
-              "role",
-            ],
-          });
+        for (const role of account.roles) {
+          if (!roles.has(role)) {
+            context.addIssue({
+              code: "custom",
+              message: `Unknown local service-account role: ${role}`,
+              path: [
+                "products",
+                productIndex,
+                "local_fixture",
+                "service_accounts",
+                accountIndex,
+                "roles",
+              ],
+            });
+          }
         }
         for (const [values, value, field] of [
           [serviceAccountIds, account.id, "id"],
@@ -212,19 +208,15 @@ export const catalogSchema = z
 export type Catalog = z.infer<typeof catalogSchema>;
 export type Product = Catalog["products"][number];
 export type ProductApplication = Product["applications"][number];
-export type Role = Catalog["default_roles"][number];
+export type Role = Product["roles"][number];
 
 export async function loadCatalog(path: string): Promise<Catalog> {
   return catalogSchema.parse(JSON.parse(await readFile(path, "utf8")));
 }
 
 export function rolesForProduct(catalog: Catalog, product: Product): Role[] {
-  if (!product.roles) return catalog.default_roles;
-  if (product.roles.mode === "replace") return product.roles.values;
-
-  const roles = new Map(catalog.default_roles.map((role) => [role.key, role]));
-  for (const role of product.roles.values) roles.set(role.key, role);
-  return [...roles.values()];
+  void catalog;
+  return product.roles;
 }
 
 export function secretPrefix(product: Product, application: ProductApplication): string {
