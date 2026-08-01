@@ -45,7 +45,6 @@ async function persistMigrationServiceAccount(
 ): Promise<void> {
   if (!bws) return;
   const prefix = migrationSecretPrefix(product);
-  await bws.set(`${prefix}_USER_ID`, account.userId);
   await bws.set(`${prefix}_CLIENT_ID`, account.clientId);
   await bws.set(`${prefix}_CLIENT_SECRET`, account.clientSecret);
 }
