@@ -48,12 +48,6 @@ interface Application {
   };
 }
 
-interface ProjectGrant {
-  readonly projectId: string;
-  readonly grantedOrganizationId: string;
-  readonly grantedRoleKeys?: string[];
-}
-
 interface Authorization {
   readonly id: string;
   readonly project?: { readonly id: string };
@@ -323,15 +317,35 @@ export class ZitadelClient {
     });
   }
 
-  async listProjectGrants(projectId: string): Promise<ProjectGrant[]> {
-    const response = await this.#request<{ projectGrants?: ProjectGrant[] }>(
-      "/zitadel.project.v2.ProjectService/ListProjectGrants",
-      {
-        method: "POST",
-        connect: true,
-        body: { pagination: { limit: 1_000 } },
+  async removeProjectRole(projectId: string, roleKey: string): Promise<void> {
+    await this.#request("/zitadel.project.v2.ProjectService/RemoveProjectRole", {
+      method: "POST",
+      connect: true,
+      body: { projectId, roleKey },
+    });
+  }
+
+  async listProjectGrants(projectId: string): Promise<
+    Array<{
+      readonly projectId: string;
+      readonly grantedOrganizationId: string;
+      readonly grantedRoleKeys?: string[];
+    }>
+  > {
+    const response = await this.#request<{
+      projectGrants?: Array<{
+        projectId: string;
+        grantedOrganizationId: string;
+        grantedRoleKeys?: string[];
+      }>;
+    }>("/zitadel.project.v2.ProjectService/ListProjectGrants", {
+      method: "POST",
+      connect: true,
+      body: {
+        pagination: { limit: 1_000 },
+        filters: [{ inProjectIdsFilter: { ids: [projectId] } }],
       },
-    );
+    });
     return (response.projectGrants ?? []).filter((grant) => grant.projectId === projectId);
   }
 
@@ -341,10 +355,8 @@ export class ZitadelClient {
     roleKeys: string[],
   ): Promise<void> {
     const grants = await this.listProjectGrants(projectId);
-    const current = grants.find(
-      (grant) =>
-        grant.projectId === projectId && grant.grantedOrganizationId === grantedOrganizationId,
-    );
+    const current = grants.find((grant) => grant.grantedOrganizationId === grantedOrganizationId);
+    const desired = [...roleKeys].sort();
     if (!current) {
       await this.#request("/zitadel.project.v2.ProjectService/CreateProjectGrant", {
         method: "POST",
@@ -353,9 +365,9 @@ export class ZitadelClient {
       });
       return;
     }
-    const currentRoles = [...(current.grantedRoleKeys ?? [])].sort();
-    const desiredRoles = [...roleKeys].sort();
-    if (JSON.stringify(currentRoles) === JSON.stringify(desiredRoles)) return;
+    if (JSON.stringify([...(current.grantedRoleKeys ?? [])].sort()) === JSON.stringify(desired)) {
+      return;
+    }
     await this.#request("/zitadel.project.v2.ProjectService/UpdateProjectGrant", {
       method: "POST",
       connect: true,

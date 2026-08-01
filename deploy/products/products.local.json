@@ -56,17 +56,7 @@
         "tenant": {
           "id": "01900000-0000-7000-8000-000000000001",
           "name": "FreightClaims Local Development",
-          "domain": "local.freightclaims.test",
-          "branding": {
-            "primary_color": "#0E7490",
-            "warn_color": "#D92D20",
-            "background_color": "#F0FDFA",
-            "font_color": "#134E4A",
-            "primary_color_dark": "#5EEAD4",
-            "warn_color_dark": "#FDA29B",
-            "background_color_dark": "#134E4A",
-            "font_color_dark": "#F0FDFA"
-          }
+          "domain": "local.freightclaims.test"
         },
         "user": {
           "id": "01900000-0000-7000-8000-000000000002",

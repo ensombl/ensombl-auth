@@ -130,6 +130,12 @@ export async function bootstrapCatalog(
 
     const roles = await client.listProjectRoles(projectId);
     const desiredRoles = rolesForProduct(catalog, product);
+    const desiredRoleKeys = new Set(desiredRoles.map((role) => role.key));
+    for (const role of roles) {
+      if (!desiredRoleKeys.has(role.key)) {
+        await client.removeProjectRole(projectId, role.key);
+      }
+    }
     for (const role of desiredRoles) {
       const current = roles.find((candidate) => candidate.key === role.key);
       if (!current) {
@@ -238,9 +244,10 @@ export async function bootstrapCatalog(
         resource: { organizationId: instanceOrganization.id },
       });
       if (ownerOrganization.id !== instanceOrganization.id) {
-        await client.deleteAdministrator({
+        await client.ensureAdministrator({
           userId: account.id,
           resource: { organizationId: ownerOrganization.id },
+          roles: ["ORG_USER_MANAGER"],
         });
       }
       await client.ensureAdministrator({
@@ -306,6 +313,11 @@ export async function bootstrapCatalog(
           ...(migrationAccount.verify_imported_passwords ? ["IAM_LOGIN_CLIENT"] : []),
         ],
       });
+      await client.ensureAdministrator({
+        userId: migrationAccount.id,
+        resource: { organizationId: ownerOrganization.id },
+        roles: ["ORG_USER_MANAGER"],
+      });
       productRuntime.migrationServiceAccount = {
         userId: migrationAccount.id,
         clientId: migrationAccount.username,
@@ -351,11 +363,10 @@ export async function bootstrapCatalog(
           roles: ["ORG_USER_MANAGER"],
         });
       }
-
       const existingUser = await client.getUser(fixture.user.id);
       if (!existingUser) {
         await client.createHumanUser({
-          organizationId: tenant.id,
+          organizationId: ownerOrganization.id,
           userId: fixture.user.id,
           email: fixture.user.email,
           displayName: fixture.user.display_name,
