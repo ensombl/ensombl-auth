@@ -79,9 +79,13 @@ describe("ZitadelClient OIDC applications", () => {
     });
   });
 
-  it("accepts ZITADEL's idempotent no-changes response", async () => {
+  it.each([
+    "No changes (COMMAND-test)",
+    "Private Label Policy has not been changed (Org-test)",
+    "Errors.Org.LoginPolicy.NotChanged (Org-test)",
+  ])("accepts ZITADEL's idempotent no-changes response: %s", async (message) => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ code: 9, message: "No changes (COMMAND-test)" }, { status: 400 }),
+      Response.json({ code: 9, message }, { status: 400 }),
     );
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
@@ -197,42 +201,114 @@ describe("ZitadelClient product login presentation", () => {
   };
 
   it("uploads and activates a product logo through the native assets API", async () => {
+    const currentPolicy = {
+      policy: {
+        primaryColor: "#126B56",
+        warnColor: "#BA1A1A",
+        backgroundColor: "#F2F4F3",
+        fontColor: "#000000",
+        primaryColorDark: "#84ADFF",
+        warnColorDark: "#FDA29B",
+        backgroundColorDark: "#101828",
+        fontColorDark: "#F9FAFB",
+        hideLoginNameSuffix: true,
+        disableWatermark: true,
+        themeMode: "THEME_MODE_LIGHT",
+        isDefault: false,
+      },
+      isDefault: false,
+    };
     const request = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(
-        Response.json({
-          policy: {
-            primaryColor: "#126B56",
-            warnColor: "#BA1A1A",
-            backgroundColor: "#F2F4F3",
-            fontColor: "#000000",
-            primaryColorDark: "#84ADFF",
-            warnColorDark: "#FDA29B",
-            backgroundColorDark: "#101828",
-            fontColorDark: "#F9FAFB",
-            hideLoginNameSuffix: true,
-            disableWatermark: true,
-            themeMode: "THEME_MODE_LIGHT",
-            isDefault: false,
-          },
-          isDefault: false,
-        }),
-      )
+      .mockResolvedValueOnce(Response.json(currentPolicy))
+      .mockResolvedValueOnce(Response.json(currentPolicy))
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
     await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
 
-    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+    expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
       "/assets/v1/org/policy/label/logo",
     );
-    expect(request.mock.calls[1]?.[1]?.body).toBeInstanceOf(FormData);
-    expect(request.mock.calls[1]?.[1]?.headers).toMatchObject({
+    expect(request.mock.calls[2]?.[1]?.body).toBeInstanceOf(FormData);
+    expect(request.mock.calls[2]?.[1]?.headers).toMatchObject({
       "x-zitadel-orgid": "freightclaims-org",
     });
+    expect(new URL(String(request.mock.calls[3]?.[0])).pathname).toBe(
+      "/management/v1/policies/label/_activate",
+    );
+  });
+
+  it("activates an already-updated preview when retrying an interrupted bootstrap", async () => {
+    const desiredPolicy = {
+      primaryColor: "#126B56",
+      warnColor: "#BA1A1A",
+      backgroundColor: "#F2F4F3",
+      fontColor: "#000000",
+      primaryColorDark: "#84ADFF",
+      warnColorDark: "#FDA29B",
+      backgroundColorDark: "#101828",
+      fontColorDark: "#F9FAFB",
+      hideLoginNameSuffix: true,
+      disableWatermark: true,
+      themeMode: "THEME_MODE_LIGHT",
+      isDefault: false,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          policy: { ...desiredPolicy, primaryColor: "#155EEF" },
+          isDefault: false,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ policy: desiredPolicy, isDefault: false }))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.applyBranding("freightclaims-org", branding);
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/management/v1/policies/label/_preview",
+    );
     expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
       "/management/v1/policies/label/_activate",
+    );
+    expect(request.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
+  });
+
+  it("loads an advertised logo through the configured internal API URL", async () => {
+    const policy = {
+      primaryColor: "#126B56",
+      warnColor: "#BA1A1A",
+      backgroundColor: "#F2F4F3",
+      fontColor: "#000000",
+      primaryColorDark: "#84ADFF",
+      warnColorDark: "#FDA29B",
+      backgroundColorDark: "#101828",
+      fontColorDark: "#F9FAFB",
+      hideLoginNameSuffix: true,
+      disableWatermark: true,
+      themeMode: "THEME_MODE_LIGHT",
+      logoUrl: "http://localhost:24455/assets/v1/freightclaims/logo",
+      isDefault: false,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy, isDefault: false }))
+      .mockResolvedValueOnce(Response.json({ policy, isDefault: false }))
+      .mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])));
+    const client = new ZitadelClient("http://proxy", "bootstrap-pat", {
+      host: "localhost",
+    });
+
+    await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
+
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(new URL(String(request.mock.calls[2]?.[0])).toString()).toBe(
+      "http://proxy/assets/v1/freightclaims/logo",
     );
   });
 

@@ -245,10 +245,18 @@ export class ZitadelClient {
     logo?: Uint8Array,
   ): Promise<void> {
     const headers = { "x-zitadel-orgid": organizationId };
-    const current = await this.#request<{
+    type LabelPolicyResponse = {
       policy?: Readonly<Record<string, unknown>> & { isDefault?: boolean };
       isDefault?: boolean;
-    }>("/management/v1/policies/label", { method: "GET", headers });
+    };
+    const active = await this.#request<LabelPolicyResponse>("/management/v1/policies/label", {
+      method: "GET",
+      headers,
+    });
+    const preview = await this.#request<LabelPolicyResponse>(
+      "/management/v1/policies/label/_preview",
+      { method: "GET", headers },
+    );
     const body = {
       primaryColor: branding.primary_color,
       warnColor: branding.warn_color,
@@ -262,25 +270,30 @@ export class ZitadelClient {
       disableWatermark: true,
       themeMode: branding.theme_mode,
     };
-    let changed = false;
-    if (
-      !current.policy ||
-      !Object.entries(body).every(([key, value]) => current.policy?.[key] === value)
-    ) {
+    const matches = (policy: LabelPolicyResponse["policy"]): boolean =>
+      policy !== undefined && Object.entries(body).every(([key, value]) => policy[key] === value);
+    let needsActivation = !matches(active.policy);
+    if (!matches(preview.policy)) {
       await this.#request("/management/v1/policies/label", {
-        method: current.isDefault === true || current.policy?.isDefault === true ? "POST" : "PUT",
+        method: preview.isDefault === true || preview.policy?.isDefault === true ? "POST" : "PUT",
         body,
         headers,
       });
-      changed = true;
+      needsActivation = true;
     }
-    const logoUrl =
-      typeof current.policy?.logoUrl === "string" ? current.policy.logoUrl : undefined;
-    if (logo && !(await this.#assetMatches(logoUrl, logo, headers))) {
-      await this.#uploadOrganizationLogo(logo, headers);
-      changed = true;
+    if (logo) {
+      const activeLogoUrl =
+        typeof active.policy?.logoUrl === "string" ? active.policy.logoUrl : undefined;
+      const previewLogoUrl =
+        typeof preview.policy?.logoUrl === "string" ? preview.policy.logoUrl : undefined;
+      if (!(await this.#assetMatches(previewLogoUrl, logo, headers))) {
+        await this.#uploadOrganizationLogo(logo, headers);
+        needsActivation = true;
+      } else if (activeLogoUrl !== previewLogoUrl) {
+        needsActivation = true;
+      }
     }
-    if (changed) {
+    if (needsActivation) {
       await this.#request("/management/v1/policies/label/_activate", {
         method: "POST",
         body: {},
@@ -829,7 +842,12 @@ export class ZitadelClient {
     headers: Readonly<Record<string, string>>,
   ): Promise<boolean> {
     if (!assetUrl) return false;
-    const response = await fetch(new URL(assetUrl, `${this.#baseUrl}/`), {
+    const advertisedUrl = new URL(assetUrl, `${this.#baseUrl}/`);
+    const internalUrl = new URL(
+      `${advertisedUrl.pathname}${advertisedUrl.search}`,
+      `${this.#baseUrl}/`,
+    );
+    const response = await fetch(internalUrl, {
       headers: {
         authorization: `Bearer ${this.#pat}`,
         ...this.#requestHeaders,
@@ -876,7 +894,9 @@ export class ZitadelClient {
       (body.code === 9 || body.code === "failed_precondition") &&
       "message" in body &&
       typeof body.message === "string" &&
-      body.message.startsWith("No changes");
+      (body.message.startsWith("No changes") ||
+        body.message.includes(" has not been changed") ||
+        body.message.includes(".NotChanged"));
     const alreadyExists =
       options.allowAlreadyExists === true &&
       typeof body === "object" &&
