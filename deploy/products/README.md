@@ -19,6 +19,5 @@ import product-owned humans. A local account may receive `IAM_LOGIN_CLIENT` only
 password verification test. The bootstrap never gives an application management account an
 instance role and never creates customer-tenant organizations.
 
-The catalog bootstraps a clean ZITADEL instance. There is no compatibility or repair workflow:
-before a greenfield hosted reset, clear the dedicated auth database and generated product secrets,
-then run the bootstrap once.
+The catalog bootstrap requires a clean ZITADEL instance. Recovery and reset procedures are defined
+in [the Dokploy deployment guide](../../docs/dokploy.md).

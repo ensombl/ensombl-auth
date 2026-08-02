@@ -65,9 +65,6 @@ domain records.
 
 ## Recovery
 
-This repository has one current ZITADEL contract. It does not carry retired auth database
-definitions or a second runtime mode. Recovery uses the native PostgreSQL backup and restore
-procedure plus the reviewed Git revision. The live `auth-zitadel-db` service has a daily 03:00
-native PostgreSQL backup with 14 retained copies in the configured Cloudflare destination. A manual
-backup proof produced a non-empty compressed SQL artifact before this recovery contract was marked
-complete.
+Recovery uses a native PostgreSQL backup together with the matching reviewed Git revision. Configure
+a documented retention policy, monitor backup completion, and perform periodic restore tests into
+an isolated database before relying on the backup for disaster recovery.
