@@ -39,18 +39,18 @@ Configure these HTTPS domains with a Let's Encrypt certificate:
 | `auth.ensombl.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
 | `auth.freightclaims.com` | `/` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightclaims.com` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
-| `auth.freightclaims.com` | `/assets` | `zitadel-api` | 8080 | `/` | No |
+| `auth.freightclaims.com` | `/assets` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/ui/v2/login` | `zitadel-login` | 3000 | `/` | No |
-| `auth.freightcheck.io` | `/assets` | `zitadel-api` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/assets` | `product-login-root` | 8080 | `/` | No |
 
 The more-specific Login V2, branding-asset, and `/admin` paths take precedence over each host's `/`
-route. Product-host `/assets` requests must reach `zitadel-api`; Login V2 resolves the active
-organization logo against its public hostname. The native `/admin/v1` passthrough must remain more
-specific than the `/admin` Console shortcut; otherwise the shortcut's path rewrite breaks ZITADEL's
-Admin API. A Compose redeploy is required after changing any of these domain records.
-`product-login-root` only redirects the exact `/` path to Login V2 and returns 404 for every
-unrelated product-host path.
+route. Login V2 resolves the active organization logo against its public hostname, so
+`product-login-root` proxies only `/assets` to the canonical ZITADEL instance host. It redirects the
+exact `/` path to Login V2 and returns 404 for every other product-host path. The native `/admin/v1`
+passthrough must remain more specific than the `/admin` Console shortcut; otherwise the shortcut's
+path rewrite breaks ZITADEL's Admin API. A Compose redeploy is required after changing any of these
+domain records.
 
 - `https://auth.ensombl.io/ui/console` is the ZITADEL Console.
 - `https://auth.ensombl.io/admin` is rewritten internally to the Console.
