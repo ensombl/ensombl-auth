@@ -10,10 +10,12 @@ row-level security. One signed ZITADEL subject may therefore be a member of seve
 hold a different role in each tenant without creating a ZITADEL organization or authorization for
 every membership.
 
-FreightClaims currently uses `member`, `adjuster`, `tenant_admin`, `platform_support`, and
-`platform_admin` as database membership roles. Partner and TAI machine access is bound by the
-ZITADEL client ID to a tenant-scoped database client record and kind. FreightCheck owns its own
-tenant-role vocabulary in its database.
+FreightClaims creates `member`, `admin`, and `owner` as the default roles in every tenant and may
+preserve additional tenant-owned custom roles. Its database also reserves `platform_support` and
+`platform_admin` for explicitly assigned, audited access; those roles are not tenant-managed and
+remain scoped by database membership. Partner and TAI machine access is bound by the ZITADEL
+client ID to a tenant-scoped database client record and kind. FreightCheck owns its own tenant-role
+vocabulary in its database.
 
 ZITADEL proves who or which machine authenticated. The product database decides what that subject
 or client may do in a selected tenant. Successful login never grants tenant access by itself.
