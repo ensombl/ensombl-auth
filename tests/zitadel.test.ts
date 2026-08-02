@@ -182,6 +182,116 @@ describe("ZitadelClient project authorization", () => {
   });
 });
 
+describe("ZitadelClient product login presentation", () => {
+  const branding = {
+    primary_color: "#126B56",
+    warn_color: "#BA1A1A",
+    background_color: "#F2F4F3",
+    font_color: "#000000",
+    primary_color_dark: "#84ADFF",
+    warn_color_dark: "#FDA29B",
+    background_color_dark: "#101828",
+    font_color_dark: "#F9FAFB",
+    theme_mode: "THEME_MODE_LIGHT" as const,
+    hide_login_name_suffix: true,
+  };
+
+  it("uploads and activates a product logo through the native assets API", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          policy: {
+            primaryColor: "#126B56",
+            warnColor: "#BA1A1A",
+            backgroundColor: "#F2F4F3",
+            fontColor: "#000000",
+            primaryColorDark: "#84ADFF",
+            warnColorDark: "#FDA29B",
+            backgroundColorDark: "#101828",
+            fontColorDark: "#F9FAFB",
+            hideLoginNameSuffix: true,
+            disableWatermark: true,
+            themeMode: "THEME_MODE_LIGHT",
+            isDefault: false,
+          },
+          isDefault: false,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
+
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/assets/v1/org/policy/label/logo",
+    );
+    expect(request.mock.calls[1]?.[1]?.body).toBeInstanceOf(FormData);
+    expect(request.mock.calls[1]?.[1]?.headers).toMatchObject({
+      "x-zitadel-orgid": "freightclaims-org",
+    });
+    expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
+      "/management/v1/policies/label/_activate",
+    );
+  });
+
+  it("pins product login to password and recovery without self-registration", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          policy: {
+            allowUsernamePassword: true,
+            allowRegister: true,
+            allowExternalIdp: true,
+            forceMfa: false,
+            passwordlessType: "PASSWORDLESS_TYPE_NOT_ALLOWED",
+            hidePasswordReset: false,
+            ignoreUnknownUsernames: false,
+            defaultRedirectUri: "https://auth.ensombl.io/",
+            passwordCheckLifetime: "864000s",
+            externalLoginCheckLifetime: "864000s",
+            mfaInitSkipLifetime: "2592000s",
+            secondFactorCheckLifetime: "64800s",
+            multiFactorCheckLifetime: "43200s",
+            allowDomainDiscovery: true,
+            disableLoginWithEmail: false,
+            disableLoginWithPhone: false,
+            forceMfaLocalOnly: false,
+            isDefault: true,
+          },
+          isDefault: true,
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureLoginPolicy("freightclaims-org", {
+      allow_username_password: true,
+      allow_self_registration: false,
+      allow_external_identity_providers: false,
+      allow_password_reset: true,
+      ignore_unknown_usernames: true,
+      allow_domain_discovery: false,
+      disable_login_with_email: false,
+      disable_login_with_phone: true,
+    });
+
+    expect(request.mock.calls[1]?.[1]?.method).toBe("POST");
+    expect(requestBody(request, 1)).toMatchObject({
+      allowUsernamePassword: true,
+      allowRegister: false,
+      allowExternalIdp: false,
+      hidePasswordReset: false,
+      ignoreUnknownUsernames: true,
+      allowDomainDiscovery: false,
+      disableLoginWithEmail: false,
+      disableLoginWithPhone: true,
+    });
+  });
+});
+
 describe("ZitadelClient organization domains", () => {
   it("adds a native instance trusted domain", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));

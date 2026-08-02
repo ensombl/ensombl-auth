@@ -82,6 +82,12 @@ host separately from the browser-facing product host. The instance-wide Login V2
 disabled so ZITADEL honors those per-application hosts; the Management Console is explicitly pinned
 to the canonical host.
 
+Each product declares its native hosted-login policy independently. FreightClaims keeps the
+canonical application's username/password and password-recovery behavior, disables public
+self-registration and external identity providers, and applies the canonical FreightClaims logo,
+green palette, neutral background, and light theme through ZITADEL's organization branding and
+asset APIs. Applications never render or collect credentials themselves.
+
 ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP
 with authenticated STARTTLS on port 587. The one-shot catalog bootstrap applies the active provider
 through ZITADEL's Admin API so an existing instance receives the same configuration as a fresh

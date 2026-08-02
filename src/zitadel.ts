@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import type { Product } from "./catalog.js";
 
 interface Organization {
   readonly id: string;
@@ -65,6 +66,27 @@ interface EmailProvider {
     readonly user?: string;
     readonly plain?: Record<string, never>;
   };
+}
+
+interface LoginPolicy {
+  readonly allowUsernamePassword?: boolean;
+  readonly allowRegister?: boolean;
+  readonly allowExternalIdp?: boolean;
+  readonly forceMfa?: boolean;
+  readonly passwordlessType?: string;
+  readonly hidePasswordReset?: boolean;
+  readonly ignoreUnknownUsernames?: boolean;
+  readonly defaultRedirectUri?: string;
+  readonly passwordCheckLifetime?: string;
+  readonly externalLoginCheckLifetime?: string;
+  readonly mfaInitSkipLifetime?: string;
+  readonly secondFactorCheckLifetime?: string;
+  readonly multiFactorCheckLifetime?: string;
+  readonly allowDomainDiscovery?: boolean;
+  readonly disableLoginWithEmail?: boolean;
+  readonly disableLoginWithPhone?: boolean;
+  readonly forceMfaLocalOnly?: boolean;
+  readonly isDefault?: boolean;
 }
 
 interface RequestOptions {
@@ -219,7 +241,8 @@ export class ZitadelClient {
 
   async applyBranding(
     organizationId: string,
-    branding: Readonly<Record<string, string>>,
+    branding: Product["branding"],
+    logo?: Uint8Array,
   ): Promise<void> {
     const headers = { "x-zitadel-orgid": organizationId };
     const current = await this.#request<{
@@ -235,24 +258,76 @@ export class ZitadelClient {
       warnColorDark: branding.warn_color_dark,
       backgroundColorDark: branding.background_color_dark,
       fontColorDark: branding.font_color_dark,
+      hideLoginNameSuffix: branding.hide_login_name_suffix,
       disableWatermark: true,
-      themeMode: "THEME_MODE_AUTO",
+      themeMode: branding.theme_mode,
     };
+    let changed = false;
     if (
-      current.policy &&
-      Object.entries(body).every(([key, value]) => current.policy?.[key] === value)
+      !current.policy ||
+      !Object.entries(body).every(([key, value]) => current.policy?.[key] === value)
+    ) {
+      await this.#request("/management/v1/policies/label", {
+        method: current.isDefault === true || current.policy?.isDefault === true ? "POST" : "PUT",
+        body,
+        headers,
+      });
+      changed = true;
+    }
+    const logoUrl =
+      typeof current.policy?.logoUrl === "string" ? current.policy.logoUrl : undefined;
+    if (logo && !(await this.#assetMatches(logoUrl, logo, headers))) {
+      await this.#uploadOrganizationLogo(logo, headers);
+      changed = true;
+    }
+    if (changed) {
+      await this.#request("/management/v1/policies/label/_activate", {
+        method: "POST",
+        body: {},
+        headers,
+      });
+    }
+  }
+
+  async ensureLoginPolicy(organizationId: string, desired: Product["login_policy"]): Promise<void> {
+    const headers = { "x-zitadel-orgid": organizationId };
+    const response = await this.#request<{
+      policy?: LoginPolicy;
+      isDefault?: boolean;
+    }>("/management/v1/policies/login", { method: "GET", headers });
+    const policy = response.policy;
+    if (!policy) throw new Error(`ZITADEL returned no login policy for ${organizationId}`);
+    const body = {
+      allowUsernamePassword: desired.allow_username_password,
+      allowRegister: desired.allow_self_registration,
+      allowExternalIdp: desired.allow_external_identity_providers,
+      forceMfa: policy.forceMfa,
+      passwordlessType: policy.passwordlessType,
+      hidePasswordReset: !desired.allow_password_reset,
+      ignoreUnknownUsernames: desired.ignore_unknown_usernames,
+      defaultRedirectUri: policy.defaultRedirectUri,
+      passwordCheckLifetime: policy.passwordCheckLifetime,
+      externalLoginCheckLifetime: policy.externalLoginCheckLifetime,
+      mfaInitSkipLifetime: policy.mfaInitSkipLifetime,
+      secondFactorCheckLifetime: policy.secondFactorCheckLifetime,
+      multiFactorCheckLifetime: policy.multiFactorCheckLifetime,
+      allowDomainDiscovery: desired.allow_domain_discovery,
+      disableLoginWithEmail: desired.disable_login_with_email,
+      disableLoginWithPhone: desired.disable_login_with_phone,
+      forceMfaLocalOnly: policy.forceMfaLocalOnly,
+    };
+    const customPolicy = response.isDefault !== true && policy.isDefault !== true;
+    if (
+      customPolicy &&
+      Object.entries(body).every(([key, value]) => policy[key as keyof LoginPolicy] === value)
     ) {
       return;
     }
-    await this.#request("/management/v1/policies/label", {
-      method: current.isDefault === true || current.policy?.isDefault === true ? "POST" : "PUT",
+    await this.#request("/management/v1/policies/login", {
+      method: customPolicy ? "PUT" : "POST",
       body,
       headers,
-    });
-    await this.#request("/management/v1/policies/label/_activate", {
-      method: "POST",
-      body: {},
-      headers,
+      allowNoChanges: true,
     });
   }
 
@@ -746,6 +821,47 @@ export class ZitadelClient {
       },
     );
     return response.clientSecret;
+  }
+
+  async #assetMatches(
+    assetUrl: string | undefined,
+    expected: Uint8Array,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<boolean> {
+    if (!assetUrl) return false;
+    const response = await fetch(new URL(assetUrl, `${this.#baseUrl}/`), {
+      headers: {
+        authorization: `Bearer ${this.#pat}`,
+        ...this.#requestHeaders,
+        ...headers,
+      },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return false;
+    return Buffer.from(await response.arrayBuffer()).equals(Buffer.from(expected));
+  }
+
+  async #uploadOrganizationLogo(
+    logo: Uint8Array,
+    headers: Readonly<Record<string, string>>,
+  ): Promise<void> {
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array(logo)], { type: "image/png" }), "logo.png");
+    const path = "/assets/v1/org/policy/label/logo";
+    const response = await fetch(`${this.#baseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${this.#pat}`,
+        ...this.#requestHeaders,
+        ...headers,
+      },
+      body: form,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) {
+      const body = await this.#parseResponse(response);
+      throw new Error(`POST ${path} returned ${response.status}: ${JSON.stringify(body)}`);
+    }
   }
 
   async #request<T = Record<string, never>>(path: string, options: RequestOptions): Promise<T> {

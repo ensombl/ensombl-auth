@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 const roleSchema = z.object({
@@ -15,7 +16,34 @@ const brandingSchema = z.object({
   warn_color_dark: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   background_color_dark: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
   font_color_dark: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  theme_mode: z
+    .enum(["THEME_MODE_AUTO", "THEME_MODE_DARK", "THEME_MODE_LIGHT"])
+    .default("THEME_MODE_AUTO"),
+  hide_login_name_suffix: z.boolean().default(false),
+  logo_base64_file: z.string().min(1).optional(),
 });
+
+const loginPolicySchema = z.object({
+  allow_username_password: z.boolean().default(true),
+  allow_self_registration: z.boolean().default(false),
+  allow_external_identity_providers: z.boolean().default(false),
+  allow_password_reset: z.boolean().default(true),
+  ignore_unknown_usernames: z.boolean().default(true),
+  allow_domain_discovery: z.boolean().default(false),
+  disable_login_with_email: z.boolean().default(false),
+  disable_login_with_phone: z.boolean().default(true),
+});
+
+const defaultLoginPolicy = {
+  allow_username_password: true,
+  allow_self_registration: false,
+  allow_external_identity_providers: false,
+  allow_password_reset: true,
+  ignore_unknown_usernames: true,
+  allow_domain_discovery: false,
+  disable_login_with_email: false,
+  disable_login_with_phone: true,
+} as const;
 
 const applicationSchema = z.object({
   environment: z.enum(["local", "staging", "production"]),
@@ -53,6 +81,7 @@ const productSchema = z.object({
     domain: z.string().min(1).max(253),
   }),
   branding: brandingSchema,
+  login_policy: loginPolicySchema.default(defaultLoginPolicy),
   roles: z.array(roleSchema).default([]),
   migration_service_account: migrationServiceAccountSchema.optional(),
   applications: z.array(applicationSchema).min(1),
@@ -211,7 +240,22 @@ export type ProductApplication = Product["applications"][number];
 export type Role = Product["roles"][number];
 
 export async function loadCatalog(path: string): Promise<Catalog> {
-  return catalogSchema.parse(JSON.parse(await readFile(path, "utf8")));
+  const catalog = catalogSchema.parse(JSON.parse(await readFile(path, "utf8")));
+  const catalogDirectory = dirname(resolve(path));
+  return {
+    ...catalog,
+    products: catalog.products.map((product) => ({
+      ...product,
+      branding: {
+        ...product.branding,
+        ...(product.branding.logo_base64_file
+          ? {
+              logo_base64_file: resolve(catalogDirectory, product.branding.logo_base64_file),
+            }
+          : {}),
+      },
+    })),
+  };
 }
 
 export function rolesForProduct(catalog: Catalog, product: Product): Role[] {
