@@ -20,14 +20,27 @@
         "domain": "freightclaims.com"
       },
       "branding": {
-        "primary_color": "#155EEF",
-        "warn_color": "#D92D20",
-        "background_color": "#F8FAFC",
-        "font_color": "#101828",
+        "primary_color": "#126B56",
+        "warn_color": "#BA1A1A",
+        "background_color": "#F2F4F3",
+        "font_color": "#000000",
         "primary_color_dark": "#84ADFF",
         "warn_color_dark": "#FDA29B",
         "background_color_dark": "#101828",
-        "font_color_dark": "#F9FAFB"
+        "font_color_dark": "#F9FAFB",
+        "theme_mode": "THEME_MODE_LIGHT",
+        "hide_login_name_suffix": true,
+        "logo_base64_file": "assets/freightclaims-logo.png.base64"
+      },
+      "login_policy": {
+        "allow_username_password": true,
+        "allow_self_registration": false,
+        "allow_external_identity_providers": false,
+        "allow_password_reset": true,
+        "ignore_unknown_usernames": true,
+        "allow_domain_discovery": false,
+        "disable_login_with_email": false,
+        "disable_login_with_phone": true
       },
       "roles": [],
       "migration_service_account": {

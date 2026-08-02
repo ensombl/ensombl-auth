@@ -54,6 +54,11 @@ describe("product catalog", () => {
     const product = catalog.products[0];
     if (!product) throw new Error("Expected one product");
     expect(rolesForProduct(catalog, product)).toEqual([]);
+    expect(product.login_policy).toMatchObject({
+      allow_username_password: true,
+      allow_self_registration: false,
+      allow_password_reset: true,
+    });
   });
 
   it("supports explicitly declared product-wide roles", () => {

@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import type { Catalog, Product, ProductApplication } from "./catalog.js";
 import { migrationSecretPrefix, rolesForProduct, secretPrefix } from "./catalog.js";
 import type { ApplicationRuntime, BwsRuntimeStore, RuntimeConfig } from "./runtime-config.js";
@@ -47,6 +48,14 @@ async function persistMigrationServiceAccount(
   const prefix = migrationSecretPrefix(product);
   await bws.set(`${prefix}_CLIENT_ID`, account.clientId);
   await bws.set(`${prefix}_CLIENT_SECRET`, account.clientSecret);
+}
+
+async function readBrandingLogo(path: string | undefined): Promise<Uint8Array | undefined> {
+  if (!path) return undefined;
+  const encoded = (await readFile(path, "utf8")).replaceAll(/\s+/gu, "");
+  const logo = Buffer.from(encoded, "base64");
+  if (logo.length === 0) throw new Error(`Branding logo is empty: ${path}`);
+  return logo;
 }
 
 export async function bootstrapCatalog(
@@ -108,7 +117,12 @@ export async function bootstrapCatalog(
       product.owner_organization.domain,
       obsoleteGeneratedDomainSuffix,
     );
-    await client.applyBranding(ownerOrganization.id, product.branding);
+    await client.applyBranding(
+      ownerOrganization.id,
+      product.branding,
+      await readBrandingLogo(product.branding.logo_base64_file),
+    );
+    await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
 
     let projectId = projects.find(
       (project) =>

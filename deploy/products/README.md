@@ -4,7 +4,8 @@
 
 Each product declares:
 
-- its product-owner organization and login branding;
+- its product-owner organization, native hosted-login policy, colors, theme, and optional
+  base64-encoded logo asset;
 - optional product-wide project roles; there are no defaults;
 - one OIDC BFF application per canonical `local`, `staging`, or `production` environment;
 - one management service account per application, with `ORG_USER_MANAGER` only on the product
