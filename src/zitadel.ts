@@ -278,6 +278,7 @@ export class ZitadelClient {
         method: preview.isDefault === true || preview.policy?.isDefault === true ? "POST" : "PUT",
         body,
         headers,
+        allowNoChanges: true,
       });
       needsActivation = true;
     }
