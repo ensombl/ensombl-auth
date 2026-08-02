@@ -1,21 +1,62 @@
-# Ensombl identity
+# Ensombl Auth
 
-The global Ensombl identity platform is a self-hosted ZITADEL instance.
+Ensombl Auth is the shared, self-hosted ZITADEL identity platform for Ensombl products. It owns
+authentication, credentials, account recovery, product login branding, OIDC applications, and
+product-scoped service accounts.
 
-- `https://auth.ensombl.io` is the canonical OIDC issuer.
-- ZITADEL organizations model product identity ownership, not application tenants.
-- ZITADEL projects model products; applications model local, staging, and production clients.
-- Each product database owns its tenant records, memberships, roles, permissions, and RLS policy.
-- Project roles are optional and reserved for genuinely product-wide authority; current products
-  declare none.
-- The built-in ZITADEL Console at `/ui/console` is the administrative UI.
-- [`deploy/products/products.json`](deploy/products/products.json) is the non-secret product catalog.
+Customer tenants, memberships, application roles, permissions, and row-level security remain in
+each product database. ZITADEL organizations represent product identity ownership; they do not
+represent application tenants.
 
-Local product repositories use this repository as a pinned submodule and start the same ZITADEL
-stack with `pnpm dev`. Dokploy builds the small operator images from source and pulls the pinned
-official ZITADEL images; this repository never publishes container images.
+## Requirements
 
-Architecture, authorization, and deployment details live in
-[`docs/architecture.md`](docs/architecture.md),
-[`docs/roles-and-permissions.md`](docs/roles-and-permissions.md), and
-[`docs/dokploy.md`](docs/dokploy.md).
+- Node.js 24
+- pnpm 11
+- Docker with Compose
+
+## Local development
+
+Install dependencies and start the disposable local stack:
+
+```bash
+pnpm install
+pnpm dev
+```
+
+The local issuer is `http://localhost:24455`; its Console is available at
+`http://localhost:24455/ui/console`. Mailpit is available at `http://localhost:28025`.
+
+Run the repository checks with:
+
+```bash
+pnpm check
+```
+
+Product repositories consume this repository as a pinned submodule so local development uses the
+same ZITADEL and catalog bootstrap implementation as hosted environments.
+
+## Repository layout
+
+```text
+deploy/
+  bootstrap/   ZITADEL catalog bootstrap
+  dokploy/     Hosted Compose definition
+  products/    Non-secret product catalog and branding
+  secrets/     Bitwarden secret manifest and loader
+  zitadel/     ZITADEL and Login V2 configuration
+docs/          Architecture, authorization, and deployment reference
+tests/         Catalog, Compose, bootstrap, and policy tests
+```
+
+## Hosted service
+
+`https://auth.ensombl.io` is the canonical issuer. Product login hosts provide product branding
+while the issuer and APIs remain canonical. Dokploy builds the repository sources directly; this
+project does not publish container images.
+
+See:
+
+- [Architecture](docs/architecture.md)
+- [Roles and permissions](docs/roles-and-permissions.md)
+- [Dokploy deployment](docs/dokploy.md)
+- [Product catalog](deploy/products/README.md)

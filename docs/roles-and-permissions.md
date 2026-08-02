@@ -57,5 +57,5 @@ that product's login flow. The canonical issuer remains `https://auth.ensombl.io
 ## ZITADEL references
 
 - [Projects and project roles](https://zitadel.com/docs/guides/manage/console/projects-overview)
-- [Administrator roles](https://zitadel.com/docs/guides/manage/console/managers)
+- [Administrator roles](https://zitadel.com/docs/guides/manage/console/administrators)
 - [OIDC organization scopes](https://zitadel.com/docs/apis/openidoauth/scopes)
