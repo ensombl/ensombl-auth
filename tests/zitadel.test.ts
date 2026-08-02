@@ -279,6 +279,56 @@ describe("ZitadelClient product login presentation", () => {
     expect(request.mock.calls.some(([, init]) => init?.method === "PUT")).toBe(false);
   });
 
+  it("tolerates ZITADEL rejecting a label policy update as already applied", async () => {
+    const desiredPolicy = {
+      primaryColor: "#126B56",
+      warnColor: "#BA1A1A",
+      backgroundColor: "#F2F4F3",
+      fontColor: "#000000",
+      primaryColorDark: "#84ADFF",
+      warnColorDark: "#FDA29B",
+      backgroundColorDark: "#101828",
+      fontColorDark: "#F9FAFB",
+      hideLoginNameSuffix: true,
+      disableWatermark: true,
+      themeMode: "THEME_MODE_LIGHT",
+      isDefault: false,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({ policy: { ...desiredPolicy, primaryColor: "#155EEF" }, isDefault: false }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({ policy: { ...desiredPolicy, primaryColor: "#155EEF" }, isDefault: false }),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            code: 9,
+            message: "Private Label Policy has not been changed (Org-8nfSr)",
+            details: [
+              {
+                "@type": "type.googleapis.com/zitadel.v1.ErrorDetail",
+                id: "Org-8nfSr",
+                message: "Private Label Policy has not been changed",
+              },
+            ],
+          },
+          { status: 400 },
+        ),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.applyBranding("freightclaims-org", branding)).resolves.toBeUndefined();
+
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(new URL(String(request.mock.calls[3]?.[0])).pathname).toBe(
+      "/management/v1/policies/label/_activate",
+    );
+  });
+
   it("loads an advertised logo through the configured internal API URL", async () => {
     const policy = {
       primaryColor: "#126B56",
