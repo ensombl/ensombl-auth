@@ -460,6 +460,32 @@ export class ZitadelClient {
     return response.id;
   }
 
+  async createHumanUserWithoutPassword(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly email: string;
+    readonly displayName: string;
+  }): Promise<string> {
+    const [givenName, ...familyParts] = input.displayName.trim().split(/\s+/u);
+    const response = await this.#request<{ id: string }>("/v2/users/new", {
+      method: "POST",
+      body: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        username: input.email,
+        human: {
+          profile: {
+            givenName: givenName || input.displayName,
+            familyName: familyParts.join(" ") || "-",
+            displayName: input.displayName,
+          },
+          email: { email: input.email, isVerified: true },
+        },
+      },
+    });
+    return response.id;
+  }
+
   async createServiceAccount(input: {
     readonly organizationId: string;
     readonly userId: string;

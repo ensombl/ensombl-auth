@@ -113,8 +113,7 @@
       "migration_service_account": {
         "id": "b43c7733-d886-4611-aa29-c3577ace9547",
         "username": "freightcheck-local-migration",
-        "display_name": "FreightCheck local migration",
-        "verify_imported_passwords": true
+        "display_name": "FreightCheck local migration"
       },
       "local_fixture": {
         "tenant": {
