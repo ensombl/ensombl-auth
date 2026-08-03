@@ -47,8 +47,9 @@ catalog and is mounted from the private bootstrap volume. Product workloads neve
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
 configured initial administrator owns instance bootstrap. Product management service accounts have
 no instance administrator role. They receive `ORG_USER_MANAGER` only on the product organization
-so they can invite and manage product identities. A product declaring global project roles may
-additionally require project administration; current products do not.
+so they can invite and manage product identities. Declaring global project roles never grants a
+runtime or migration account project administration; role definitions and assignments remain
+explicit control-plane operations.
 
 FreightClaims has one dedicated migration service account with `ORG_USER_MANAGER` on the
 FreightClaims organization. It receives neither `IAM_OWNER`, `IAM_ORG_MANAGER`, nor general

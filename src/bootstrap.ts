@@ -264,15 +264,7 @@ export async function bootstrapCatalog(
           roles: ["ORG_USER_MANAGER"],
         });
       }
-      if (desiredRoles.length > 0) {
-        await client.ensureAdministrator({
-          userId: account.id,
-          resource: { projectId },
-          roles: ["PROJECT_OWNER"],
-        });
-      } else {
-        await client.deleteAdministrator({ userId: account.id, resource: { projectId } });
-      }
+      await client.deleteAdministrator({ userId: account.id, resource: { projectId } });
       await client.deleteAdministrator({
         userId: account.id,
         resource: { instance: true },
@@ -318,18 +310,10 @@ export async function bootstrapCatalog(
             `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
         );
       }
-      if (desiredRoles.length > 0) {
-        await client.ensureAdministrator({
-          userId: migrationAccount.id,
-          resource: { projectId },
-          roles: ["PROJECT_OWNER"],
-        });
-      } else {
-        await client.deleteAdministrator({
-          userId: migrationAccount.id,
-          resource: { projectId },
-        });
-      }
+      await client.deleteAdministrator({
+        userId: migrationAccount.id,
+        resource: { projectId },
+      });
       if (migrationAccount.verify_imported_passwords) {
         await client.ensureAdministrator({
           userId: migrationAccount.id,

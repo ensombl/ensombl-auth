@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { catalogSchema, rolesForProduct, secretPrefix } from "../src/catalog.js";
 
@@ -49,6 +50,26 @@ const baseCatalog = {
 };
 
 describe("product catalog", () => {
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("declares only FreightClaims global operator roles in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+    if (!freightclaims) throw new Error("Expected FreightClaims product");
+    expect(rolesForProduct(catalog, freightclaims)).toEqual([
+      { key: "platform_support", display_name: "Platform Support" },
+      { key: "platform_admin", display_name: "Platform Administrator" },
+    ]);
+    for (const product of catalog.products.filter(
+      (candidate) => candidate.id !== "freightclaims",
+    )) {
+      expect(rolesForProduct(catalog, product)).toEqual([]);
+    }
+  });
+
   it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];
