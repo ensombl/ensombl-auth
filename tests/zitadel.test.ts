@@ -153,6 +153,22 @@ describe("ZitadelClient OIDC applications", () => {
 });
 
 describe("ZitadelClient project authorization", () => {
+  it("creates projects without requiring a role assignment for login", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ projectId: "project-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.createProject("organization-id", "Product")).resolves.toBe("project-id");
+
+    expect(requestBody(request)).toMatchObject({
+      organizationId: "organization-id",
+      projectRoleAssertion: false,
+      authorizationRequired: false,
+      projectAccessRequired: false,
+    });
+  });
+
   it("removes an obsolete project role and its dependent assignments", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
@@ -180,6 +196,20 @@ describe("ZitadelClient project authorization", () => {
     expect(requestBody(request)).toMatchObject({
       projectId: "project-id",
       projectRoleAssertion: false,
+      authorizationRequired: false,
+      projectAccessRequired: false,
+    });
+  });
+
+  it("asserts project roles without requiring one for login", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.configureProject("project-id", true);
+
+    expect(requestBody(request)).toMatchObject({
+      projectId: "project-id",
+      projectRoleAssertion: true,
       authorizationRequired: false,
       projectAccessRequired: false,
     });

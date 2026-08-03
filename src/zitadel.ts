@@ -362,9 +362,9 @@ export class ZitadelClient {
         body: {
           organizationId,
           name,
-          projectRoleAssertion: true,
-          authorizationRequired: true,
-          projectAccessRequired: true,
+          projectRoleAssertion: false,
+          authorizationRequired: false,
+          projectAccessRequired: false,
           privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
         },
       },
@@ -372,15 +372,15 @@ export class ZitadelClient {
     return response.projectId;
   }
 
-  async configureProject(projectId: string, authorizationRequired: boolean): Promise<void> {
+  async configureProject(projectId: string, projectRoleAssertion: boolean): Promise<void> {
     await this.#request("/zitadel.project.v2.ProjectService/UpdateProject", {
       method: "POST",
       connect: true,
       body: {
         projectId,
-        projectRoleAssertion: authorizationRequired,
-        authorizationRequired,
-        projectAccessRequired: authorizationRequired,
+        projectRoleAssertion,
+        authorizationRequired: false,
+        projectAccessRequired: false,
         privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
       },
     });

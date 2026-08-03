@@ -28,9 +28,9 @@ The catalog makes `ensombl.io` primary for the Ensombl organization and the decl
 Bootstrap removes the automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's
 external hostname.
 
-Products have no default ZITADEL project roles. A product may explicitly declare a role only when
-it represents product-wide authority rather than access to a customer tenant. FreightClaims and
-FreightCheck declare no ZITADEL project roles. Their tenant roles live only in their databases.
+Products have no default ZITADEL project roles. Each product may independently declare roles in the
+catalog. Bootstrap enables role claims when roles exist, does not require a role for login, and does
+not assign roles implicitly.
 
 ## Authentication
 
