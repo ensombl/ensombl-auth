@@ -10,12 +10,10 @@ row-level security. One signed ZITADEL subject may therefore be a member of seve
 hold a different role in each tenant without creating a ZITADEL organization or authorization for
 every membership.
 
-FreightClaims creates `member`, `admin`, and `owner` as the default roles in every tenant and may
-preserve additional tenant-owned custom roles. Its database also reserves `platform_support` and
-`platform_admin` for explicitly assigned, audited access; those roles are not tenant-managed and
-remain scoped by database membership. Partner and TAI machine access is bound by the ZITADEL
-client ID to a tenant-scoped database client record and kind. FreightCheck owns its own tenant-role
-vocabulary in its database.
+FreightClaims uses `viewer`, `member`, `admin`, and `owner` as its application-owned tenant roles.
+Claim scope and work-queue assignment remain separate application concerns. Partner and TAI
+machine access is bound by the ZITADEL client ID to a tenant-scoped database client record and
+kind. FreightCheck owns its own tenant-role vocabulary in its database.
 
 ZITADEL proves who or which machine authenticated. The product database decides what that subject
 or client may do in a selected tenant. Successful login never grants tenant access by itself.
@@ -26,8 +24,13 @@ Project roles are optional application-defined claims. The catalog has no defaul
 may declare a project role only for genuinely product-wide, cross-tenant authority that belongs in
 the identity token. It must not declare customer membership roles there.
 
-FreightClaims and FreightCheck currently declare no project roles. Their projects therefore do not
-require a role assignment for login and do not assert role claims.
+FreightClaims declares `platform_support` and `platform_admin` for audited product-wide operations.
+Its OIDC applications assert those roles when explicitly assigned, but role assignment is not
+required for ordinary login. FreightCheck currently declares no project roles.
+
+Product management and migration service accounts do not receive `PROJECT_OWNER`. Declaring a
+project role never promotes a runtime account into project administration. Platform-role
+assignments are explicit administrative actions.
 
 ## ZITADEL administrator roles
 
@@ -42,7 +45,7 @@ Administrator roles authorize management of ZITADEL itself. They never grant pro
 An `IAM_OWNER` can administer the identity instance but does not automatically receive access to
 any FreightClaims or FreightCheck tenant. Human instance ownership is reserved for named Ensombl
 operators. Product runtime accounts receive `ORG_USER_MANAGER` only on their product organization;
-current products do not require project administration.
+runtime products do not require project administration.
 
 ## Product boundary
 
