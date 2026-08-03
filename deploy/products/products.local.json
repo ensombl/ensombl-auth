@@ -132,7 +132,7 @@
         {
           "environment": "local",
           "name": "FreightCheck local web",
-          "base_url": "http://localhost:4201",
+          "base_url": "http://localhost:5173",
           "development_mode": true,
           "management_service_account": {
             "id": "ac7dd065-a112-474d-9d04-8c53a9e37ff0",
