@@ -50,10 +50,12 @@ accounts have no instance administrator role. They receive `ORG_USER_MANAGER` on
 organization so they can invite and manage product identities. A product declaring global project
 roles may additionally require project administration; current products do not.
 
-FreightClaims has one dedicated migration service account with `ORG_USER_MANAGER` on the
-FreightClaims organization. It receives neither `IAM_OWNER`, `IAM_ORG_MANAGER`, nor general
-user-management permission across the instance. The disposable local account additionally receives
-`IAM_LOGIN_CLIENT` solely for the bounded imported-password verification test.
+FreightClaims and FreightCheck each have one dedicated migration service account with
+`ORG_USER_MANAGER` on their own organization. Neither receives `IAM_OWNER`, `IAM_ORG_MANAGER`, nor
+general user-management permission across the instance. The disposable local FreightClaims account
+additionally receives `IAM_LOGIN_CLIENT` solely for the bounded imported-password verification
+test; FreightCheck's migration account has no `verify_imported_passwords` declaration and does not
+receive `IAM_LOGIN_CLIENT`, since it imports no legacy password.
 
 ## Legacy password migration
 
@@ -71,6 +73,10 @@ The contract was verified against ZITADEL v4.16.2:
 4. the product database resolved the migrated subject to the correct tenant membership.
 
 ZITADEL rehashes a verified legacy password using its active password hasher.
+
+This legacy-password contract is FreightClaims-specific. FreightCheck's migration service account
+creates new users via `POST /v2/users/new` without a legacy password import; it does not carry
+`hashedPassword`, so it needs no imported-password verification and no `IAM_LOGIN_CLIENT` grant.
 
 ## Branding and email
 
