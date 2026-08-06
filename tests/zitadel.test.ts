@@ -214,6 +214,39 @@ describe("ZitadelClient project authorization", () => {
       projectAccessRequired: false,
     });
   });
+
+  it("removes a role assignment when no product roles are declared", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          authorizations: [
+            {
+              id: "authorization-id",
+              user: { id: "user-id" },
+              project: { id: "project-id" },
+              organization: { id: "organization-id" },
+              roles: [{ key: "platform_admin" }],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureAuthorization({
+      userId: "user-id",
+      projectId: "project-id",
+      organizationId: "organization-id",
+      roleKeys: [],
+    });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization",
+    );
+    expect(requestBody(request, 1)).toEqual({ id: "authorization-id" });
+  });
 });
 
 describe("ZitadelClient product login presentation", () => {

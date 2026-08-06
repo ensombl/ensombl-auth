@@ -608,6 +608,16 @@ export class ZitadelClient {
         authorization.project?.id === input.projectId &&
         authorization.organization?.id === input.organizationId,
     );
+    if (input.roleKeys.length === 0) {
+      if (current) {
+        await this.#request("/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization", {
+          method: "POST",
+          connect: true,
+          body: { id: current.id },
+        });
+      }
+      return;
+    }
     if (!current) {
       await this.#request("/zitadel.authorization.v2.AuthorizationService/CreateAuthorization", {
         method: "POST",

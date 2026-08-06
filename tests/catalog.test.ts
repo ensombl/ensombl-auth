@@ -172,13 +172,16 @@ describe("product catalog", () => {
                 id: "tenant",
                 name: "Local tenant",
               },
-              user: {
-                id: "user",
-                email: "developer@example.com",
-                display_name: "Local developer",
-                password: "Local-password-2026!",
-                roles: [],
-              },
+              users: [
+                {
+                  key: "developer",
+                  id: "user",
+                  email: "developer@example.com",
+                  display_name: "Local developer",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+              ],
               service_accounts: [
                 {
                   id: "machine",
@@ -192,5 +195,42 @@ describe("product catalog", () => {
         ],
       }),
     ).toThrow(/Unknown local service-account role/u);
+  });
+
+  it.each([
+    ["key", { key: "developer-2", id: "user-1", email: "one@example.com" }],
+    ["id", { key: "developer-1", id: "user-2", email: "one@example.com" }],
+    ["email", { key: "developer-1", id: "user-1", email: "TWO@example.com" }],
+  ] as const)("rejects a duplicate local user %s", (field, firstUser) => {
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            local_fixture: {
+              tenant: { id: "tenant", name: "Local tenant" },
+              users: [
+                {
+                  ...firstUser,
+                  display_name: "First user",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+                {
+                  key: "developer-2",
+                  id: "user-2",
+                  email: "two@example.com",
+                  display_name: "Second user",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+              ],
+              service_accounts: [],
+            },
+          },
+        ],
+      }),
+    ).toThrow(new RegExp(`Duplicate local user ${field}`, "u"));
   });
 });
