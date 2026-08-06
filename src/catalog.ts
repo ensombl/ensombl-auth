@@ -71,6 +71,15 @@ const serviceAccountSchema = z.object({
   roles: z.array(roleSchema.shape.key).default([]),
 });
 
+const localHumanSchema = z.object({
+  key: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
+  id: z.string().min(1).max(200),
+  email: z.email(),
+  display_name: z.string().min(1).max(200),
+  password: z.string().min(12).max(200),
+  roles: z.array(roleSchema.shape.key).default([]),
+});
+
 const productSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/),
   display_name: z.string().min(1).max(200),
@@ -91,13 +100,7 @@ const productSchema = z.object({
         id: z.string().min(1).max(200),
         name: z.string().min(1).max(200),
       }),
-      user: z.object({
-        id: z.string().min(1).max(200),
-        email: z.email(),
-        display_name: z.string().min(1).max(200),
-        password: z.string().min(12).max(200),
-        roles: z.array(roleSchema.shape.key).default([]),
-      }),
+      users: z.array(localHumanSchema).min(1),
       service_accounts: z.array(serviceAccountSchema).default([]),
     })
     .optional(),
@@ -130,13 +133,32 @@ export const catalogSchema = z
       productIds.add(product.id);
 
       const roles = new Set(product.roles.map((role) => role.key));
-      for (const role of product.local_fixture?.user.roles ?? []) {
-        if (!roles.has(role)) {
-          context.addIssue({
-            code: "custom",
-            message: `Unknown local user role: ${role}`,
-            path: ["products", productIndex, "local_fixture", "user", "roles"],
-          });
+      const localUserKeys = new Set<string>();
+      const localUserIds = new Set<string>();
+      const localUserEmails = new Set<string>();
+      for (const [userIndex, user] of (product.local_fixture?.users ?? []).entries()) {
+        for (const role of user.roles) {
+          if (!roles.has(role)) {
+            context.addIssue({
+              code: "custom",
+              message: `Unknown local user role: ${role}`,
+              path: ["products", productIndex, "local_fixture", "users", userIndex, "roles"],
+            });
+          }
+        }
+        for (const [values, value, field] of [
+          [localUserKeys, user.key, "key"],
+          [localUserIds, user.id, "id"],
+          [localUserEmails, user.email.toLowerCase(), "email"],
+        ] as const) {
+          if (values.has(value)) {
+            context.addIssue({
+              code: "custom",
+              message: `Duplicate local user ${field}: ${value}`,
+              path: ["products", productIndex, "local_fixture", "users", userIndex, field],
+            });
+          }
+          values.add(value);
         }
       }
       const serviceAccountIds = new Set<string>();

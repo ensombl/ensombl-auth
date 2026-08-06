@@ -18,8 +18,59 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
     };
     accessTokenRoleAssertion?: boolean;
     idTokenRoleAssertion?: boolean;
+    username?: string;
+    human?: {
+      profile?: { givenName?: string; familyName?: string; displayName?: string };
+      email?: { email?: string; isVerified?: boolean };
+    };
   };
 }
+
+describe("ZitadelClient human users", () => {
+  it("reads human fixture metadata and updates it through the v2 API", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          user: {
+            username: "old@example.com",
+            human: {
+              profile: { displayName: "Old name" },
+              email: { email: "old@example.com" },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.getUser("user-id")).resolves.toEqual({
+      id: "user-id",
+      username: "old@example.com",
+      email: "old@example.com",
+      displayName: "Old name",
+    });
+    await client.updateHumanUser({
+      userId: "user-id",
+      email: "new@example.com",
+      displayName: "New Name",
+    });
+
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe("/v2/users/user-id");
+    expect(request.mock.calls[1]?.[1]?.method).toBe("PATCH");
+    expect(requestBody(request, 1)).toEqual({
+      username: "new@example.com",
+      human: {
+        profile: {
+          givenName: "New",
+          familyName: "Name",
+          displayName: "New Name",
+        },
+        email: { email: "new@example.com", isVerified: true },
+      },
+    });
+  });
+});
 
 describe("ZitadelClient OIDC applications", () => {
   it("creates applications with the product Login V2 base URI", async () => {
@@ -213,6 +264,39 @@ describe("ZitadelClient project authorization", () => {
       authorizationRequired: false,
       projectAccessRequired: false,
     });
+  });
+
+  it("removes a role assignment when no product roles are declared", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          authorizations: [
+            {
+              id: "authorization-id",
+              user: { id: "user-id" },
+              project: { id: "project-id" },
+              organization: { id: "organization-id" },
+              roles: [{ key: "platform_admin" }],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureAuthorization({
+      userId: "user-id",
+      projectId: "project-id",
+      organizationId: "organization-id",
+      roleKeys: [],
+    });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization",
+    );
+    expect(requestBody(request, 1)).toEqual({ id: "authorization-id" });
   });
 });
 

@@ -10,6 +10,46 @@ interface BootstrapOptions {
   readonly rotateMissingSecrets: boolean;
 }
 
+export async function provisionLocalHumans(
+  client: ZitadelClient,
+  users: NonNullable<Product["local_fixture"]>["users"],
+  projectId: string,
+  ownerOrganizationId: string,
+): Promise<NonNullable<RuntimeConfig["products"][string]["localFixture"]>["users"]> {
+  const runtimeUsers: NonNullable<RuntimeConfig["products"][string]["localFixture"]>["users"] = {};
+  for (const user of users) {
+    const existingUser = await client.getUser(user.id);
+    if (!existingUser) {
+      await client.createHumanUser({
+        organizationId: ownerOrganizationId,
+        userId: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        password: user.password,
+        passwordChangeRequired: false,
+      });
+    } else if (
+      existingUser.username !== user.email ||
+      existingUser.email !== user.email ||
+      existingUser.displayName !== user.display_name
+    ) {
+      await client.updateHumanUser({
+        userId: user.id,
+        email: user.email,
+        displayName: user.display_name,
+      });
+    }
+    await client.ensureAuthorization({
+      userId: user.id,
+      projectId,
+      organizationId: ownerOrganizationId,
+      roleKeys: user.roles,
+    });
+    runtimeUsers[user.key] = { userId: user.id, email: user.email };
+  }
+  return runtimeUsers;
+}
+
 function findProductRuntime(
   existing: RuntimeConfig | undefined,
   productId: string,
@@ -345,25 +385,12 @@ export async function bootstrapCatalog(
 
     if (product.local_fixture) {
       const fixture = product.local_fixture;
-      const existingUser = await client.getUser(fixture.user.id);
-      if (!existingUser) {
-        await client.createHumanUser({
-          organizationId: ownerOrganization.id,
-          userId: fixture.user.id,
-          email: fixture.user.email,
-          displayName: fixture.user.display_name,
-          password: fixture.user.password,
-          passwordChangeRequired: false,
-        });
-      }
-      if (fixture.user.roles.length > 0) {
-        await client.ensureAuthorization({
-          userId: fixture.user.id,
-          projectId,
-          organizationId: ownerOrganization.id,
-          roleKeys: fixture.user.roles,
-        });
-      }
+      const localUsers = await provisionLocalHumans(
+        client,
+        fixture.users,
+        projectId,
+        ownerOrganization.id,
+      );
       const serviceAccounts: NonNullable<RuntimeConfig["products"][string]["serviceAccounts"]> = {};
       if (fixture.service_accounts.length > 0) productRuntime.serviceAccounts = serviceAccounts;
       for (const account of fixture.service_accounts) {
@@ -403,8 +430,7 @@ export async function bootstrapCatalog(
       }
       productRuntime.localFixture = {
         tenantId: fixture.tenant.id,
-        userId: fixture.user.id,
-        email: fixture.user.email,
+        users: localUsers,
       };
     }
 

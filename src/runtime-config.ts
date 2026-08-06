@@ -44,8 +44,13 @@ export interface ProductRuntime {
   >;
   localFixture?: {
     tenantId: string;
-    userId: string;
-    email: string;
+    users: Record<
+      string,
+      {
+        userId: string;
+        email: string;
+      }
+    >;
   };
 }
 
