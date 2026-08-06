@@ -26,7 +26,7 @@ export async function provisionLocalHumans(
         email: user.email,
         displayName: user.display_name,
         password: user.password,
-        passwordChangeRequired: false,
+        passwordChangeRequired: user.password_change_required,
       });
     } else if (
       existingUser.username !== user.email ||

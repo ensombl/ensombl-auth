@@ -77,6 +77,7 @@ const localHumanSchema = z.object({
   email: z.email(),
   display_name: z.string().min(1).max(200),
   password: z.string().min(12).max(200),
+  password_change_required: z.boolean().default(false),
   roles: z.array(roleSchema.shape.key).default([]),
 });
 

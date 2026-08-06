@@ -22,11 +22,35 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
     human?: {
       profile?: { givenName?: string; familyName?: string; displayName?: string };
       email?: { email?: string; isVerified?: boolean };
+      password?: { password?: string; changeRequired?: boolean };
     };
   };
 }
 
 describe("ZitadelClient human users", () => {
+  it("creates a human fixture with its requested password-change state", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ id: "user-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.createHumanUser({
+      organizationId: "organization-id",
+      userId: "user-id",
+      email: "member@example.com",
+      displayName: "Fixture Member",
+      password: "Local-password-2026!",
+      passwordChangeRequired: true,
+    });
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe("/v2/users/new");
+    expect(requestBody(request)).toMatchObject({
+      human: {
+        password: { password: "Local-password-2026!", changeRequired: true },
+      },
+    });
+  });
+
   it("reads human fixture metadata and updates it through the v2 API", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
