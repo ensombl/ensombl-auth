@@ -28,6 +28,16 @@ export async function provisionLocalHumans(
         password: user.password,
         passwordChangeRequired: false,
       });
+    } else if (
+      existingUser.username !== user.email ||
+      existingUser.email !== user.email ||
+      existingUser.displayName !== user.display_name
+    ) {
+      await client.updateHumanUser({
+        userId: user.id,
+        email: user.email,
+        displayName: user.display_name,
+      });
     }
     await client.ensureAuthorization({
       userId: user.id,

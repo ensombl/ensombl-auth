@@ -23,17 +23,24 @@ const users: NonNullable<Product["local_fixture"]>["users"] = [
 ];
 
 describe("local human fixtures", () => {
-  it("creates missing users, preserves existing users, and returns no passwords", async () => {
+  it("creates missing users, preserves matching users, and returns no passwords", async () => {
     const client = {
       createHumanUser: vi.fn().mockResolvedValue(undefined),
+      updateHumanUser: vi.fn().mockResolvedValue(undefined),
       ensureAuthorization: vi.fn().mockResolvedValue(undefined),
-      getUser: vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({ id: "existing" }),
+      getUser: vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+        id: "user-platform-admin",
+        username: "admin@example.com",
+        email: "admin@example.com",
+        displayName: "Platform Admin",
+      }),
     } as unknown as ZitadelClient;
 
     const runtime = await provisionLocalHumans(client, users, "project-id", "organization-id");
 
     expect(client.getUser).toHaveBeenCalledTimes(2);
     expect(client.createHumanUser).toHaveBeenCalledTimes(1);
+    expect(client.updateHumanUser).not.toHaveBeenCalled();
     expect(client.createHumanUser).toHaveBeenCalledWith({
       organizationId: "organization-id",
       userId: "user-owner",
@@ -60,5 +67,42 @@ describe("local human fixtures", () => {
       "platform-admin": { userId: "user-platform-admin", email: "admin@example.com" },
     });
     expect(JSON.stringify(runtime)).not.toContain("Local-password");
+  });
+
+  it("converges an existing fixture user's login, email, and profile", async () => {
+    const client = {
+      createHumanUser: vi.fn().mockResolvedValue(undefined),
+      updateHumanUser: vi.fn().mockResolvedValue(undefined),
+      ensureAuthorization: vi.fn().mockResolvedValue(undefined),
+      getUser: vi
+        .fn()
+        .mockResolvedValueOnce({
+          id: "user-owner",
+          username: "owner@example.com",
+          email: "owner@example.com",
+          displayName: "Old display name",
+        })
+        .mockResolvedValueOnce({
+          id: "user-platform-admin",
+          username: "old-admin@example.com",
+          email: "old-admin@example.com",
+          displayName: "Platform Admin",
+        }),
+    } as unknown as ZitadelClient;
+
+    await provisionLocalHumans(client, users, "project-id", "organization-id");
+
+    expect(client.createHumanUser).not.toHaveBeenCalled();
+    expect(client.updateHumanUser).toHaveBeenCalledTimes(2);
+    expect(client.updateHumanUser).toHaveBeenNthCalledWith(1, {
+      userId: "user-owner",
+      email: "owner@example.com",
+      displayName: "Tenant Owner",
+    });
+    expect(client.updateHumanUser).toHaveBeenNthCalledWith(2, {
+      userId: "user-platform-admin",
+      email: "admin@example.com",
+      displayName: "Platform Admin",
+    });
   });
 });
