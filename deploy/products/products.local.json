@@ -111,6 +111,15 @@
             "display_name": "FreightClaims Platform Admin",
             "password": "FreightClaims-Dev-2026!",
             "roles": ["platform_admin"]
+          },
+          {
+            "key": "password-change-member",
+            "id": "01900000-0000-7000-8000-000000000107",
+            "email": "password-change-member@freightclaims.test",
+            "display_name": "FreightClaims Password Change Member",
+            "password": "FreightClaims-Dev-2026!",
+            "password_change_required": true,
+            "roles": []
           }
         ],
         "service_accounts": [

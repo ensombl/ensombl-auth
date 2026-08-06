@@ -197,6 +197,41 @@ describe("product catalog", () => {
     ).toThrow(/Unknown local service-account role/u);
   });
 
+  it("defaults local human password changes to not required and accepts an explicit requirement", () => {
+    const fixture = {
+      tenant: { id: "tenant", name: "Local tenant" },
+      users: [
+        {
+          key: "default-password",
+          id: "user-default",
+          email: "default@example.com",
+          display_name: "Default password",
+          password: "Local-password-2026!",
+          roles: [],
+        },
+        {
+          key: "required-password-change",
+          id: "user-required",
+          email: "required@example.com",
+          display_name: "Required password change",
+          password: "Local-password-2026!",
+          password_change_required: true,
+          roles: [],
+        },
+      ],
+      service_accounts: [],
+    };
+    const catalog = catalogSchema.parse({
+      ...baseCatalog,
+      products: [{ ...baseCatalog.products[0], local_fixture: fixture }],
+    });
+
+    expect(catalog.products[0]?.local_fixture?.users).toMatchObject([
+      { password_change_required: false },
+      { password_change_required: true },
+    ]);
+  });
+
   it.each([
     ["key", { key: "developer-2", id: "user-1", email: "one@example.com" }],
     ["id", { key: "developer-1", id: "user-2", email: "one@example.com" }],

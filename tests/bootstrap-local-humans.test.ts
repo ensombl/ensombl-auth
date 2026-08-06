@@ -3,6 +3,16 @@ import { provisionLocalHumans } from "../src/bootstrap.js";
 import type { Product } from "../src/catalog.js";
 import type { ZitadelClient } from "../src/zitadel.js";
 
+const passwordChangeUser: NonNullable<Product["local_fixture"]>["users"][number] = {
+  key: "platform-admin",
+  id: "user-platform-admin",
+  email: "admin@example.com",
+  display_name: "Platform Admin",
+  password: "Local-password-2026!",
+  password_change_required: true,
+  roles: ["platform_admin"],
+};
+
 const users: NonNullable<Product["local_fixture"]>["users"] = [
   {
     key: "tenant-owner",
@@ -10,16 +20,10 @@ const users: NonNullable<Product["local_fixture"]>["users"] = [
     email: "owner@example.com",
     display_name: "Tenant Owner",
     password: "Local-password-2026!",
+    password_change_required: false,
     roles: [],
   },
-  {
-    key: "platform-admin",
-    id: "user-platform-admin",
-    email: "admin@example.com",
-    display_name: "Platform Admin",
-    password: "Local-password-2026!",
-    roles: ["platform_admin"],
-  },
+  passwordChangeUser,
 ];
 
 describe("local human fixtures", () => {
@@ -62,11 +66,29 @@ describe("local human fixtures", () => {
       organizationId: "organization-id",
       roleKeys: ["platform_admin"],
     });
+    expect(client.createHumanUser).toHaveBeenCalledWith(
+      expect.objectContaining({ passwordChangeRequired: false }),
+    );
     expect(runtime).toEqual({
       "tenant-owner": { userId: "user-owner", email: "owner@example.com" },
       "platform-admin": { userId: "user-platform-admin", email: "admin@example.com" },
     });
     expect(JSON.stringify(runtime)).not.toContain("Local-password");
+  });
+
+  it("passes a local user's forced-password-change setting when creating it", async () => {
+    const client = {
+      createHumanUser: vi.fn().mockResolvedValue(undefined),
+      updateHumanUser: vi.fn().mockResolvedValue(undefined),
+      ensureAuthorization: vi.fn().mockResolvedValue(undefined),
+      getUser: vi.fn().mockResolvedValue(undefined),
+    } as unknown as ZitadelClient;
+
+    await provisionLocalHumans(client, [passwordChangeUser], "project-id", "organization-id");
+
+    expect(client.createHumanUser).toHaveBeenCalledWith(
+      expect.objectContaining({ passwordChangeRequired: true }),
+    );
   });
 
   it("converges an existing fixture user's login, email, and profile", async () => {
