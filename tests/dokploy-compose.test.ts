@@ -37,7 +37,7 @@ describe("Dokploy Compose ownership", () => {
     expect(productLoginProxy).toContain("limit_req zone=login_name_actions burst=5 nodelay;");
     expect(productLoginProxy).toContain("resolver 127.0.0.11 valid=10s ipv6=off;");
     expect(productLoginProxy).toContain("proxy_pass http://$zitadel_login_upstream;");
-    expect(productLoginProxy).toContain("location = /ui/v2/login");
-    expect(productLoginProxy).toContain("return 308 /ui/v2/login/;");
+    expect(productLoginProxy).toContain("location /ui/v2/login {");
+    expect(productLoginProxy).not.toContain("return 308 /ui/v2/login/;");
   });
 });
