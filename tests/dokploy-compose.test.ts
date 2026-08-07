@@ -27,9 +27,13 @@ describe("Dokploy Compose ownership", () => {
     expect(productLoginProxy).toContain(
       "limit_req_zone $login_name_limit_key zone=login_name_actions:10m rate=10r/m;",
     );
-    expect(productLoginProxy).toContain("POST $login_client_address;");
+    expect(productLoginProxy).toContain("POST $binary_remote_addr;");
+    expect(productLoginProxy).not.toContain("$http_cf_connecting_ip");
+    expect(productLoginProxy).toContain("set_real_ip_from 173.245.48.0/20;");
     expect(productLoginProxy).toContain("location ~ ^/ui/v2/login/loginname/?$");
     expect(productLoginProxy).toContain("limit_req zone=login_name_actions burst=5 nodelay;");
     expect(productLoginProxy).toContain("proxy_pass http://zitadel-login:3000;");
+    expect(productLoginProxy).toContain("location = /ui/v2/login");
+    expect(productLoginProxy).toContain("return 308 /ui/v2/login/;");
   });
 });
