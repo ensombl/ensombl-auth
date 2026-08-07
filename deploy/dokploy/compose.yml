@@ -102,8 +102,19 @@ services:
       - ./product-login-root.nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - auth-internal
+    depends_on:
+      zitadel-login:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "nginx", "-t"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8080/ui/v2/login/healthy",
+        ]
       interval: 10s
       timeout: 5s
       retries: 20
