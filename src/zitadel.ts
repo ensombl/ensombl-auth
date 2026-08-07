@@ -127,7 +127,7 @@ function oidcApplicationConfiguration(input: OidcApplicationConfiguration, roleA
     grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
     applicationType: "OIDC_APP_TYPE_WEB",
     authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-    postLogoutRedirectUris: [`${input.baseUrl}/`],
+    postLogoutRedirectUris: [`${input.baseUrl}/auth/signed-out`],
     version: "OIDC_VERSION_1_0",
     developmentMode: input.developmentMode,
     accessTokenType: "OIDC_TOKEN_TYPE_JWT",

@@ -11,10 +11,12 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
   return JSON.parse(init.body) as {
     appType?: string;
     loginVersion?: { loginV2?: { baseUri?: string } };
+    postLogoutRedirectUris?: string[];
     oidcConfiguration?: {
       loginVersion?: { loginV2?: { baseUri?: string } };
       accessTokenRoleAssertion?: boolean;
       idTokenRoleAssertion?: boolean;
+      postLogoutRedirectUris?: string[];
     };
     accessTokenRoleAssertion?: boolean;
     idTokenRoleAssertion?: boolean;
@@ -124,6 +126,7 @@ describe("ZitadelClient OIDC applications", () => {
     expect(requestBody(request).oidcConfiguration).toMatchObject({
       accessTokenRoleAssertion: false,
       idTokenRoleAssertion: false,
+      postLogoutRedirectUris: ["https://app.freightcheck.io/auth/signed-out"],
     });
   });
 
@@ -147,6 +150,7 @@ describe("ZitadelClient OIDC applications", () => {
     expect(requestBody(request)).toMatchObject({
       accessTokenRoleAssertion: false,
       idTokenRoleAssertion: false,
+      postLogoutRedirectUris: ["https://app.freightclaims.ensombl.io/auth/signed-out"],
     });
     expect(request.mock.calls[0]?.[1]?.method).toBe("PUT");
     expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
