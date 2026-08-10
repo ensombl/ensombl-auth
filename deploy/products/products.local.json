@@ -42,7 +42,16 @@
         "disable_login_with_email": false,
         "disable_login_with_phone": true
       },
-      "roles": [],
+      "roles": [
+        {
+          "key": "platform_support",
+          "display_name": "Platform Support"
+        },
+        {
+          "key": "platform_admin",
+          "display_name": "Platform Administrator"
+        }
+      ],
       "migration_service_account": {
         "id": "beb5b9f0-e57e-4474-952e-ad539029236e",
         "username": "freightclaims-local-migration",
@@ -54,13 +63,65 @@
           "id": "01900000-0000-7000-8000-000000000001",
           "name": "FreightClaims Local Development"
         },
-        "user": {
-          "id": "01900000-0000-7000-8000-000000000002",
-          "email": "developer@freightclaims.test",
-          "display_name": "FreightClaims Developer",
-          "password": "FreightClaims-Dev-2026!",
-          "roles": []
-        },
+        "users": [
+          {
+            "key": "tenant-owner",
+            "id": "01900000-0000-7000-8000-000000000002",
+            "email": "developer@freightclaims.test",
+            "display_name": "FreightClaims Tenant Owner",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": []
+          },
+          {
+            "key": "tenant-admin",
+            "id": "01900000-0000-7000-8000-000000000102",
+            "email": "admin@freightclaims.test",
+            "display_name": "FreightClaims Tenant Admin",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": []
+          },
+          {
+            "key": "tenant-member",
+            "id": "01900000-0000-7000-8000-000000000103",
+            "email": "member@freightclaims.test",
+            "display_name": "FreightClaims Tenant Member",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": []
+          },
+          {
+            "key": "multi-tenant-member",
+            "id": "01900000-0000-7000-8000-000000000104",
+            "email": "multi-tenant@freightclaims.test",
+            "display_name": "FreightClaims Multi-tenant Member",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": []
+          },
+          {
+            "key": "platform-support",
+            "id": "01900000-0000-7000-8000-000000000105",
+            "email": "support@freightclaims.test",
+            "display_name": "FreightClaims Platform Support",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": ["platform_support"]
+          },
+          {
+            "key": "platform-admin",
+            "id": "01900000-0000-7000-8000-000000000106",
+            "email": "platform-admin@freightclaims.test",
+            "display_name": "FreightClaims Platform Admin",
+            "password": "FreightClaims-Dev-2026!",
+            "roles": ["platform_admin"]
+          },
+          {
+            "key": "password-change-member",
+            "id": "01900000-0000-7000-8000-000000000107",
+            "email": "password-change-member@freightclaims.test",
+            "display_name": "FreightClaims Password Change Member",
+            "password": "FreightClaims-Dev-2026!",
+            "password_change_required": true,
+            "roles": []
+          }
+        ],
         "service_accounts": [
           {
             "id": "01900000-0000-7000-8000-000000002001",

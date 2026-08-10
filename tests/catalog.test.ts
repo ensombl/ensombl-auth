@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { catalogSchema, rolesForProduct, secretPrefix } from "../src/catalog.js";
 
@@ -49,6 +50,26 @@ const baseCatalog = {
 };
 
 describe("product catalog", () => {
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("declares only FreightClaims global operator roles in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+    if (!freightclaims) throw new Error("Expected FreightClaims product");
+    expect(rolesForProduct(catalog, freightclaims)).toEqual([
+      { key: "platform_support", display_name: "Platform Support" },
+      { key: "platform_admin", display_name: "Platform Administrator" },
+    ]);
+    for (const product of catalog.products.filter(
+      (candidate) => candidate.id !== "freightclaims",
+    )) {
+      expect(rolesForProduct(catalog, product)).toEqual([]);
+    }
+  });
+
   it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];
@@ -151,13 +172,16 @@ describe("product catalog", () => {
                 id: "tenant",
                 name: "Local tenant",
               },
-              user: {
-                id: "user",
-                email: "developer@example.com",
-                display_name: "Local developer",
-                password: "Local-password-2026!",
-                roles: [],
-              },
+              users: [
+                {
+                  key: "developer",
+                  id: "user",
+                  email: "developer@example.com",
+                  display_name: "Local developer",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+              ],
               service_accounts: [
                 {
                   id: "machine",
@@ -171,5 +195,77 @@ describe("product catalog", () => {
         ],
       }),
     ).toThrow(/Unknown local service-account role/u);
+  });
+
+  it("defaults local human password changes to not required and accepts an explicit requirement", () => {
+    const fixture = {
+      tenant: { id: "tenant", name: "Local tenant" },
+      users: [
+        {
+          key: "default-password",
+          id: "user-default",
+          email: "default@example.com",
+          display_name: "Default password",
+          password: "Local-password-2026!",
+          roles: [],
+        },
+        {
+          key: "required-password-change",
+          id: "user-required",
+          email: "required@example.com",
+          display_name: "Required password change",
+          password: "Local-password-2026!",
+          password_change_required: true,
+          roles: [],
+        },
+      ],
+      service_accounts: [],
+    };
+    const catalog = catalogSchema.parse({
+      ...baseCatalog,
+      products: [{ ...baseCatalog.products[0], local_fixture: fixture }],
+    });
+
+    expect(catalog.products[0]?.local_fixture?.users).toMatchObject([
+      { password_change_required: false },
+      { password_change_required: true },
+    ]);
+  });
+
+  it.each([
+    ["key", { key: "developer-2", id: "user-1", email: "one@example.com" }],
+    ["id", { key: "developer-1", id: "user-2", email: "one@example.com" }],
+    ["email", { key: "developer-1", id: "user-1", email: "TWO@example.com" }],
+  ] as const)("rejects a duplicate local user %s", (field, firstUser) => {
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            local_fixture: {
+              tenant: { id: "tenant", name: "Local tenant" },
+              users: [
+                {
+                  ...firstUser,
+                  display_name: "First user",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+                {
+                  key: "developer-2",
+                  id: "user-2",
+                  email: "two@example.com",
+                  display_name: "Second user",
+                  password: "Local-password-2026!",
+                  roles: [],
+                },
+              ],
+              service_accounts: [],
+            },
+          },
+        ],
+      }),
+    ).toThrow(new RegExp(`Duplicate local user ${field}`, "u"));
   });
 });

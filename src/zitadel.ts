@@ -89,6 +89,22 @@ interface LoginPolicy {
   readonly isDefault?: boolean;
 }
 
+interface HumanUser {
+  readonly id: string;
+  readonly username: string | undefined;
+  readonly email: string | undefined;
+  readonly displayName: string | undefined;
+}
+
+function humanProfile(displayName: string) {
+  const [givenName, ...familyParts] = displayName.trim().split(/\s+/u);
+  return {
+    givenName: givenName || displayName,
+    familyName: familyParts.join(" ") || "-",
+    displayName,
+  };
+}
+
 interface RequestOptions {
   readonly method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   readonly body?: unknown;
@@ -111,7 +127,7 @@ function oidcApplicationConfiguration(input: OidcApplicationConfiguration, roleA
     grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE", "OIDC_GRANT_TYPE_REFRESH_TOKEN"],
     applicationType: "OIDC_APP_TYPE_WEB",
     authMethodType: "OIDC_AUTH_METHOD_TYPE_BASIC",
-    postLogoutRedirectUris: [`${input.baseUrl}/`],
+    postLogoutRedirectUris: [`${input.baseUrl}/auth/signed-out`],
     version: "OIDC_VERSION_1_0",
     developmentMode: input.developmentMode,
     accessTokenType: "OIDC_TOKEN_TYPE_JWT",
@@ -362,9 +378,9 @@ export class ZitadelClient {
         body: {
           organizationId,
           name,
-          projectRoleAssertion: true,
-          authorizationRequired: true,
-          projectAccessRequired: true,
+          projectRoleAssertion: false,
+          authorizationRequired: false,
+          projectAccessRequired: false,
           privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
         },
       },
@@ -372,15 +388,15 @@ export class ZitadelClient {
     return response.projectId;
   }
 
-  async configureProject(projectId: string, authorizationRequired: boolean): Promise<void> {
+  async configureProject(projectId: string, projectRoleAssertion: boolean): Promise<void> {
     await this.#request("/zitadel.project.v2.ProjectService/UpdateProject", {
       method: "POST",
       connect: true,
       body: {
         projectId,
-        projectRoleAssertion: authorizationRequired,
-        authorizationRequired,
-        projectAccessRequired: authorizationRequired,
+        projectRoleAssertion,
+        authorizationRequired: false,
+        projectAccessRequired: false,
         privateLabelingSetting: "PRIVATE_LABELING_SETTING_ENFORCE_PROJECT_RESOURCE_OWNER_POLICY",
       },
     });
@@ -414,18 +430,31 @@ export class ZitadelClient {
     });
   }
 
-  async getUser(userId: string): Promise<{ id: string } | undefined> {
+  async getUser(userId: string): Promise<HumanUser | undefined> {
     const response = await this.#requestRaw(`/v2/users/${encodeURIComponent(userId)}`, {
       method: "GET",
     });
     if (response.status === 404) return undefined;
-    const body = await this.#parseResponse(response);
+    const body = (await this.#parseResponse(response)) as {
+      user?: {
+        username?: string;
+        human?: {
+          email?: { email?: string };
+          profile?: { displayName?: string };
+        };
+      };
+    };
     if (!response.ok) {
       throw new Error(
         `GET /v2/users/${userId} returned ${response.status}: ${JSON.stringify(body)}`,
       );
     }
-    return { id: userId };
+    return {
+      id: userId,
+      username: body.user?.username,
+      email: body.user?.human?.email?.email,
+      displayName: body.user?.human?.profile?.displayName,
+    };
   }
 
   async createHumanUser(input: {
@@ -436,7 +465,6 @@ export class ZitadelClient {
     readonly password: string;
     readonly passwordChangeRequired: boolean;
   }): Promise<string> {
-    const [givenName, ...familyParts] = input.displayName.trim().split(/\s+/u);
     const response = await this.#request<{ id: string }>("/v2/users/new", {
       method: "POST",
       body: {
@@ -444,11 +472,7 @@ export class ZitadelClient {
         userId: input.userId,
         username: input.email,
         human: {
-          profile: {
-            givenName: givenName || input.displayName,
-            familyName: familyParts.join(" ") || "-",
-            displayName: input.displayName,
-          },
+          profile: humanProfile(input.displayName),
           email: { email: input.email, isVerified: true },
           password: {
             password: input.password,
@@ -466,7 +490,6 @@ export class ZitadelClient {
     readonly email: string;
     readonly displayName: string;
   }): Promise<string> {
-    const [givenName, ...familyParts] = input.displayName.trim().split(/\s+/u);
     const response = await this.#request<{ id: string }>("/v2/users/new", {
       method: "POST",
       body: {
@@ -474,16 +497,29 @@ export class ZitadelClient {
         userId: input.userId,
         username: input.email,
         human: {
-          profile: {
-            givenName: givenName || input.displayName,
-            familyName: familyParts.join(" ") || "-",
-            displayName: input.displayName,
-          },
+          profile: humanProfile(input.displayName),
           email: { email: input.email, isVerified: true },
         },
       },
     });
     return response.id;
+  }
+
+  async updateHumanUser(input: {
+    readonly userId: string;
+    readonly email: string;
+    readonly displayName: string;
+  }): Promise<void> {
+    await this.#request(`/v2/users/${encodeURIComponent(input.userId)}`, {
+      method: "PATCH",
+      body: {
+        username: input.email,
+        human: {
+          profile: humanProfile(input.displayName),
+          email: { email: input.email, isVerified: true },
+        },
+      },
+    });
   }
 
   async createServiceAccount(input: {
@@ -634,6 +670,16 @@ export class ZitadelClient {
         authorization.project?.id === input.projectId &&
         authorization.organization?.id === input.organizationId,
     );
+    if (input.roleKeys.length === 0) {
+      if (current) {
+        await this.#request("/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization", {
+          method: "POST",
+          connect: true,
+          body: { id: current.id },
+        });
+      }
+      return;
+    }
     if (!current) {
       await this.#request("/zitadel.authorization.v2.AuthorizationService/CreateAuthorization", {
         method: "POST",

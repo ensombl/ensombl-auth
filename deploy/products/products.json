@@ -42,7 +42,16 @@
         "disable_login_with_email": false,
         "disable_login_with_phone": true
       },
-      "roles": [],
+      "roles": [
+        {
+          "key": "platform_support",
+          "display_name": "Platform Support"
+        },
+        {
+          "key": "platform_admin",
+          "display_name": "Platform Administrator"
+        }
+      ],
       "migration_service_account": {
         "id": "afbead5c-1b97-4d63-8136-32fea6673fde",
         "username": "freightclaims-migration",

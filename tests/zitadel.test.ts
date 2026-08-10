@@ -11,15 +11,92 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
   return JSON.parse(init.body) as {
     appType?: string;
     loginVersion?: { loginV2?: { baseUri?: string } };
+    postLogoutRedirectUris?: string[];
     oidcConfiguration?: {
       loginVersion?: { loginV2?: { baseUri?: string } };
       accessTokenRoleAssertion?: boolean;
       idTokenRoleAssertion?: boolean;
+      postLogoutRedirectUris?: string[];
     };
     accessTokenRoleAssertion?: boolean;
     idTokenRoleAssertion?: boolean;
+    username?: string;
+    human?: {
+      profile?: { givenName?: string; familyName?: string; displayName?: string };
+      email?: { email?: string; isVerified?: boolean };
+      password?: { password?: string; changeRequired?: boolean };
+    };
   };
 }
+
+describe("ZitadelClient human users", () => {
+  it("creates a human fixture with its requested password-change state", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ id: "user-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.createHumanUser({
+      organizationId: "organization-id",
+      userId: "user-id",
+      email: "member@example.com",
+      displayName: "Fixture Member",
+      password: "Local-password-2026!",
+      passwordChangeRequired: true,
+    });
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe("/v2/users/new");
+    expect(requestBody(request)).toMatchObject({
+      human: {
+        password: { password: "Local-password-2026!", changeRequired: true },
+      },
+    });
+  });
+
+  it("reads human fixture metadata and updates it through the v2 API", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          user: {
+            username: "old@example.com",
+            human: {
+              profile: { displayName: "Old name" },
+              email: { email: "old@example.com" },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.getUser("user-id")).resolves.toEqual({
+      id: "user-id",
+      username: "old@example.com",
+      email: "old@example.com",
+      displayName: "Old name",
+    });
+    await client.updateHumanUser({
+      userId: "user-id",
+      email: "new@example.com",
+      displayName: "New Name",
+    });
+
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe("/v2/users/user-id");
+    expect(request.mock.calls[1]?.[1]?.method).toBe("PATCH");
+    expect(requestBody(request, 1)).toEqual({
+      username: "new@example.com",
+      human: {
+        profile: {
+          givenName: "New",
+          familyName: "Name",
+          displayName: "New Name",
+        },
+        email: { email: "new@example.com", isVerified: true },
+      },
+    });
+  });
+});
 
 describe("ZitadelClient OIDC applications", () => {
   it("creates applications with the product Login V2 base URI", async () => {
@@ -49,6 +126,7 @@ describe("ZitadelClient OIDC applications", () => {
     expect(requestBody(request).oidcConfiguration).toMatchObject({
       accessTokenRoleAssertion: false,
       idTokenRoleAssertion: false,
+      postLogoutRedirectUris: ["https://app.freightcheck.io/auth/signed-out"],
     });
   });
 
@@ -72,6 +150,7 @@ describe("ZitadelClient OIDC applications", () => {
     expect(requestBody(request)).toMatchObject({
       accessTokenRoleAssertion: false,
       idTokenRoleAssertion: false,
+      postLogoutRedirectUris: ["https://app.freightclaims.ensombl.io/auth/signed-out"],
     });
     expect(request.mock.calls[0]?.[1]?.method).toBe("PUT");
     expect(request.mock.calls[0]?.[1]?.headers).toMatchObject({
@@ -153,6 +232,22 @@ describe("ZitadelClient OIDC applications", () => {
 });
 
 describe("ZitadelClient project authorization", () => {
+  it("creates projects without requiring a role assignment for login", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ projectId: "project-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(client.createProject("organization-id", "Product")).resolves.toBe("project-id");
+
+    expect(requestBody(request)).toMatchObject({
+      organizationId: "organization-id",
+      projectRoleAssertion: false,
+      authorizationRequired: false,
+      projectAccessRequired: false,
+    });
+  });
+
   it("removes an obsolete project role and its dependent assignments", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
@@ -183,6 +278,53 @@ describe("ZitadelClient project authorization", () => {
       authorizationRequired: false,
       projectAccessRequired: false,
     });
+  });
+
+  it("asserts project roles without requiring one for login", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.configureProject("project-id", true);
+
+    expect(requestBody(request)).toMatchObject({
+      projectId: "project-id",
+      projectRoleAssertion: true,
+      authorizationRequired: false,
+      projectAccessRequired: false,
+    });
+  });
+
+  it("removes a role assignment when no product roles are declared", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({
+          authorizations: [
+            {
+              id: "authorization-id",
+              user: { id: "user-id" },
+              project: { id: "project-id" },
+              organization: { id: "organization-id" },
+              roles: [{ key: "platform_admin" }],
+            },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureAuthorization({
+      userId: "user-id",
+      projectId: "project-id",
+      organizationId: "organization-id",
+      roleKeys: [],
+    });
+
+    expect(request).toHaveBeenCalledTimes(2);
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/zitadel.authorization.v2.AuthorizationService/DeleteAuthorization",
+    );
+    expect(requestBody(request, 1)).toEqual({ id: "authorization-id" });
   });
 });
 

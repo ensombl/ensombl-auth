@@ -28,9 +28,9 @@ The catalog makes `ensombl.io` primary for the Ensombl organization and the decl
 Bootstrap removes the automatic `<organization>.auth.ensombl.io` domains generated from ZITADEL's
 external hostname.
 
-Products have no default ZITADEL project roles. A product may explicitly declare a role only when
-it represents product-wide authority rather than access to a customer tenant. FreightClaims and
-FreightCheck declare no ZITADEL project roles. Their tenant roles live only in their databases.
+Products have no default ZITADEL project roles. Each product may independently declare roles in the
+catalog. Bootstrap enables role claims when roles exist, does not require a role for login, and does
+not assign roles implicitly.
 
 ## Authentication
 
@@ -45,10 +45,11 @@ tokens. The initial IAM-owner PAT exists only inside the auth stack to apply the
 catalog and is mounted from the private bootstrap volume. Product workloads never receive it.
 
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
-seeded `patrick@ensombl.io` user is the initial instance administrator. Product management service
-accounts have no instance administrator role. They receive `ORG_USER_MANAGER` only on the product
-organization so they can invite and manage product identities. A product declaring global project
-roles may additionally require project administration; current products do not.
+configured initial administrator owns instance bootstrap. Product management service accounts have
+no instance administrator role. They receive `ORG_USER_MANAGER` only on the product organization
+so they can invite and manage product identities. Declaring global project roles never grants a
+runtime or migration account project administration; role definitions and assignments remain
+explicit control-plane operations.
 
 FreightClaims and FreightCheck each have one dedicated migration service account with
 `ORG_USER_MANAGER` on their own organization. Neither receives `IAM_OWNER`, `IAM_ORG_MANAGER`, nor
@@ -65,14 +66,9 @@ Argon2id PHC string to `POST /v2/users/new` as `hashedPassword.hash` and sets
 no-core-dump tmpfs process, immediately hashes it, and never logs or persists the plaintext. The
 FreightClaims runtime never receives the legacy password.
 
-The contract was verified against ZITADEL v4.16.2:
-
-1. the FreightClaims Argon2id PHC was accepted unchanged;
-2. the old password authenticated;
-3. ZITADEL required an immediate password change;
-4. the product database resolved the migrated subject to the correct tenant membership.
-
-ZITADEL rehashes a verified legacy password using its active password hasher.
+An imported Argon2id PHC must authenticate with the legacy password, require an immediate password
+change, and preserve the signed subject used by the product database. ZITADEL rehashes a verified
+legacy password using its active password hasher.
 
 This legacy-password contract is FreightClaims-specific. FreightCheck's migration service account
 creates new users via `POST /v2/users/new` without a legacy password import; it does not carry
@@ -102,9 +98,8 @@ name; generic account recovery has no product context and intentionally uses the
 
 ## Runtime and secrets
 
-The hosted stack contains only ZITADEL, Login V2, a one-shot Bitwarden secret loader, and a one-shot
-catalog bootstrap. PostgreSQL is a native Dokploy database service. No retired auth database or
-second runtime path is part of this stack.
+The hosted stack contains ZITADEL, Login V2, a one-shot Bitwarden secret loader, and a one-shot
+catalog bootstrap. PostgreSQL is a native Dokploy database service.
 
 Dokploy receives only `BWS_ACCESS_TOKEN` and the non-secret `BWS_PROJECT_ID`. The loader writes the
 ZITADEL master key and JSON runtime config to a private volume. ZITADEL itself has no Bitwarden
