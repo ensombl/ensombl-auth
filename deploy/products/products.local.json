@@ -181,13 +181,16 @@
           "id": "42c5e53f-00f9-4648-bcee-35a4b79f799e",
           "name": "FreightCheck Local Development"
         },
-        "user": {
-          "id": "7d869e47-2864-489e-84af-23cd4a924f91",
-          "email": "developer@freightcheck.test",
-          "display_name": "FreightCheck Developer",
-          "password": "FreightCheck-Dev-2026!",
-          "roles": []
-        }
+        "users": [
+          {
+            "key": "developer",
+            "id": "7d869e47-2864-489e-84af-23cd4a924f91",
+            "email": "developer@freightcheck.test",
+            "display_name": "FreightCheck Developer",
+            "password": "FreightCheck-Dev-2026!",
+            "roles": []
+          }
+        ]
       },
       "applications": [
         {
