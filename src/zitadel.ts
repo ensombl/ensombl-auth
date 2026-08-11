@@ -484,6 +484,27 @@ export class ZitadelClient {
     return response.id;
   }
 
+  async createHumanUserWithoutPassword(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly email: string;
+    readonly displayName: string;
+  }): Promise<string> {
+    const response = await this.#request<{ id: string }>("/v2/users/new", {
+      method: "POST",
+      body: {
+        organizationId: input.organizationId,
+        userId: input.userId,
+        username: input.email,
+        human: {
+          profile: humanProfile(input.displayName),
+          email: { email: input.email, isVerified: true },
+        },
+      },
+    });
+    return response.id;
+  }
+
   async updateHumanUser(input: {
     readonly userId: string;
     readonly email: string;

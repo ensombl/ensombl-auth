@@ -89,6 +89,11 @@
         "name": "FreightCheck",
         "domain": "freightcheck.io"
       },
+      "migration_service_account": {
+        "id": "1c7e65a1-d014-4264-afb2-bcdfa3030556",
+        "username": "freightcheck-migration",
+        "display_name": "FreightCheck migration"
+      },
       "branding": {
         "primary_color": "#7F56D9",
         "warn_color": "#D92D20",
