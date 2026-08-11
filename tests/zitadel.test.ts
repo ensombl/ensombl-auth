@@ -53,6 +53,43 @@ describe("ZitadelClient human users", () => {
     });
   });
 
+  it("creates a verified human without password credentials or recovery requests", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(Response.json({ id: "migration-user-id" }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await expect(
+      client.createHumanUserWithoutPassword({
+        organizationId: "organization-id",
+        userId: "migration-user-id",
+        email: "migrated@example.com",
+        displayName: "Migrated User",
+      }),
+    ).resolves.toBe("migration-user-id");
+
+    expect(new URL(String(request.mock.calls[0]?.[0])).pathname).toBe("/v2/users/new");
+    expect(request.mock.calls[0]?.[1]?.method).toBe("POST");
+    const body = requestBody(request);
+    expect(body).toEqual({
+      organizationId: "organization-id",
+      userId: "migration-user-id",
+      username: "migrated@example.com",
+      human: {
+        profile: {
+          givenName: "Migrated",
+          familyName: "User",
+          displayName: "Migrated User",
+        },
+        email: { email: "migrated@example.com", isVerified: true },
+      },
+    });
+    expect(body.human).not.toHaveProperty("password");
+    expect(body.human).not.toHaveProperty("hashedPassword");
+    expect(body).not.toHaveProperty("invitation");
+    expect(body).not.toHaveProperty("resetRequest");
+  });
+
   it("reads human fixture metadata and updates it through the v2 API", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
