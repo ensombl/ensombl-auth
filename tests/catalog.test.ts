@@ -70,6 +70,28 @@ describe("product catalog", () => {
     }
   });
 
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("applies the mixed-case login workaround only to FreightClaims in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
+
+    expect(freightclaims?.login_policy).toMatchObject({
+      disable_login_with_email: false,
+      disable_login_with_phone: false,
+      ignore_unknown_usernames: true,
+    });
+    expect(freightcheck?.login_policy).toMatchObject({
+      disable_login_with_email: false,
+      disable_login_with_phone: true,
+      ignore_unknown_usernames: true,
+    });
+  });
+
   it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];

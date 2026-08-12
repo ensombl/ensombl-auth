@@ -541,7 +541,7 @@ describe("ZitadelClient product login presentation", () => {
     );
   });
 
-  it("pins product login to password and recovery without self-registration", async () => {
+  it("passes the FreightClaims mixed-case login workaround to ZITADEL", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValueOnce(
@@ -580,7 +580,7 @@ describe("ZitadelClient product login presentation", () => {
       ignore_unknown_usernames: true,
       allow_domain_discovery: false,
       disable_login_with_email: false,
-      disable_login_with_phone: true,
+      disable_login_with_phone: false,
     });
 
     expect(request.mock.calls[1]?.[1]?.method).toBe("POST");
@@ -592,7 +592,7 @@ describe("ZitadelClient product login presentation", () => {
       ignoreUnknownUsernames: true,
       allowDomainDiscovery: false,
       disableLoginWithEmail: false,
-      disableLoginWithPhone: true,
+      disableLoginWithPhone: false,
     });
   });
 });
