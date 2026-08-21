@@ -44,11 +44,7 @@ export function localAuthRuntimeProfile(
   environment: Readonly<NodeJS.ProcessEnv> = process.env,
   dependencies: LocalRuntimeAllocationDependencies = {},
 ): LocalAuthRuntimeProfile {
-  const inheritedNames = [
-    "LOCAL_RUNTIME_ROOT",
-    "LOCAL_RUNTIME_ID",
-    "LOCAL_RUNTIME_PORT_BASE",
-  ] as const;
+  const inheritedNames = ["LOCAL_RUNTIME_ROOT", "LOCAL_RUNTIME_ID"] as const;
   const inherited = inheritedNames.some((name) => environment[name]?.trim());
   const allocation = inherited
     ? consumeLocalRuntimePortBlock(environment, dependencies)
@@ -105,7 +101,26 @@ export function localAuthComposeEnvironment(
     LOCAL_RUNTIME_ID: profile.id,
     LOCAL_UID: String(process.getuid?.() ?? 1_000),
   };
-  for (const name of ["DOCKER_HOST", "HOME", "PATH", "XDG_RUNTIME_DIR"] as const) {
+  for (const name of [
+    "BUILDKIT_PROGRESS",
+    "DOCKER_API_VERSION",
+    "DOCKER_CERT_PATH",
+    "DOCKER_CONFIG",
+    "DOCKER_CONTEXT",
+    "DOCKER_CUSTOM_HEADERS",
+    "DOCKER_DEFAULT_PLATFORM",
+    "DOCKER_HIDE_LEGACY_COMMANDS",
+    "DOCKER_HOST",
+    "DOCKER_TLS",
+    "DOCKER_TLS_VERIFY",
+    "HOME",
+    "HTTPS_PROXY",
+    "HTTP_PROXY",
+    "NO_COLOR",
+    "NO_PROXY",
+    "PATH",
+    "XDG_RUNTIME_DIR",
+  ] as const) {
     const value = source[name];
     if (value !== undefined) environment[name] = value;
   }

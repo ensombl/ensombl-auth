@@ -65,13 +65,18 @@ async function waitForPath(path: string): Promise<void> {
 
 function writeLockOwner(
   lockPath: string,
-  owner: { readonly nonce: string; readonly pid: number },
+  owner: {
+    readonly nonce: string;
+    readonly pid: number;
+    readonly processInstanceId?: string;
+  },
 ): void {
   const identity = statSync(lockPath, { bigint: true });
   const completeOwner = {
     ...owner,
     device: String(identity.dev),
     inode: String(identity.ino),
+    processInstanceId: owner.processInstanceId ?? "0".repeat(64),
   };
   writeFileSync(
     resolve(
@@ -353,6 +358,23 @@ describe("local runtime allocation registry", () => {
     );
   });
 
+  it("rejects an unaligned registry base before allocating an overlapping block", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    allocateLocalRuntimePortBlock(root, {}, dependencies(registryPath));
+    const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+      reservations: { portBase: number }[];
+    };
+    const [reservation] = registry.reservations;
+    if (!reservation) throw new Error("Expected a registry reservation");
+    reservation.portBase = 16_001;
+    writeFileSync(registryPath, `${JSON.stringify(registry)}\n`, { mode: 0o600 });
+
+    expect(() => allocateLocalRuntimePortBlock(root, {}, dependencies(registryPath))).toThrow(
+      /Invalid local runtime reservation/u,
+    );
+  });
+
   it("rejects a computed allocation ID already owned by another root before writing", () => {
     const foreignRoot = temporaryRoot("foreign");
     const container = resolve(foreignRoot, "..");
@@ -442,7 +464,7 @@ describe("local runtime allocation registry", () => {
     ).toThrow(/unavailable or has diverged/u);
   });
 
-  it("recovers a lock from a dead owner and rejects a live foreign lock", () => {
+  it("recovers a dead or PID-reused lock and rejects a live or ambiguous owner", () => {
     const first = temporaryRoot("first");
     const container = resolve(first, "..");
     const staleRegistry = resolve(container, "stale.json");
@@ -451,19 +473,79 @@ describe("local runtime allocation registry", () => {
     writeLockOwner(`${staleRegistry}.lock`, {
       nonce: staleNonce,
       pid: 2_147_483_647,
+      processInstanceId: "1".repeat(64),
     });
     expect(
-      allocateLocalRuntimePortBlock(first, {}, dependencies(staleRegistry)).repositoryRoot,
+      allocateLocalRuntimePortBlock(
+        first,
+        {},
+        dependencies(staleRegistry, {
+          processInstanceId: (pid) => (pid === process.pid ? "2".repeat(64) : undefined),
+          processIsAlive: (pid) => pid === process.pid,
+        }),
+      ).repositoryRoot,
     ).toBe(first);
 
     const second = resolve(container, "second");
     mkdirSync(second);
+    const reusedRegistry = resolve(container, "reused.json");
+    const reusedNonce = "00000000-0000-4000-8000-000000000004";
+    mkdirSync(`${reusedRegistry}.lock`);
+    writeLockOwner(`${reusedRegistry}.lock`, {
+      nonce: reusedNonce,
+      pid: 123_456,
+      processInstanceId: "3".repeat(64),
+    });
+    expect(
+      allocateLocalRuntimePortBlock(
+        second,
+        {},
+        dependencies(reusedRegistry, {
+          processInstanceId: (pid) => (pid === process.pid ? "2".repeat(64) : "4".repeat(64)),
+          processIsAlive: () => true,
+        }),
+      ).repositoryRoot,
+    ).toBe(second);
+
+    const third = resolve(container, "third");
+    mkdirSync(third);
     const liveRegistry = resolve(container, "live.json");
     const liveNonce = "00000000-0000-4000-8000-000000000002";
     mkdirSync(`${liveRegistry}.lock`);
-    writeLockOwner(`${liveRegistry}.lock`, { nonce: liveNonce, pid: process.pid });
+    writeLockOwner(`${liveRegistry}.lock`, {
+      nonce: liveNonce,
+      pid: process.pid,
+      processInstanceId: "2".repeat(64),
+    });
     expect(() =>
-      allocateLocalRuntimePortBlock(second, {}, dependencies(liveRegistry, { lockTimeoutMs: 0 })),
+      allocateLocalRuntimePortBlock(
+        third,
+        {},
+        dependencies(liveRegistry, {
+          lockTimeoutMs: 0,
+          processInstanceId: () => "2".repeat(64),
+          processIsAlive: () => true,
+        }),
+      ),
+    ).toThrow(/Timed out waiting for the local runtime registry lock/u);
+
+    const ambiguousRegistry = resolve(container, "ambiguous.json");
+    mkdirSync(`${ambiguousRegistry}.lock`);
+    writeLockOwner(`${ambiguousRegistry}.lock`, {
+      nonce: "00000000-0000-4000-8000-000000000005",
+      pid: 123_457,
+      processInstanceId: "5".repeat(64),
+    });
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        third,
+        {},
+        dependencies(ambiguousRegistry, {
+          lockTimeoutMs: 0,
+          processInstanceId: (pid) => (pid === process.pid ? "2".repeat(64) : undefined),
+          processIsAlive: () => true,
+        }),
+      ),
     ).toThrow(/Timed out waiting for the local runtime registry lock/u);
   });
 

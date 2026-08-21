@@ -52,6 +52,7 @@ interface LockIdentity extends DirectoryIdentity {
 
 interface LockOwner extends LockIdentity {
   readonly pid: number;
+  readonly processInstanceId: string;
 }
 
 export interface LocalRuntimeAllocationReference {
@@ -74,6 +75,7 @@ export interface LocalRuntimeAllocationDependencies {
   readonly lockTimeoutMs?: number;
   readonly now?: () => number;
   readonly portBlockIsAvailable?: (ports: readonly number[]) => boolean;
+  readonly processInstanceId?: (pid: number) => string | undefined;
   readonly processIsAlive?: (pid: number) => boolean;
   readonly registryPath?: string;
 }
@@ -285,17 +287,21 @@ function portBlock(portBase: number): readonly number[] {
   return Array.from({ length: localRuntimePortBlockSize }, (_, offset) => portBase + offset);
 }
 
+function portBlockBaseIsValid(portBase: number): boolean {
+  return (
+    Number.isInteger(portBase) &&
+    portBase >= firstNonPrivilegedPort &&
+    portBase <= lastPortBlockBase &&
+    portBase % localRuntimePortBlockSize === 0
+  );
+}
+
 function portBlockIsStructurallyAllowed(
   portBase: number,
   ephemeralPortRange: readonly [number, number],
   reservedPorts: ReadonlySet<number>,
 ): boolean {
-  if (
-    !Number.isInteger(portBase) ||
-    portBase < firstNonPrivilegedPort ||
-    portBase > lastPortBlockBase ||
-    portBase % localRuntimePortBlockSize !== 0
-  ) {
+  if (!portBlockBaseIsValid(portBase)) {
     return false;
   }
   return portBlock(portBase).every(
@@ -317,15 +323,7 @@ function candidatePortBases(
       (_, index) => firstNonPrivilegedPort + index * localRuntimePortBlockSize,
     );
   const unique = [...new Set(candidates)].sort((left, right) => left - right);
-  if (
-    configured?.some(
-      (portBase) =>
-        !Number.isInteger(portBase) ||
-        portBase < firstNonPrivilegedPort ||
-        portBase > lastPortBlockBase ||
-        portBase % localRuntimePortBlockSize !== 0,
-    )
-  ) {
+  if (configured?.some((portBase) => !portBlockBaseIsValid(portBase))) {
     throw new Error("A configured local runtime candidate port block is invalid");
   }
   return unique.filter((portBase) =>
@@ -342,7 +340,7 @@ function validateReservation(value: unknown): LocalRuntimeReservation {
     typeof reservation.id !== "string" ||
     !/^[a-f0-9]{16}$/u.test(reservation.id) ||
     typeof reservation.portBase !== "number" ||
-    !Number.isInteger(reservation.portBase) ||
+    !portBlockBaseIsValid(reservation.portBase) ||
     typeof reservation.device !== "string" ||
     typeof reservation.inode !== "string"
   ) {
@@ -437,6 +435,63 @@ function defaultProcessIsAlive(pid: number): boolean {
   }
 }
 
+function processInstanceHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function defaultProcessInstanceId(pid: number): string | undefined {
+  if (process.platform === "linux") {
+    let stat: string;
+    let bootId: string;
+    try {
+      stat = readFileSync(`/proc/${String(pid)}/stat`, "utf8");
+      bootId = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    } catch (error) {
+      if (systemErrorCode(error) === "ENOENT") return undefined;
+      throw new Error(`Could not inspect process instance ${String(pid)}`, { cause: error });
+    }
+    const commandEnd = stat.lastIndexOf(")");
+    const startTime = commandEnd < 0 ? undefined : stat.slice(commandEnd + 2).split(" ")[19];
+    if (!startTime || !/^\d+$/u.test(startTime) || !bootId) {
+      throw new Error(`Could not inspect process instance ${String(pid)}`);
+    }
+    return processInstanceHash(`linux:${bootId}:${startTime}`);
+  }
+
+  const command =
+    process.platform === "win32"
+      ? {
+          arguments: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            `(Get-Process -Id ${String(pid)} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`,
+          ],
+          executable: resolve(
+            process.env.SystemRoot ?? "C:\\Windows",
+            "System32",
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe",
+          ),
+        }
+      : {
+          arguments: ["-o", "lstart=", "-p", String(pid)],
+          executable: "/bin/ps",
+        };
+  const result = spawnSync(command.executable, command.arguments, { encoding: "utf8" });
+  if (result.error) {
+    throw new Error(`Could not inspect process instance ${String(pid)}`, { cause: result.error });
+  }
+  const identity = result.stdout.trim();
+  if (result.status !== 0 || !identity) {
+    if (!defaultProcessIsAlive(pid)) return undefined;
+    throw new Error(`Could not inspect process instance ${String(pid)}`);
+  }
+  return processInstanceHash(`${process.platform}:${identity}`);
+}
+
 function lockOwnerFileName(owner: LockIdentity): string {
   return `owner.${owner.device}.${owner.inode}.${owner.nonce}.json`;
 }
@@ -484,6 +539,7 @@ function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
 function recoverStaleLock(
   lockPath: string,
   now: number,
+  processInstanceId: (pid: number) => string | undefined,
   processIsAlive: (pid: number) => boolean,
 ): boolean {
   let details: BigIntStats;
@@ -535,7 +591,11 @@ function recoverStaleLock(
     ) {
       throw new Error("invalid owner");
     }
-    if (processIsAlive(owner.pid)) return false;
+    if (typeof owner.processInstanceId !== "string" || !owner.processInstanceId) return false;
+    if (!processIsAlive(owner.pid)) return removeLock(lockPath, ownerIdentity);
+    const currentProcessInstanceId = processInstanceId(owner.pid);
+    if (!currentProcessInstanceId) return false;
+    if (currentProcessInstanceId === owner.processInstanceId) return false;
     return removeLock(lockPath, ownerIdentity);
   } catch (error) {
     if (
@@ -558,10 +618,15 @@ function withRegistryLock<Result>(
   ensurePrivateDirectory(dirname(registryPath));
   const lockPath = `${registryPath}.lock`;
   const now = dependencies.now ?? Date.now;
+  const processInstanceId = dependencies.processInstanceId ?? defaultProcessInstanceId;
   const processIsAlive = dependencies.processIsAlive ?? defaultProcessIsAlive;
   const deadline = now() + (dependencies.lockTimeoutMs ?? lockTimeoutMilliseconds);
   const nonce = randomUUID();
   const pid = process.pid;
+  const ownerProcessInstanceId = processInstanceId(pid);
+  if (!ownerProcessInstanceId) {
+    throw new Error(`Could not inspect current process instance ${String(pid)}`);
+  }
   let owner: LockOwner | undefined;
   while (true) {
     try {
@@ -572,6 +637,7 @@ function withRegistryLock<Result>(
         inode: String(details.ino),
         nonce,
         pid,
+        processInstanceId: ownerProcessInstanceId,
       };
       try {
         writeFileSync(
@@ -602,7 +668,7 @@ function withRegistryLock<Result>(
       break;
     } catch (error) {
       if (systemErrorCode(error) !== "EEXIST") throw error;
-      if (recoverStaleLock(lockPath, now(), processIsAlive)) continue;
+      if (recoverStaleLock(lockPath, now(), processInstanceId, processIsAlive)) continue;
       if (now() >= deadline) {
         throw new Error(`Timed out waiting for the local runtime registry lock: ${lockPath}`);
       }

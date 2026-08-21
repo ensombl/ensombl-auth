@@ -11,8 +11,10 @@ import {
 const testRoot = mkdtempSync(resolve(tmpdir(), "ensombl-auth-profile-"));
 const firstRoot = resolve(testRoot, "first");
 const secondRoot = resolve(testRoot, "second");
+const overrideRoot = resolve(testRoot, "override");
 mkdirSync(firstRoot);
 mkdirSync(secondRoot);
+mkdirSync(overrideRoot);
 const allocationDependencies = {
   candidatePortBases: [16_000, 16_016],
   ephemeralPortRange: [32_768, 60_999] as const,
@@ -39,12 +41,21 @@ describe("local runtime profile", () => {
   it("passes one profile through Compose, issuer, network, and application values", () => {
     const profile = localAuthRuntimeProfile(firstRoot, {}, allocationDependencies);
     const environment = localAuthComposeEnvironment(profile, {
+      COMPOSE_FILE: "foreign-compose.yml",
       COMPOSE_PROJECT_NAME: "foreign",
+      DOCKER_CERT_PATH: "/docker/certs",
+      DOCKER_CONFIG: "/docker/config",
+      DOCKER_CONTEXT: "remote",
+      DOCKER_TLS_VERIFY: "1",
       PATH: "/usr/bin",
     });
 
     expect(environment).toMatchObject({
       COMPOSE_PROJECT_NAME: profile.composeProject,
+      DOCKER_CERT_PATH: "/docker/certs",
+      DOCKER_CONFIG: "/docker/config",
+      DOCKER_CONTEXT: "remote",
+      DOCKER_TLS_VERIFY: "1",
       LOCAL_APPLICATION_BASE_URL: profile.applicationBaseUrl,
       LOCAL_AUTH_COMPOSE_PROJECT: profile.composeProject,
       LOCAL_AUTH_ISSUER: profile.issuer,
@@ -54,7 +65,23 @@ describe("local runtime profile", () => {
       LOCAL_RUNTIME_ID: profile.id,
       PATH: "/usr/bin",
     });
+    expect(environment.COMPOSE_FILE).toBeUndefined();
     expect(new Set([profile.proxyPort, profile.mailpitPort]).size).toBe(2);
+  });
+
+  it("treats a port-only override as a new allocation", () => {
+    const profile = localAuthRuntimeProfile(
+      overrideRoot,
+      { LOCAL_RUNTIME_PORT_BASE: "16032" },
+      {
+        ...allocationDependencies,
+        candidatePortBases: [16_032],
+        registryPath: resolve(testRoot, "override-allocations.json"),
+      },
+    );
+
+    expect(profile.allocationCreated).toBe(true);
+    expect(profile.portBase).toBe(16_032);
   });
 
   it("validates paired local catalog origins", () => {
