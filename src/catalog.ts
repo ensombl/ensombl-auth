@@ -3,6 +3,8 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import type { LocalCatalogProfile } from "./local-profile.js";
 
+const localApplicationProductId = "freightclaims";
+
 const roleSchema = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
   display_name: z.string().min(1).max(200),
@@ -291,14 +293,18 @@ export function applyLocalCatalogProfile(catalog: Catalog, profile: LocalCatalog
       ...product,
       auth_origin: profile.issuer,
       applications: product.applications.map((application) => {
-        if (application.environment !== "local") return application;
+        if (product.id !== localApplicationProductId || application.environment !== "local") {
+          return application;
+        }
         localApplications += 1;
         return { ...application, base_url: profile.applicationBaseUrl };
       }),
     })),
   };
   if (localApplications === 0) {
-    throw new Error("A local runtime profile requires at least one local product application");
+    throw new Error(
+      `A local runtime profile requires a local application for product ${localApplicationProductId}`,
+    );
   }
   return catalogSchema.parse(configured);
 }

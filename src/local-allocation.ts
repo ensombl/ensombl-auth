@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  type BigIntStats,
   chmodSync,
   lstatSync,
   mkdirSync,
@@ -22,7 +23,9 @@ const firstNonPrivilegedPort = 1_024;
 const lastPortBlockBase = 65_520;
 const lockRetryMilliseconds = 25;
 const lockTimeoutMilliseconds = 5_000;
-const incompleteLockStaleMilliseconds = 5_000;
+const invalidLockStaleMilliseconds = 5_000;
+const lockOwnerFilePattern =
+  /^owner\.([0-9]+)\.([0-9]+)\.([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.json$/u;
 const standardFreightClaimsPorts = new Set([
   3_000, 3_306, 3_310, 4_200, 11_025, 18_025, 18_080, 24_455, 28_025, 29_000, 29_001, 33_306,
   55_432, 55_433,
@@ -44,8 +47,11 @@ interface LocalRuntimeRegistry {
   readonly version: typeof allocationVersion;
 }
 
-interface LockOwner {
+interface LockIdentity extends DirectoryIdentity {
   readonly nonce: string;
+}
+
+interface LockOwner extends LockIdentity {
   readonly pid: number;
   readonly startTime: string;
 }
@@ -68,6 +74,7 @@ export interface LocalRuntimeAllocationDependencies {
   readonly listeningPorts?: () => ReadonlySet<number>;
   readonly lockTimeoutMs?: number;
   readonly now?: () => number;
+  readonly processStartTime?: (pid: number) => string | undefined;
   readonly registryPath?: string;
 }
 
@@ -312,7 +319,7 @@ function writeRegistry(path: string, registry: LocalRuntimeRegistry): void {
   }
 }
 
-function processStartTime(pid: number): string | undefined {
+function defaultProcessStartTime(pid: number): string | undefined {
   try {
     const stat = readFileSync(`/proc/${String(pid)}/stat`, "utf8");
     const fields = stat
@@ -326,47 +333,105 @@ function processStartTime(pid: number): string | undefined {
   }
 }
 
-function removeLock(lockPath: string, expectedNonce?: string): boolean {
-  const ownerPath = resolve(lockPath, "owner.json");
-  if (expectedNonce !== undefined) {
-    const owner = JSON.parse(readFileSync(ownerPath, "utf8")) as Partial<LockOwner>;
-    if (owner.nonce !== expectedNonce) return false;
+function lockOwnerFileName(owner: LockIdentity): string {
+  return `owner.${owner.device}.${owner.inode}.${owner.nonce}.json`;
+}
+
+function removeIncompleteLock(lockPath: string): boolean {
+  try {
+    rmdirSync(lockPath);
+    return true;
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return true;
+    if (systemErrorCode(error) === "ENOTEMPTY") return false;
+    throw error;
   }
-  const entries = readdirSync(lockPath);
-  if (entries.some((entry) => entry !== "owner.json")) {
+}
+
+function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
+  const expectedOwnerFile = lockOwnerFileName(expectedOwner);
+  let entries: string[];
+  try {
+    entries = readdirSync(lockPath);
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return false;
+    throw error;
+  }
+  if (entries.length === 0) return false;
+  if (entries.length !== 1) {
     throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
   }
+  if (entries[0] !== expectedOwnerFile) return false;
+  const ownerPath = resolve(lockPath, expectedOwnerFile);
   try {
     unlinkSync(ownerPath);
   } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return false;
+    throw error;
+  }
+  try {
+    rmdirSync(lockPath);
+  } catch (error) {
     if (systemErrorCode(error) !== "ENOENT") throw error;
   }
-  rmdirSync(lockPath);
   return true;
 }
 
-function recoverStaleLock(lockPath: string, now: number): boolean {
-  const details = lstatSync(lockPath);
+function recoverStaleLock(
+  lockPath: string,
+  now: number,
+  processStartTime: (pid: number) => string | undefined,
+): boolean {
+  let details: BigIntStats;
+  try {
+    details = lstatSync(lockPath, { bigint: true });
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return true;
+    throw error;
+  }
   if (!details.isDirectory() || details.isSymbolicLink()) {
     throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
   }
   const uid = process.getuid?.();
-  if (uid !== undefined && details.uid !== uid) {
+  if (uid !== undefined && details.uid !== BigInt(uid)) {
+    throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
+  }
+  const entries = readdirSync(lockPath);
+  if (entries.length === 0) return false;
+  if (entries.length !== 1) {
+    throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
+  }
+  const [ownerFile] = entries;
+  if (!ownerFile) {
+    throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
+  }
+  const ownerFileMatch = lockOwnerFilePattern.exec(ownerFile);
+  if (!ownerFileMatch?.[1] || !ownerFileMatch[2] || !ownerFileMatch[3]) {
+    throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
+  }
+  const ownerIdentity: LockIdentity = {
+    device: ownerFileMatch[1],
+    inode: ownerFileMatch[2],
+    nonce: ownerFileMatch[3],
+  };
+  if (ownerIdentity.device !== String(details.dev) || ownerIdentity.inode !== String(details.ino)) {
     throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
   }
   try {
     const owner = JSON.parse(
-      readFileSync(resolve(lockPath, "owner.json"), "utf8"),
+      readFileSync(resolve(lockPath, ownerFile), "utf8"),
     ) as Partial<LockOwner>;
     if (
       typeof owner.pid !== "number" ||
       typeof owner.startTime !== "string" ||
-      typeof owner.nonce !== "string"
+      owner.device !== ownerIdentity.device ||
+      owner.inode !== ownerIdentity.inode ||
+      owner.nonce !== ownerIdentity.nonce
     ) {
       throw new Error("invalid owner");
     }
     if (processStartTime(owner.pid) === owner.startTime) return false;
-    return removeLock(lockPath);
+    return removeLock(lockPath, ownerIdentity);
   } catch (error) {
     if (
       systemErrorCode(error) !== "ENOENT" &&
@@ -375,8 +440,8 @@ function recoverStaleLock(lockPath: string, now: number): boolean {
     ) {
       throw error;
     }
-    if (now - details.mtimeMs < incompleteLockStaleMilliseconds) return false;
-    return removeLock(lockPath);
+    if (now - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
+    return removeLock(lockPath, ownerIdentity);
   }
 }
 
@@ -388,24 +453,40 @@ function withRegistryLock<Result>(
   ensurePrivateDirectory(dirname(registryPath));
   const lockPath = `${registryPath}.lock`;
   const now = dependencies.now ?? Date.now;
+  const processStartTime = dependencies.processStartTime ?? defaultProcessStartTime;
   const deadline = now() + (dependencies.lockTimeoutMs ?? lockTimeoutMilliseconds);
-  const owner: LockOwner = {
-    nonce: randomUUID(),
-    pid: process.pid,
-    startTime: processStartTime(process.pid) ?? "unavailable",
-  };
+  const nonce = randomUUID();
+  const pid = process.pid;
+  const startTime = processStartTime(pid) ?? "unavailable";
+  let owner: LockOwner | undefined;
   while (true) {
     try {
       mkdirSync(lockPath, { mode: 0o700 });
+      const details = lstatSync(lockPath, { bigint: true });
+      const acquiredOwner: LockOwner = {
+        device: String(details.dev),
+        inode: String(details.ino),
+        nonce,
+        pid,
+        startTime,
+      };
       try {
-        writeFileSync(resolve(lockPath, "owner.json"), JSON.stringify(owner), {
-          encoding: "utf8",
-          flag: "wx",
-          mode: 0o600,
-        });
+        writeFileSync(
+          resolve(lockPath, lockOwnerFileName(acquiredOwner)),
+          JSON.stringify(acquiredOwner),
+          {
+            encoding: "utf8",
+            flag: "wx",
+            mode: 0o600,
+          },
+        );
       } catch (error) {
         try {
-          removeLock(lockPath);
+          if (!removeLock(lockPath, acquiredOwner) && !removeIncompleteLock(lockPath)) {
+            throw new Error(
+              `Local runtime registry lock ownership changed unexpectedly: ${lockPath}`,
+            );
+          }
         } catch (cleanupError) {
           throw new AggregateError(
             [error, cleanupError],
@@ -414,22 +495,24 @@ function withRegistryLock<Result>(
         }
         throw error;
       }
+      owner = acquiredOwner;
       break;
     } catch (error) {
       if (systemErrorCode(error) !== "EEXIST") throw error;
-      if (recoverStaleLock(lockPath, now())) continue;
+      if (recoverStaleLock(lockPath, now(), processStartTime)) continue;
       if (now() >= deadline) {
         throw new Error(`Timed out waiting for the local runtime registry lock: ${lockPath}`);
       }
       Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, lockRetryMilliseconds);
     }
   }
+  if (!owner) throw new Error(`Could not acquire the local runtime registry lock: ${lockPath}`);
   let result: Result;
   try {
     result = operation();
   } catch (error) {
     try {
-      if (!removeLock(lockPath, owner.nonce)) {
+      if (!removeLock(lockPath, owner)) {
         throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
       }
     } catch (cleanupError) {
@@ -440,7 +523,7 @@ function withRegistryLock<Result>(
     }
     throw error;
   }
-  if (!removeLock(lockPath, owner.nonce)) {
+  if (!removeLock(lockPath, owner)) {
     throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
   }
   return result;
@@ -539,6 +622,13 @@ export function allocateLocalRuntimePortBlock(
         writeRegistry(registryPath, { reservations, version: allocationVersion });
       }
       return allocationFromReservation(existing, registryPath, false);
+    }
+
+    const foreignIdOwner = reservations.find((reservation) => reservation.id === id);
+    if (foreignIdOwner) {
+      throw new Error(
+        `Local runtime allocation ID ${id} is already owned by ${foreignIdOwner.repositoryRoot}`,
+      );
     }
 
     const claimed = new Set(reservations.map((reservation) => reservation.portBase));

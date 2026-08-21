@@ -1,6 +1,15 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -42,6 +51,34 @@ function block(portBase: number): readonly number[] {
 
 function legacySlot(path: string): number {
   return createHash("sha256").update(resolve(path)).digest().readUInt32BE(0) % 1_800;
+}
+
+async function waitForPath(path: string): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (!existsSync(path)) {
+    if (Date.now() >= deadline) throw new Error(`Timed out waiting for test path: ${path}`);
+    await new Promise((resolveWait) => setTimeout(resolveWait, 10));
+  }
+}
+
+function writeLockOwner(
+  lockPath: string,
+  owner: { readonly nonce: string; readonly pid: number; readonly startTime: string },
+): void {
+  const identity = statSync(lockPath, { bigint: true });
+  const completeOwner = {
+    ...owner,
+    device: String(identity.dev),
+    inode: String(identity.ino),
+  };
+  writeFileSync(
+    resolve(
+      lockPath,
+      `owner.${completeOwner.device}.${completeOwner.inode}.${completeOwner.nonce}.json`,
+    ),
+    JSON.stringify(completeOwner),
+    { mode: 0o600 },
+  );
 }
 
 afterEach(() => {
@@ -143,6 +180,42 @@ describe("local runtime allocation registry", () => {
     );
   });
 
+  it("rejects a computed allocation ID already owned by another root before writing", () => {
+    const foreignRoot = temporaryRoot("foreign");
+    const container = resolve(foreignRoot, "..");
+    const requestedRoot = resolve(container, "requested");
+    mkdirSync(requestedRoot);
+    const registryPath = resolve(container, "allocations.json");
+    const foreignIdentity = statSync(foreignRoot, { bigint: true });
+    const collisionId = createHash("sha256").update(requestedRoot).digest("hex").slice(0, 16);
+    writeFileSync(
+      registryPath,
+      `${JSON.stringify({
+        reservations: [
+          {
+            device: String(foreignIdentity.dev),
+            id: collisionId,
+            inode: String(foreignIdentity.ino),
+            portBase: 16_000,
+            repositoryRoot: foreignRoot,
+          },
+        ],
+        version: 1,
+      })}\n`,
+      { mode: 0o600 },
+    );
+    const originalRegistry = readFileSync(registryPath, "utf8");
+
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        requestedRoot,
+        {},
+        dependencies(registryPath, { candidatePortBases: [16_016] }),
+      ),
+    ).toThrow(`Local runtime allocation ID ${collisionId} is already owned by ${foreignRoot}`);
+    expect(readFileSync(registryPath, "utf8")).toBe(originalRegistry);
+  });
+
   it("recovers a stale reservation only after the recorded directory and ports are gone", () => {
     const parent = temporaryRoot("first");
     const container = resolve(parent, "..");
@@ -200,12 +273,13 @@ describe("local runtime allocation registry", () => {
     const first = temporaryRoot("first");
     const container = resolve(first, "..");
     const staleRegistry = resolve(container, "stale.json");
+    const staleNonce = "00000000-0000-4000-8000-000000000001";
     mkdirSync(`${staleRegistry}.lock`);
-    writeFileSync(
-      resolve(`${staleRegistry}.lock`, "owner.json"),
-      JSON.stringify({ nonce: "stale", pid: process.pid, startTime: "not-current" }),
-      { mode: 0o600 },
-    );
+    writeLockOwner(`${staleRegistry}.lock`, {
+      nonce: staleNonce,
+      pid: process.pid,
+      startTime: "not-current",
+    });
     expect(
       allocateLocalRuntimePortBlock(first, {}, dependencies(staleRegistry)).repositoryRoot,
     ).toBe(first);
@@ -218,16 +292,156 @@ describe("local runtime allocation registry", () => {
       .slice(processStat.lastIndexOf(") ") + 2)
       .trim()
       .split(/\s+/u)[19];
+    if (!startTime) throw new Error("Expected the current process start time");
+    const liveNonce = "00000000-0000-4000-8000-000000000002";
     mkdirSync(`${liveRegistry}.lock`);
-    writeFileSync(
-      resolve(`${liveRegistry}.lock`, "owner.json"),
-      JSON.stringify({ nonce: "live", pid: process.pid, startTime }),
-      { mode: 0o600 },
-    );
+    writeLockOwner(`${liveRegistry}.lock`, { nonce: liveNonce, pid: process.pid, startTime });
     expect(() =>
       allocateLocalRuntimePortBlock(second, {}, dependencies(liveRegistry, { lockTimeoutMs: 0 })),
     ).toThrow(/Timed out waiting for the local runtime registry lock/u);
   });
+
+  it("fails closed instead of reclaiming an ownerless lock directory", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    mkdirSync(lockPath);
+
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        {},
+        dependencies(registryPath, { lockTimeoutMs: 0, now: () => Date.now() + 60_000 }),
+      ),
+    ).toThrow(/Timed out waiting for the local runtime registry lock/u);
+    expect(readdirSync(lockPath)).toEqual([]);
+  });
+
+  it("does not remove a new live lock after a competing process reclaims the stale owner", async () => {
+    const slowRoot = temporaryRoot("slow");
+    const container = resolve(slowRoot, "..");
+    const liveRoot = resolve(container, "live");
+    mkdirSync(liveRoot);
+    const registryPath = resolve(container, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    const staleNonce = "00000000-0000-4000-8000-000000000003";
+    const stalePid = 2_147_483_647;
+    mkdirSync(lockPath);
+    writeLockOwner(lockPath, { nonce: staleNonce, pid: stalePid, startTime: "dead" });
+
+    const slowObserved = resolve(container, "slow-observed");
+    const slowRelease = resolve(container, "slow-release");
+    const slowSawLive = resolve(container, "slow-saw-live");
+    const liveAcquired = resolve(container, "live-acquired");
+    const liveRelease = resolve(container, "live-release");
+    const moduleUrl = new URL("../src/local-allocation.ts", import.meta.url).href;
+    const commonSource = [
+      'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
+      `import { allocateLocalRuntimePortBlock } from ${JSON.stringify(moduleUrl)};`,
+      "const wait = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);",
+      "const processStartTime = (pid) => {",
+      "try {",
+      "const document = readFileSync('/proc/' + String(pid) + '/stat', 'utf8');",
+      "return document.slice(document.lastIndexOf(') ') + 2).trim().split(/\\s+/u)[19];",
+      "} catch (error) { if (error?.code === 'ENOENT') return undefined; throw error; }",
+      "};",
+    ];
+    const slowSource = [
+      ...commonSource,
+      "const observedStartTime = (pid) => {",
+      "if (pid === Number(process.env.TEST_STALE_PID)) {",
+      "writeFileSync(process.env.TEST_SLOW_OBSERVED, 'observed');",
+      "while (!existsSync(process.env.TEST_SLOW_RELEASE)) wait();",
+      "return undefined;",
+      "}",
+      "const startTime = processStartTime(pid);",
+      "if (pid !== process.pid) writeFileSync(process.env.TEST_SLOW_SAW_LIVE, 'live');",
+      "return startTime;",
+      "};",
+      "const allocation = allocateLocalRuntimePortBlock(process.env.TEST_RUNTIME_ROOT, {}, {",
+      "candidatePortBases: [16000, 16016], ephemeralPortRange: [32768, 60999],",
+      "listeningPorts: () => new Set(), processStartTime: observedStartTime,",
+      "registryPath: process.env.TEST_RUNTIME_REGISTRY,",
+      "});",
+      "process.stdout.write(JSON.stringify(allocation));",
+    ].join("\n");
+    const liveSource = [
+      ...commonSource,
+      "const allocation = allocateLocalRuntimePortBlock(process.env.TEST_RUNTIME_ROOT, {}, {",
+      "candidatePortBases: [16000, 16016], ephemeralPortRange: [32768, 60999],",
+      "listeningPorts: () => {",
+      "writeFileSync(process.env.TEST_LIVE_ACQUIRED, 'acquired');",
+      "while (!existsSync(process.env.TEST_LIVE_RELEASE)) wait();",
+      "return new Set();",
+      "},",
+      "registryPath: process.env.TEST_RUNTIME_REGISTRY,",
+      "});",
+      "process.stdout.write(JSON.stringify(allocation));",
+    ].join("\n");
+    const run = (source: string, runtimeRoot: string, environment: NodeJS.ProcessEnv) => {
+      const child = spawn(
+        process.execPath,
+        ["--import", "tsx", "--input-type=module", "--eval", source],
+        {
+          env: {
+            ...process.env,
+            ...environment,
+            TEST_RUNTIME_REGISTRY: registryPath,
+            TEST_RUNTIME_ROOT: runtimeRoot,
+          },
+          stdio: ["ignore", "pipe", "pipe"],
+        },
+      );
+      const result = new Promise<{ readonly portBase: number }>((resolveRun, reject) => {
+        let stdout = "";
+        let stderr = "";
+        child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
+        child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+        child.once("error", reject);
+        child.once("exit", (code) => {
+          if (code === 0) resolveRun(JSON.parse(stdout) as { readonly portBase: number });
+          else reject(new Error(stderr || `allocation child exited ${String(code)}`));
+        });
+      });
+      return { child, result };
+    };
+
+    const slow = run(slowSource, slowRoot, {
+      TEST_SLOW_OBSERVED: slowObserved,
+      TEST_SLOW_RELEASE: slowRelease,
+      TEST_SLOW_SAW_LIVE: slowSawLive,
+      TEST_STALE_PID: String(stalePid),
+    });
+    let live: ReturnType<typeof run> | undefined;
+    try {
+      await waitForPath(slowObserved);
+      live = run(liveSource, liveRoot, {
+        TEST_LIVE_ACQUIRED: liveAcquired,
+        TEST_LIVE_RELEASE: liveRelease,
+      });
+      await waitForPath(liveAcquired);
+      const [liveOwnerFile] = readdirSync(lockPath);
+      if (!liveOwnerFile) throw new Error("Expected the live lock owner file");
+      const liveOwner = JSON.parse(readFileSync(resolve(lockPath, liveOwnerFile), "utf8")) as {
+        readonly pid: number;
+      };
+      expect(liveOwner.pid).toBe(live.child.pid);
+
+      writeFileSync(slowRelease, "release");
+      await waitForPath(slowSawLive);
+      expect(readdirSync(lockPath)).toEqual([liveOwnerFile]);
+
+      writeFileSync(liveRelease, "release");
+      const allocations = await Promise.all([slow.result, live.result]);
+      expect(new Set(allocations.map((allocation) => allocation.portBase)).size).toBe(2);
+    } finally {
+      writeFileSync(slowRelease, "release");
+      writeFileSync(liveRelease, "release");
+      if (slow.child.exitCode === null) slow.child.kill();
+      if (live?.child.exitCode === null) live.child.kill();
+      await Promise.allSettled([slow.result, ...(live ? [live.result] : [])]);
+    }
+  }, 10_000);
 
   it("validates an explicit block override and rejects an active release", () => {
     const root = temporaryRoot();

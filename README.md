@@ -25,7 +25,7 @@ pnpm dev
 
 The command reserves a local profile in the shared per-user runtime registry. Product repositories
 pass the same reservation into auth instead of allocating another block. The profile scopes the
-Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and local product
+Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightClaims
 application URL.
 
 Run the repository checks with:
