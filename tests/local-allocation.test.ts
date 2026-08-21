@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -10,6 +11,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -28,7 +30,7 @@ function temporaryRoot(name = "runtime"): string {
   const parent = mkdtempSync(resolve(tmpdir(), "ensombl-auth-allocation-"));
   temporaryRoots.push(parent);
   const path = resolve(parent, name);
-  mkdirSync(path);
+  mkdirSync(path, { mode: 0o700 });
   return path;
 }
 
@@ -63,7 +65,7 @@ async function waitForPath(path: string): Promise<void> {
 
 function writeLockOwner(
   lockPath: string,
-  owner: { readonly nonce: string; readonly pid: number; readonly startTime: string },
+  owner: { readonly nonce: string; readonly pid: number },
 ): void {
   const identity = statSync(lockPath, { bigint: true });
   const completeOwner = {
@@ -88,6 +90,80 @@ afterEach(() => {
 });
 
 describe("local runtime allocation registry", () => {
+  it("never changes shared registry parent permissions", () => {
+    const root = temporaryRoot();
+    const sharedParent = resolve(root, "shared");
+    mkdirSync(sharedParent, { mode: 0o755 });
+    chmodSync(sharedParent, 0o755);
+    const sharedRegistry = resolve(sharedParent, "allocations.json");
+    const environment = { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: sharedRegistry };
+    const options: LocalRuntimeAllocationDependencies = {
+      candidatePortBases: [16_000, 16_016, 16_032, 16_048],
+      ephemeralPortRange: [32_768, 60_999],
+      listeningPorts: () => new Set(),
+    };
+    const before = statSync(sharedParent).mode & 0o777;
+
+    expect(() => allocateLocalRuntimePortBlock(root, environment, options)).toThrow(
+      /directory permissions are not private/u,
+    );
+    expect(statSync(sharedParent).mode & 0o777).toBe(before);
+    expect(existsSync(sharedRegistry)).toBe(false);
+
+    const privateRegistry = resolve(sharedParent, "freightclaims", "allocations.json");
+    const allocation = allocateLocalRuntimePortBlock(
+      root,
+      { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
+      options,
+    );
+    expect(allocation.registryPath).toBe(privateRegistry);
+    expect(statSync(sharedParent).mode & 0o777).toBe(before);
+    expect(statSync(resolve(sharedParent, "freightclaims")).mode & 0o777).toBe(0o700);
+  });
+
+  it("uses portable allocation probes without an executable PATH", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "portable", "allocations.json");
+    const originalPath = process.env.PATH;
+    process.env.PATH = "";
+    try {
+      const allocation = allocateLocalRuntimePortBlock(root, {}, { registryPath });
+      expect(allocation.portBase).toBeLessThan(32_768);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+
+  it("detects an occupied block with the portable Node TCP probe before writing", async () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "portable", "allocations.json");
+    const server = createServer();
+    await new Promise<void>((resolveListen, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", resolveListen);
+    });
+    try {
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("Expected a TCP listener");
+      const portBase = address.port - (address.port % localRuntimePortBlockSize);
+      expect(() =>
+        allocateLocalRuntimePortBlock(
+          root,
+          {},
+          {
+            candidatePortBases: [portBase],
+            ephemeralPortRange: [1_024, 1_024],
+            registryPath,
+          },
+        ),
+      ).toThrow("No complete local runtime port block is available");
+      expect(existsSync(registryPath)).toBe(false);
+    } finally {
+      await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    }
+  });
+
   it("resolves current known legacy hash collisions into disjoint complete blocks", () => {
     const fixturePairs = [
       [
@@ -277,8 +353,7 @@ describe("local runtime allocation registry", () => {
     mkdirSync(`${staleRegistry}.lock`);
     writeLockOwner(`${staleRegistry}.lock`, {
       nonce: staleNonce,
-      pid: process.pid,
-      startTime: "not-current",
+      pid: 2_147_483_647,
     });
     expect(
       allocateLocalRuntimePortBlock(first, {}, dependencies(staleRegistry)).repositoryRoot,
@@ -287,15 +362,9 @@ describe("local runtime allocation registry", () => {
     const second = resolve(container, "second");
     mkdirSync(second);
     const liveRegistry = resolve(container, "live.json");
-    const processStat = readFileSync(`/proc/${String(process.pid)}/stat`, "utf8");
-    const startTime = processStat
-      .slice(processStat.lastIndexOf(") ") + 2)
-      .trim()
-      .split(/\s+/u)[19];
-    if (!startTime) throw new Error("Expected the current process start time");
     const liveNonce = "00000000-0000-4000-8000-000000000002";
     mkdirSync(`${liveRegistry}.lock`);
-    writeLockOwner(`${liveRegistry}.lock`, { nonce: liveNonce, pid: process.pid, startTime });
+    writeLockOwner(`${liveRegistry}.lock`, { nonce: liveNonce, pid: process.pid });
     expect(() =>
       allocateLocalRuntimePortBlock(second, {}, dependencies(liveRegistry, { lockTimeoutMs: 0 })),
     ).toThrow(/Timed out waiting for the local runtime registry lock/u);
@@ -327,7 +396,7 @@ describe("local runtime allocation registry", () => {
     const staleNonce = "00000000-0000-4000-8000-000000000003";
     const stalePid = 2_147_483_647;
     mkdirSync(lockPath);
-    writeLockOwner(lockPath, { nonce: staleNonce, pid: stalePid, startTime: "dead" });
+    writeLockOwner(lockPath, { nonce: staleNonce, pid: stalePid });
 
     const slowObserved = resolve(container, "slow-observed");
     const slowRelease = resolve(container, "slow-release");
@@ -336,31 +405,29 @@ describe("local runtime allocation registry", () => {
     const liveRelease = resolve(container, "live-release");
     const moduleUrl = new URL("../src/local-allocation.ts", import.meta.url).href;
     const commonSource = [
-      'import { existsSync, readFileSync, writeFileSync } from "node:fs";',
+      'import { existsSync, writeFileSync } from "node:fs";',
       `import { allocateLocalRuntimePortBlock } from ${JSON.stringify(moduleUrl)};`,
       "const wait = () => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);",
-      "const processStartTime = (pid) => {",
-      "try {",
-      "const document = readFileSync('/proc/' + String(pid) + '/stat', 'utf8');",
-      "return document.slice(document.lastIndexOf(') ') + 2).trim().split(/\\s+/u)[19];",
-      "} catch (error) { if (error?.code === 'ENOENT') return undefined; throw error; }",
+      "const processIsAlive = (pid) => {",
+      "try { process.kill(pid, 0); return true; }",
+      "catch (error) { if (error?.code === 'ESRCH') return false; if (error?.code === 'EPERM') return true; throw error; }",
       "};",
     ];
     const slowSource = [
       ...commonSource,
-      "const observedStartTime = (pid) => {",
+      "const observedLiveness = (pid) => {",
       "if (pid === Number(process.env.TEST_STALE_PID)) {",
       "writeFileSync(process.env.TEST_SLOW_OBSERVED, 'observed');",
       "while (!existsSync(process.env.TEST_SLOW_RELEASE)) wait();",
-      "return undefined;",
+      "return false;",
       "}",
-      "const startTime = processStartTime(pid);",
+      "const alive = processIsAlive(pid);",
       "if (pid !== process.pid) writeFileSync(process.env.TEST_SLOW_SAW_LIVE, 'live');",
-      "return startTime;",
+      "return alive;",
       "};",
       "const allocation = allocateLocalRuntimePortBlock(process.env.TEST_RUNTIME_ROOT, {}, {",
       "candidatePortBases: [16000, 16016], ephemeralPortRange: [32768, 60999],",
-      "listeningPorts: () => new Set(), processStartTime: observedStartTime,",
+      "listeningPorts: () => new Set(), processIsAlive: observedLiveness,",
       "registryPath: process.env.TEST_RUNTIME_REGISTRY,",
       "});",
       "process.stdout.write(JSON.stringify(allocation));",

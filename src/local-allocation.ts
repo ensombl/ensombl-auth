@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   type BigIntStats,
-  chmodSync,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -24,6 +23,7 @@ const lastPortBlockBase = 65_520;
 const lockRetryMilliseconds = 25;
 const lockTimeoutMilliseconds = 5_000;
 const invalidLockStaleMilliseconds = 5_000;
+const portableEphemeralPortRange = [32_768, 65_535] as const;
 const lockOwnerFilePattern =
   /^owner\.([0-9]+)\.([0-9]+)\.([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.json$/u;
 const standardFreightClaimsPorts = new Set([
@@ -53,7 +53,6 @@ interface LockIdentity extends DirectoryIdentity {
 
 interface LockOwner extends LockIdentity {
   readonly pid: number;
-  readonly startTime: string;
 }
 
 export interface LocalRuntimeAllocationReference {
@@ -74,7 +73,8 @@ export interface LocalRuntimeAllocationDependencies {
   readonly listeningPorts?: () => ReadonlySet<number>;
   readonly lockTimeoutMs?: number;
   readonly now?: () => number;
-  readonly processStartTime?: (pid: number) => string | undefined;
+  readonly portBlockIsAvailable?: (ports: readonly number[]) => boolean;
+  readonly processIsAlive?: (pid: number) => boolean;
   readonly registryPath?: string;
 }
 
@@ -101,7 +101,9 @@ function ensurePrivateDirectory(path: string): void {
   if (uid !== undefined && details.uid !== uid) {
     throw new Error(`Local runtime registry directory has a foreign owner: ${path}`);
   }
-  if ((details.mode & 0o077) !== 0) chmodSync(path, 0o700);
+  if ((details.mode & 0o077) !== 0) {
+    throw new Error(`Local runtime registry directory permissions are not private: ${path}`);
+  }
 }
 
 function defaultDirectoryIdentity(path: string): DirectoryIdentity | undefined {
@@ -115,41 +117,70 @@ function defaultDirectoryIdentity(path: string): DirectoryIdentity | undefined {
   }
 }
 
-function parseEphemeralPortRange(): readonly [number, number] {
-  let document: string;
-  try {
-    document = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8");
-  } catch (error) {
-    throw new Error("Could not read the live host ephemeral port range", { cause: error });
-  }
-  const values = document.trim().split(/\s+/u).map(Number);
-  const [first, last] = values;
-  if (
-    values.length !== 2 ||
-    first === undefined ||
-    last === undefined ||
-    !Number.isInteger(first) ||
-    !Number.isInteger(last) ||
-    first < firstNonPrivilegedPort ||
-    last > 65_535 ||
-    first > last
-  ) {
-    throw new Error("The live host ephemeral port range is invalid");
-  }
-  return [first, last];
+const portableTcpPortProbe = `
+import { readFileSync } from "node:fs";
+import { createServer } from "node:net";
+
+const ports = JSON.parse(readFileSync(0, "utf8"));
+
+function canListen(port, host, ipv6Only = false) {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", (error) => {
+      if (error.code === "EADDRINUSE" || error.code === "EACCES") resolve(false);
+      else if (error.code === "EAFNOSUPPORT" || error.code === "EADDRNOTAVAIL") resolve(undefined);
+      else reject(error);
+    });
+    server.listen({ exclusive: true, host, ipv6Only, port }, () => {
+      server.close(() => resolve(true));
+    });
+  });
 }
 
-function defaultListeningPorts(): ReadonlySet<number> {
-  const result = spawnSync("ss", ["-H", "-ltn"], { encoding: "utf8" });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error("Could not inspect live host TCP listeners");
-  const ports = new Set<number>();
-  for (const line of result.stdout.split(/\r?\n/u)) {
-    const localAddress = line.trim().split(/\s+/u)[3];
-    const port = Number(localAddress?.match(/:(\d+)$/u)?.[1]);
-    if (Number.isInteger(port) && port > 0 && port <= 65_535) ports.add(port);
+let available = true;
+for (const port of ports) {
+  const ipv4 = await canListen(port, "0.0.0.0");
+  const ipv6 = await canListen(port, "::", true);
+  if (ipv4 === false || ipv6 === false) {
+    available = false;
+    break;
   }
-  return ports;
+  if (ipv4 === undefined && ipv6 === undefined) {
+    throw new Error("No supported TCP address family is available");
+  }
+}
+process.stdout.write(available ? "available" : "unavailable");
+`;
+
+function defaultPortBlockIsAvailable(ports: readonly number[]): boolean {
+  const result = spawnSync(
+    process.execPath,
+    ["--input-type=module", "--eval", portableTcpPortProbe],
+    { encoding: "utf8", input: JSON.stringify(ports) },
+  );
+  if (result.error) {
+    throw new Error("Could not inspect live host TCP listeners", { cause: result.error });
+  }
+  if (result.status !== 0 || !["available", "unavailable"].includes(result.stdout)) {
+    throw new Error("Could not inspect live host TCP listeners", {
+      cause: new Error(
+        result.stderr.trim() || `Port probe exited with status ${String(result.status)}`,
+      ),
+    });
+  }
+  return result.stdout === "available";
+}
+
+function portBlockAvailability(
+  dependencies: LocalRuntimeAllocationDependencies,
+): (ports: readonly number[]) => boolean {
+  if (dependencies.portBlockIsAvailable) return dependencies.portBlockIsAvailable;
+  if (dependencies.listeningPorts) {
+    const listeningPorts = dependencies.listeningPorts();
+    return (ports) => ports.every((port) => !listeningPorts.has(port));
+  }
+  return defaultPortBlockIsAvailable;
 }
 
 function parseReservedPorts(value: string | undefined): ReadonlySet<number> {
@@ -319,16 +350,13 @@ function writeRegistry(path: string, registry: LocalRuntimeRegistry): void {
   }
 }
 
-function defaultProcessStartTime(pid: number): string | undefined {
+function defaultProcessIsAlive(pid: number): boolean {
   try {
-    const stat = readFileSync(`/proc/${String(pid)}/stat`, "utf8");
-    const fields = stat
-      .slice(stat.lastIndexOf(") ") + 2)
-      .trim()
-      .split(/\s+/u);
-    return fields[19];
+    process.kill(pid, 0);
+    return true;
   } catch (error) {
-    if (systemErrorCode(error) === "ENOENT") return undefined;
+    if (systemErrorCode(error) === "ESRCH") return false;
+    if (systemErrorCode(error) === "EPERM") return true;
     throw error;
   }
 }
@@ -380,7 +408,7 @@ function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
 function recoverStaleLock(
   lockPath: string,
   now: number,
-  processStartTime: (pid: number) => string | undefined,
+  processIsAlive: (pid: number) => boolean,
 ): boolean {
   let details: BigIntStats;
   try {
@@ -423,14 +451,15 @@ function recoverStaleLock(
     ) as Partial<LockOwner>;
     if (
       typeof owner.pid !== "number" ||
-      typeof owner.startTime !== "string" ||
+      !Number.isInteger(owner.pid) ||
+      owner.pid <= 0 ||
       owner.device !== ownerIdentity.device ||
       owner.inode !== ownerIdentity.inode ||
       owner.nonce !== ownerIdentity.nonce
     ) {
       throw new Error("invalid owner");
     }
-    if (processStartTime(owner.pid) === owner.startTime) return false;
+    if (processIsAlive(owner.pid)) return false;
     return removeLock(lockPath, ownerIdentity);
   } catch (error) {
     if (
@@ -453,11 +482,10 @@ function withRegistryLock<Result>(
   ensurePrivateDirectory(dirname(registryPath));
   const lockPath = `${registryPath}.lock`;
   const now = dependencies.now ?? Date.now;
-  const processStartTime = dependencies.processStartTime ?? defaultProcessStartTime;
+  const processIsAlive = dependencies.processIsAlive ?? defaultProcessIsAlive;
   const deadline = now() + (dependencies.lockTimeoutMs ?? lockTimeoutMilliseconds);
   const nonce = randomUUID();
   const pid = process.pid;
-  const startTime = processStartTime(pid) ?? "unavailable";
   let owner: LockOwner | undefined;
   while (true) {
     try {
@@ -468,7 +496,6 @@ function withRegistryLock<Result>(
         inode: String(details.ino),
         nonce,
         pid,
-        startTime,
       };
       try {
         writeFileSync(
@@ -499,7 +526,7 @@ function withRegistryLock<Result>(
       break;
     } catch (error) {
       if (systemErrorCode(error) !== "EEXIST") throw error;
-      if (recoverStaleLock(lockPath, now(), processStartTime)) continue;
+      if (recoverStaleLock(lockPath, now(), processIsAlive)) continue;
       if (now() >= deadline) {
         throw new Error(`Timed out waiting for the local runtime registry lock: ${lockPath}`);
       }
@@ -535,7 +562,7 @@ function allocationId(repositoryRoot: string): string {
 
 function cleanStaleReservations(
   reservations: readonly LocalRuntimeReservation[],
-  listeningPorts: ReadonlySet<number>,
+  portBlockIsAvailable: (ports: readonly number[]) => boolean,
   directoryIdentity: (path: string) => DirectoryIdentity | undefined,
 ): readonly LocalRuntimeReservation[] {
   return reservations.filter((reservation) => {
@@ -543,7 +570,7 @@ function cleanStaleReservations(
     if (current?.device === reservation.device && current.inode === reservation.inode) {
       return true;
     }
-    if (portBlock(reservation.portBase).some((port) => listeningPorts.has(port))) {
+    if (!portBlockIsAvailable(portBlock(reservation.portBase))) {
       throw new Error(
         `Cannot recover stale local runtime reservation ${reservation.id}: its port block is still active`,
       );
@@ -577,7 +604,7 @@ export function allocateLocalRuntimePortBlock(
   const owner = directoryIdentity(repositoryRoot);
   if (!owner) throw new Error(`Local runtime root does not exist: ${repositoryRoot}`);
   const id = allocationId(repositoryRoot);
-  const ephemeralPortRange = dependencies.ephemeralPortRange ?? parseEphemeralPortRange();
+  const ephemeralPortRange = dependencies.ephemeralPortRange ?? portableEphemeralPortRange;
   const reservedPorts = parseReservedPorts(environment.LOCAL_RUNTIME_RESERVED_PORTS);
   const candidates = candidatePortBases(dependencies, ephemeralPortRange, reservedPorts);
   const requestedPortBase = environment.LOCAL_RUNTIME_PORT_BASE?.trim();
@@ -592,11 +619,11 @@ export function allocateLocalRuntimePortBlock(
   }
 
   return withRegistryLock(registryPath, dependencies, () => {
-    const listeningPorts = (dependencies.listeningPorts ?? defaultListeningPorts)();
+    const portBlockIsAvailable = portBlockAvailability(dependencies);
     const registry = readRegistry(registryPath);
     const reservations = cleanStaleReservations(
       registry.reservations,
-      listeningPorts,
+      portBlockIsAvailable,
       directoryIdentity,
     );
     const existing = reservations.find(
@@ -633,7 +660,7 @@ export function allocateLocalRuntimePortBlock(
 
     const claimed = new Set(reservations.map((reservation) => reservation.portBase));
     const blockIsClear = (portBase: number) =>
-      !claimed.has(portBase) && !portBlock(portBase).some((port) => listeningPorts.has(port));
+      !claimed.has(portBase) && portBlockIsAvailable(portBlock(portBase));
     let portBase: number | undefined;
     if (overridePortBase !== undefined) {
       if (!candidates.includes(overridePortBase) || !blockIsClear(overridePortBase)) {
@@ -737,8 +764,7 @@ export function releaseLocalRuntimePortBlock(
     ) {
       throw new Error(`Refusing to release a foreign local runtime reservation: ${allocation.id}`);
     }
-    const listeningPorts = (dependencies.listeningPorts ?? defaultListeningPorts)();
-    if (portBlock(allocation.portBase).some((port) => listeningPorts.has(port))) {
+    if (!portBlockAvailability(dependencies)(portBlock(allocation.portBase))) {
       throw new Error(`Refusing to release active local runtime reservation: ${allocation.id}`);
     }
     writeRegistry(registryPath, {
