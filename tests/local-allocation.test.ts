@@ -704,6 +704,50 @@ describe("local runtime allocation registry", () => {
     expect(readdirSync(lockPath)).toEqual([]);
   });
 
+  it("does not restore over a competing canonical acquisition when an owner appears", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    mkdirSync(lockPath);
+    const now = Date.now();
+    utimesSync(lockPath, new Date(now - 6_000), new Date(now - 6_000));
+    let clockReads = 0;
+    let competitorIdentity: { readonly device: bigint; readonly inode: bigint } | undefined;
+    const clock = () => {
+      clockReads += 1;
+      if (clockReads === 3) {
+        const quarantineName = readdirSync(root).find((entry) =>
+          entry.startsWith("allocations.json.lock.stale."),
+        );
+        if (!quarantineName) throw new Error("Expected a quarantined lock directory");
+        const quarantinePath = resolve(root, quarantineName);
+        writeLockOwner(quarantinePath, {
+          nonce: "00000000-0000-4000-8000-000000000008",
+          pid: process.pid,
+          processInstanceId: "8".repeat(64),
+        });
+        mkdirSync(lockPath);
+        const competitor = statSync(lockPath, { bigint: true });
+        competitorIdentity = { device: competitor.dev, inode: competitor.ino };
+      }
+      return now;
+    };
+
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        {},
+        dependencies(registryPath, { lockTimeoutMs: 0, now: clock }),
+      ),
+    ).toThrow(/lock ownership changed unexpectedly/u);
+    const canonical = statSync(lockPath, { bigint: true });
+    expect({ device: canonical.dev, inode: canonical.ino }).toEqual(competitorIdentity);
+    expect(readdirSync(lockPath)).toEqual([]);
+    expect(
+      readdirSync(root).some((entry) => entry.startsWith("allocations.json.lock.stale.")),
+    ).toBe(true);
+  });
+
   it("does not remove a new live lock after a competing process reclaims the stale owner", async () => {
     const slowRoot = temporaryRoot("slow");
     const container = resolve(slowRoot, "..");

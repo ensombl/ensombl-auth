@@ -515,7 +515,21 @@ function directoryHasIdentity(details: BigIntStats, expected: DirectoryIdentity)
   return String(details.dev) === expected.device && String(details.ino) === expected.inode;
 }
 
-function restoreQuarantinedLock(quarantinePath: string, lockPath: string): void {
+function restoreQuarantinedLock(
+  quarantinePath: string,
+  lockPath: string,
+  expected: DirectoryIdentity,
+): void {
+  let destinationExists = true;
+  try {
+    lstatSync(lockPath);
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") destinationExists = false;
+    else throw error;
+  }
+  if (destinationExists) {
+    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
+  }
   try {
     renameSync(quarantinePath, lockPath);
   } catch (error) {
@@ -523,9 +537,21 @@ function restoreQuarantinedLock(quarantinePath: string, lockPath: string): void 
       cause: error,
     });
   }
+  const restored = lstatSync(lockPath, { bigint: true });
+  if (
+    !restored.isDirectory() ||
+    restored.isSymbolicLink() ||
+    !directoryHasIdentity(restored, expected)
+  ) {
+    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
+  }
 }
 
-function removeEmptyLock(lockPath: string, expected: DirectoryIdentity): boolean {
+function removeEmptyLock(
+  lockPath: string,
+  expected: DirectoryIdentity,
+  now: () => number,
+): boolean {
   let current: BigIntStats;
   try {
     current = lstatSync(lockPath, { bigint: true });
@@ -553,16 +579,17 @@ function removeEmptyLock(lockPath: string, expected: DirectoryIdentity): boolean
   try {
     quarantined = lstatSync(quarantinePath, { bigint: true });
   } catch (error) {
-    restoreQuarantinedLock(quarantinePath, lockPath);
+    restoreQuarantinedLock(quarantinePath, lockPath, expected);
     throw error;
   }
   if (
     !quarantined.isDirectory() ||
     quarantined.isSymbolicLink() ||
     !directoryHasIdentity(quarantined, expected) ||
+    now() - Number(quarantined.mtimeMs) < invalidLockStaleMilliseconds ||
     readdirSync(quarantinePath).length !== 0
   ) {
-    restoreQuarantinedLock(quarantinePath, lockPath);
+    restoreQuarantinedLock(quarantinePath, lockPath, expected);
     return false;
   }
   rmdirSync(quarantinePath);
@@ -598,6 +625,30 @@ function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
   return true;
 }
 
+function lockIsSolelyOwned(lockPath: string, expectedOwner: LockIdentity): boolean {
+  let before: BigIntStats;
+  let after: BigIntStats;
+  let entries: string[];
+  try {
+    before = lstatSync(lockPath, { bigint: true });
+    entries = readdirSync(lockPath);
+    after = lstatSync(lockPath, { bigint: true });
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return false;
+    throw error;
+  }
+  return (
+    before.isDirectory() &&
+    !before.isSymbolicLink() &&
+    directoryHasIdentity(before, expectedOwner) &&
+    after.isDirectory() &&
+    !after.isSymbolicLink() &&
+    directoryHasIdentity(after, expectedOwner) &&
+    entries.length === 1 &&
+    entries[0] === lockOwnerFileName(expectedOwner)
+  );
+}
+
 function recoverStaleLock(
   lockPath: string,
   now: () => number,
@@ -623,10 +674,14 @@ function recoverStaleLock(
   const entries = readdirSync(lockPath);
   if (entries.length === 0) {
     if (now() - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
-    return removeEmptyLock(lockPath, {
-      device: String(details.dev),
-      inode: String(details.ino),
-    });
+    return removeEmptyLock(
+      lockPath,
+      {
+        device: String(details.dev),
+        inode: String(details.ino),
+      },
+      now,
+    );
   }
   if (entries.length !== 1) {
     throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
@@ -746,6 +801,9 @@ function withRegistryLock<Result>(
     }
   }
   if (!owner) throw new Error(`Could not acquire the local runtime registry lock: ${lockPath}`);
+  if (!lockIsSolelyOwned(lockPath, owner)) {
+    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
+  }
   let result: Result;
   try {
     result = operation();
