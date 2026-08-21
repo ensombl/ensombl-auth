@@ -515,36 +515,13 @@ function directoryHasIdentity(details: BigIntStats, expected: DirectoryIdentity)
   return String(details.dev) === expected.device && String(details.ino) === expected.inode;
 }
 
-function restoreQuarantinedLock(
-  quarantinePath: string,
-  lockPath: string,
-  expected: DirectoryIdentity,
-): void {
-  let destinationExists = true;
+function failQuarantinedLockRestore(lockPath: string): never {
   try {
     lstatSync(lockPath);
   } catch (error) {
-    if (systemErrorCode(error) === "ENOENT") destinationExists = false;
-    else throw error;
+    if (systemErrorCode(error) !== "ENOENT") throw error;
   }
-  if (destinationExists) {
-    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
-  }
-  try {
-    renameSync(quarantinePath, lockPath);
-  } catch (error) {
-    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`, {
-      cause: error,
-    });
-  }
-  const restored = lstatSync(lockPath, { bigint: true });
-  if (
-    !restored.isDirectory() ||
-    restored.isSymbolicLink() ||
-    !directoryHasIdentity(restored, expected)
-  ) {
-    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
-  }
+  throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`);
 }
 
 function removeEmptyLock(
@@ -578,9 +555,8 @@ function removeEmptyLock(
   let quarantined: BigIntStats;
   try {
     quarantined = lstatSync(quarantinePath, { bigint: true });
-  } catch (error) {
-    restoreQuarantinedLock(quarantinePath, lockPath, expected);
-    throw error;
+  } catch {
+    failQuarantinedLockRestore(lockPath);
   }
   if (
     !quarantined.isDirectory() ||
@@ -589,8 +565,7 @@ function removeEmptyLock(
     now() - Number(quarantined.mtimeMs) < invalidLockStaleMilliseconds ||
     readdirSync(quarantinePath).length !== 0
   ) {
-    restoreQuarantinedLock(quarantinePath, lockPath, expected);
-    return false;
+    failQuarantinedLockRestore(lockPath);
   }
   rmdirSync(quarantinePath);
   return true;

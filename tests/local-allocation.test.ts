@@ -16,7 +16,7 @@ import {
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   allocateLocalRuntimePortBlock,
   consumeLocalRuntimePortBlock,
@@ -25,6 +25,39 @@ import {
   localRuntimePortBlockSize,
   releaseLocalRuntimePortBlock,
 } from "../src/local-allocation.js";
+
+const staleRestoreRace = vi.hoisted(() => ({
+  competitorIdentity: undefined as { readonly device: bigint; readonly inode: bigint } | undefined,
+  lockPath: undefined as string | undefined,
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const lstatSync = ((...arguments_: unknown[]) => {
+    try {
+      return Reflect.apply(actual.lstatSync, actual, arguments_);
+    } catch (error) {
+      const [path] = arguments_;
+      if (
+        path === staleRestoreRace.lockPath &&
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        staleRestoreRace.lockPath = undefined;
+        actual.mkdirSync(path as string);
+        const competitor = actual.statSync(path as string, { bigint: true });
+        staleRestoreRace.competitorIdentity = {
+          device: competitor.dev,
+          inode: competitor.ino,
+        };
+      }
+      throw error;
+    }
+  }) as typeof actual.lstatSync;
+  return { ...actual, lstatSync };
+});
 
 const temporaryRoots: string[] = [];
 
@@ -90,6 +123,8 @@ function writeLockOwner(
 }
 
 afterEach(() => {
+  staleRestoreRace.competitorIdentity = undefined;
+  staleRestoreRace.lockPath = undefined;
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { force: true, recursive: true });
   }
@@ -704,7 +739,7 @@ describe("local runtime allocation registry", () => {
     expect(readdirSync(lockPath)).toEqual([]);
   });
 
-  it("does not restore over a competing canonical acquisition when an owner appears", () => {
+  it("does not restore over a competing canonical acquisition after checking the path", () => {
     const root = temporaryRoot();
     const registryPath = resolve(root, "allocations.json");
     const lockPath = `${registryPath}.lock`;
@@ -712,7 +747,6 @@ describe("local runtime allocation registry", () => {
     const now = Date.now();
     utimesSync(lockPath, new Date(now - 6_000), new Date(now - 6_000));
     let clockReads = 0;
-    let competitorIdentity: { readonly device: bigint; readonly inode: bigint } | undefined;
     const clock = () => {
       clockReads += 1;
       if (clockReads === 3) {
@@ -726,9 +760,7 @@ describe("local runtime allocation registry", () => {
           pid: process.pid,
           processInstanceId: "8".repeat(64),
         });
-        mkdirSync(lockPath);
-        const competitor = statSync(lockPath, { bigint: true });
-        competitorIdentity = { device: competitor.dev, inode: competitor.ino };
+        staleRestoreRace.lockPath = lockPath;
       }
       return now;
     };
@@ -741,7 +773,9 @@ describe("local runtime allocation registry", () => {
       ),
     ).toThrow(/lock ownership changed unexpectedly/u);
     const canonical = statSync(lockPath, { bigint: true });
-    expect({ device: canonical.dev, inode: canonical.ino }).toEqual(competitorIdentity);
+    expect({ device: canonical.dev, inode: canonical.ino }).toEqual(
+      staleRestoreRace.competitorIdentity,
+    );
     expect(readdirSync(lockPath)).toEqual([]);
     expect(
       readdirSync(root).some((entry) => entry.startsWith("allocations.json.lock.stale.")),
