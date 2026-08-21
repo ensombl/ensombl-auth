@@ -76,7 +76,6 @@ function writeLockOwner(
     ...owner,
     device: String(identity.dev),
     inode: String(identity.ino),
-    processInstanceId: owner.processInstanceId ?? "0".repeat(64),
   };
   writeFileSync(
     resolve(
@@ -486,6 +485,34 @@ describe("local runtime allocation registry", () => {
       ).repositoryRoot,
     ).toBe(first);
 
+    const legacyRoot = resolve(container, "legacy");
+    mkdirSync(legacyRoot);
+    const legacyRegistry = resolve(container, "legacy.json");
+    mkdirSync(`${legacyRegistry}.lock`);
+    writeLockOwner(`${legacyRegistry}.lock`, {
+      nonce: "00000000-0000-4000-8000-000000000006",
+      pid: 2_147_483_646,
+    });
+    const [legacyOwnerFile] = readdirSync(`${legacyRegistry}.lock`);
+    if (!legacyOwnerFile) throw new Error("Expected the legacy lock owner file");
+    expect(
+      JSON.parse(readFileSync(resolve(`${legacyRegistry}.lock`, legacyOwnerFile), "utf8")),
+    ).not.toHaveProperty("processInstanceId");
+    expect(
+      allocateLocalRuntimePortBlock(
+        legacyRoot,
+        {},
+        dependencies(legacyRegistry, {
+          lockTimeoutMs: 0,
+          processInstanceId: (pid) => {
+            if (pid !== process.pid) throw new Error("Dead process instance inspected");
+            return "2".repeat(64);
+          },
+          processIsAlive: (pid) => pid === process.pid,
+        }),
+      ).repositoryRoot,
+    ).toBe(legacyRoot);
+
     const second = resolve(container, "second");
     mkdirSync(second);
     const reusedRegistry = resolve(container, "reused.json");
@@ -522,6 +549,24 @@ describe("local runtime allocation registry", () => {
         third,
         {},
         dependencies(liveRegistry, {
+          lockTimeoutMs: 0,
+          processInstanceId: () => "2".repeat(64),
+          processIsAlive: () => true,
+        }),
+      ),
+    ).toThrow(/Timed out waiting for the local runtime registry lock/u);
+
+    const legacyLiveRegistry = resolve(container, "legacy-live.json");
+    mkdirSync(`${legacyLiveRegistry}.lock`);
+    writeLockOwner(`${legacyLiveRegistry}.lock`, {
+      nonce: "00000000-0000-4000-8000-000000000007",
+      pid: process.pid,
+    });
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        third,
+        {},
+        dependencies(legacyLiveRegistry, {
           lockTimeoutMs: 0,
           processInstanceId: () => "2".repeat(64),
           processIsAlive: () => true,
@@ -575,7 +620,11 @@ describe("local runtime allocation registry", () => {
     const staleNonce = "00000000-0000-4000-8000-000000000003";
     const stalePid = 2_147_483_647;
     mkdirSync(lockPath);
-    writeLockOwner(lockPath, { nonce: staleNonce, pid: stalePid });
+    writeLockOwner(lockPath, {
+      nonce: staleNonce,
+      pid: stalePid,
+      processInstanceId: "1".repeat(64),
+    });
 
     const slowObserved = resolve(container, "slow-observed");
     const slowRelease = resolve(container, "slow-release");

@@ -591,8 +591,8 @@ function recoverStaleLock(
     ) {
       throw new Error("invalid owner");
     }
-    if (typeof owner.processInstanceId !== "string" || !owner.processInstanceId) return false;
     if (!processIsAlive(owner.pid)) return removeLock(lockPath, ownerIdentity);
+    if (typeof owner.processInstanceId !== "string" || !owner.processInstanceId) return false;
     const currentProcessInstanceId = processInstanceId(owner.pid);
     if (!currentProcessInstanceId) return false;
     if (currentProcessInstanceId === owner.processInstanceId) return false;
