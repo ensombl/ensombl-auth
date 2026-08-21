@@ -1,4 +1,4 @@
-name: ensombl-auth-local
+name: ${LOCAL_AUTH_COMPOSE_PROJECT:?LOCAL_AUTH_COMPOSE_PROJECT is required}
 
 services:
   proxy:
@@ -7,15 +7,15 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      - --providers.docker.network=ensombl-auth-local
-      - --providers.docker.constraints=Label(`com.docker.compose.project`,`ensombl-auth-local`)
+      - --providers.docker.network=${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
+      - --providers.docker.constraints=Label(`com.docker.compose.project`,`${LOCAL_AUTH_COMPOSE_PROJECT:?LOCAL_AUTH_COMPOSE_PROJECT is required}`)
       - --entrypoints.web.address=:80
       - --ping=true
       - --ping.entrypoint=web
       - --api.dashboard=false
       - --accesslog=false
     ports:
-      - "127.0.0.1:24455:80"
+      - "127.0.0.1:${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required}:80"
     networks:
       - auth
     volumes:
@@ -47,7 +47,7 @@ services:
     image: axllent/mailpit:v1.29.4
     restart: unless-stopped
     ports:
-      - "127.0.0.1:28025:8025"
+      - "127.0.0.1:${LOCAL_AUTH_MAILPIT_UI_PORT:?LOCAL_AUTH_MAILPIT_UI_PORT is required}:8025"
     networks:
       - auth
 
@@ -64,7 +64,7 @@ services:
     environment:
       ZITADEL_PORT: "8080"
       ZITADEL_EXTERNALDOMAIN: localhost
-      ZITADEL_EXTERNALPORT: "24455"
+      ZITADEL_EXTERNALPORT: "${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required}"
       ZITADEL_EXTERNALSECURE: "false"
       ZITADEL_TLS_ENABLED: "false"
       ZITADEL_DATABASE_POSTGRES_DSN: postgresql://postgres:postgres@postgres:5432/zitadel?sslmode=disable
@@ -82,9 +82,9 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: ZITADEL Login
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: http://localhost:24455/ui/v2/login/
-      ZITADEL_OIDC_DEFAULTLOGINURLV2: http://localhost:24455/ui/v2/login/login?authRequest=
-      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: http://localhost:24455/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: ${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: ${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: ${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}/ui/v2/login/logout?post_logout_redirect=
       ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_SMTP_HOST: mailpit:1025
       ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_TLS: "false"
       ZITADEL_DEFAULTINSTANCE_SMTPCONFIGURATION_FROM: noreply@notifications.ensombl.io
@@ -105,18 +105,18 @@ services:
       retries: 60
       start_period: 15s
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: ensombl-auth-local
-      traefik.http.services.ensombl-auth-local-api.loadbalancer.server.port: "8080"
-      traefik.http.services.ensombl-auth-local-api.loadbalancer.server.scheme: h2c
-      traefik.http.middlewares.ensombl-auth-local-host.headers.customrequestheaders.Host: localhost:24455
-      traefik.http.middlewares.ensombl-auth-local-host.headers.customrequestheaders.X-Forwarded-Host: localhost:24455
-      traefik.http.middlewares.ensombl-auth-local-host.headers.customrequestheaders.X-Forwarded-Proto: http
-      traefik.http.routers.ensombl-auth-local-api.rule: "!PathPrefix(`/ui/v2/login`) && !Path(`/`)"
-      traefik.http.routers.ensombl-auth-local-api.entrypoints: web
-      traefik.http.routers.ensombl-auth-local-api.middlewares: ensombl-auth-local-host
-      traefik.http.routers.ensombl-auth-local-api.service: ensombl-auth-local-api
-      traefik.http.routers.ensombl-auth-local-api.priority: "100"
+      - traefik.enable=true
+      - traefik.docker.network=${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
+      - traefik.http.services.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.loadbalancer.server.port=8080
+      - traefik.http.services.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.loadbalancer.server.scheme=h2c
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-host.headers.customrequestheaders.Host=localhost:${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required}
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-host.headers.customrequestheaders.X-Forwarded-Host=localhost:${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required}
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-host.headers.customrequestheaders.X-Forwarded-Proto=http
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.rule=!PathPrefix(`/ui/v2/login`) && !Path(`/`)
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.middlewares=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-host
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.priority=100
 
   zitadel-login:
     image: ghcr.io/zitadel/zitadel-login:v4.16.2
@@ -126,7 +126,7 @@ services:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
-      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:localhost:24455,Host:localhost,X-Forwarded-Proto:http
+      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:localhost:${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required},Host:localhost,X-Forwarded-Proto:http
     volumes:
       - bootstrap:/zitadel/bootstrap:ro
     networks:
@@ -146,19 +146,19 @@ services:
       timeout: 10s
       retries: 40
     labels:
-      traefik.enable: "true"
-      traefik.docker.network: ensombl-auth-local
-      traefik.http.services.ensombl-auth-local-login.loadbalancer.server.port: "3000"
-      traefik.http.middlewares.ensombl-auth-local-root.replacepath.path: /ui/v2/login/
-      traefik.http.routers.ensombl-auth-local-root.rule: Path(`/`)
-      traefik.http.routers.ensombl-auth-local-root.entrypoints: web
-      traefik.http.routers.ensombl-auth-local-root.middlewares: ensombl-auth-local-root
-      traefik.http.routers.ensombl-auth-local-root.service: ensombl-auth-local-login
-      traefik.http.routers.ensombl-auth-local-root.priority: "300"
-      traefik.http.routers.ensombl-auth-local-login.rule: PathPrefix(`/ui/v2/login`)
-      traefik.http.routers.ensombl-auth-local-login.entrypoints: web
-      traefik.http.routers.ensombl-auth-local-login.service: ensombl-auth-local-login
-      traefik.http.routers.ensombl-auth-local-login.priority: "200"
+      - traefik.enable=true
+      - traefik.docker.network=${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
+      - traefik.http.services.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.loadbalancer.server.port=3000
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.replacepath.path=/ui/v2/login/
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.rule=Path(`/`)
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.middlewares=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.priority=300
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.rule=PathPrefix(`/ui/v2/login`)
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.priority=200
 
   product-bootstrap:
     profiles: ["operator"]
@@ -173,6 +173,8 @@ services:
       ZITADEL_FORWARDED_PROTO: http
       ZITADEL_ADMIN_PAT_FILE: /zitadel/bootstrap/admin.pat
       PRODUCT_CATALOG_PATH: /app/deploy/products/products.local.json
+      LOCAL_APPLICATION_BASE_URL: ${LOCAL_APPLICATION_BASE_URL:?LOCAL_APPLICATION_BASE_URL is required}
+      LOCAL_AUTH_ISSUER: ${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}
       ZITADEL_RUNTIME_CONFIG_PATH: /output/runtime.json
       ZITADEL_ROTATE_MISSING_CLIENT_SECRETS: "true"
     volumes:
@@ -186,7 +188,7 @@ services:
 
 networks:
   auth:
-    name: ensombl-auth-local
+    name: ${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
 
 volumes:
   postgres-data:

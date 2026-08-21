@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { catalogSchema, rolesForProduct, secretPrefix } from "../src/catalog.js";
+import {
+  applyLocalCatalogProfile,
+  catalogSchema,
+  rolesForProduct,
+  secretPrefix,
+} from "../src/catalog.js";
 
 const baseCatalog = {
   issuer: "https://auth.example.com",
@@ -145,6 +150,37 @@ describe("product catalog", () => {
       ],
     });
     expect(catalog.products[0]?.migration_service_account?.verify_imported_passwords).toBe(true);
+  });
+
+  it("applies the allocated origin only to FreightClaims in the current local catalog", () => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(
+        readFileSync(new URL("../deploy/products/products.local.json", import.meta.url), "utf8"),
+      ),
+    );
+
+    const configured = applyLocalCatalogProfile(catalog, {
+      applicationBaseUrl: "http://localhost:26033",
+      issuer: "http://localhost:26041",
+    });
+    const freightclaims = configured.products.find((product) => product.id === "freightclaims");
+    const freightcheck = configured.products.find((product) => product.id === "freightcheck");
+
+    expect(configured.issuer).toBe("http://localhost:26041");
+    expect(configured.products.every((product) => product.auth_origin === configured.issuer)).toBe(
+      true,
+    );
+    expect(freightclaims?.applications[0]?.base_url).toBe("http://localhost:26033");
+    expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:5173");
+  });
+
+  it("rejects a local profile without a local application for the selected product", () => {
+    expect(() =>
+      applyLocalCatalogProfile(catalogSchema.parse(baseCatalog), {
+        applicationBaseUrl: "http://localhost:26033",
+        issuer: "http://localhost:26041",
+      }),
+    ).toThrow(/requires a local application for product freightclaims/u);
   });
 
   it("rejects a migration account that reuses an application management identity", () => {

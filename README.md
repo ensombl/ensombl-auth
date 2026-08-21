@@ -23,8 +23,15 @@ pnpm install
 pnpm dev
 ```
 
-The local issuer is `http://localhost:24455`; its Console is available at
-`http://localhost:24455/ui/console`. Mailpit is available at `http://localhost:28025`.
+The command reserves a local profile in the shared per-user runtime registry. Product repositories
+pass the same reservation into auth instead of allocating another block. The profile scopes the
+Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightClaims
+application URL.
+
+On Linux, allocation excludes the live TCP/UDP range from
+[`ip_local_port_range`](https://docs.kernel.org/networking/ip-sysctl.html#ip-variables). On other
+hosts, set `LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE=<first>-<last>` from the reviewed host TCP dynamic-port
+policy. Allocation fails if the range is unavailable or invalid.
 
 Run the repository checks with:
 

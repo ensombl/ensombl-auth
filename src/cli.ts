@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { bootstrapCatalog } from "./bootstrap.js";
-import { loadCatalog } from "./catalog.js";
+import { applyLocalCatalogProfile, loadCatalog } from "./catalog.js";
+import { localCatalogProfileFromEnvironment } from "./local-profile.js";
 import { BwsRuntimeStore, readRuntimeConfig, writeRuntimeConfig } from "./runtime-config.js";
 import { ZitadelClient } from "./zitadel.js";
 
@@ -19,7 +20,11 @@ async function readPat(): Promise<string> {
 async function main(): Promise<void> {
   const catalogPath = process.env.PRODUCT_CATALOG_PATH ?? "deploy/products/products.json";
   const outputPath = process.env.ZITADEL_RUNTIME_CONFIG_PATH ?? ".local/runtime.json";
-  const catalog = await loadCatalog(catalogPath);
+  const loadedCatalog = await loadCatalog(catalogPath);
+  const localProfile = localCatalogProfileFromEnvironment(process.env);
+  const catalog = localProfile
+    ? applyLocalCatalogProfile(loadedCatalog, localProfile)
+    : loadedCatalog;
   const requestHost = process.env.ZITADEL_REQUEST_HOST?.trim();
   const adminPat = await readPat();
   const client = new ZitadelClient(required("ZITADEL_URL"), adminPat, {
