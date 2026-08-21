@@ -7,8 +7,10 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
@@ -94,7 +96,7 @@ afterEach(() => {
 });
 
 describe("local runtime allocation registry", () => {
-  it("never changes shared registry parent permissions", () => {
+  it.runIf(process.platform !== "win32")("never changes shared registry parent permissions", () => {
     const root = temporaryRoot();
     const sharedParent = resolve(root, "shared");
     mkdirSync(sharedParent, { mode: 0o755 });
@@ -123,7 +125,35 @@ describe("local runtime allocation registry", () => {
     expect(allocation.registryPath).toBe(privateRegistry);
     expect(statSync(sharedParent).mode & 0o777).toBe(before);
     expect(statSync(resolve(sharedParent, "freightclaims")).mode & 0o777).toBe(0o700);
+
+    chmodSync(privateRegistry, 0o644);
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
+        options,
+      ),
+    ).toThrow(/registry permissions are not private/u);
   });
+
+  it.runIf(process.platform === "win32")(
+    "uses native Windows filesystem semantics for the registry",
+    () => {
+      const root = temporaryRoot();
+      const registryPath = resolve(root, "state", "allocations.json");
+      const options = dependencies(registryPath, {
+        processInstanceId: (pid) => `windows-${String(pid)}`,
+      });
+
+      const allocation = allocateLocalRuntimePortBlock(root, {}, options);
+      expect(allocateLocalRuntimePortBlock(root, {}, options)).toEqual({
+        ...allocation,
+        created: false,
+      });
+      expect(statSync(resolve(registryPath, "..")).isDirectory()).toBe(true);
+      expect(statSync(registryPath).isFile()).toBe(true);
+    },
+  );
 
   it("uses portable allocation probes without an executable PATH", () => {
     const root = temporaryRoot();
@@ -135,6 +165,7 @@ describe("local runtime allocation registry", () => {
         root,
         {},
         {
+          candidatePortBases: [16_000],
           ephemeralPortRange: [32_768, 60_999],
           registryPath,
         },
@@ -423,26 +454,42 @@ describe("local runtime allocation registry", () => {
     expect(allocateLocalRuntimePortBlock(second, {}, options).portBase).toBe(first.portBase);
   });
 
-  it("rejects stale recovery while a foreign owner still holds the block", () => {
+  it.each([
+    "missing",
+    "replaced",
+  ] as const)("retains an active reservation for a %s worktree and allocates a free block", (state) => {
     const parent = temporaryRoot("first");
     const container = resolve(parent, "..");
     const registryPath = resolve(container, "allocations.json");
-    const initial = dependencies(registryPath, { candidatePortBases: [16_000] });
+    const initial = dependencies(registryPath, { candidatePortBases: [16_000, 16_016] });
     const first = allocateLocalRuntimePortBlock(parent, {}, initial);
-    rmSync(parent, { recursive: true });
+    if (state === "missing") {
+      rmSync(parent, { recursive: true });
+    } else {
+      renameSync(parent, resolve(container, "original-first"));
+      mkdirSync(parent);
+    }
     const second = resolve(container, "second");
     mkdirSync(second);
 
-    expect(() =>
-      allocateLocalRuntimePortBlock(
-        second,
-        {},
-        dependencies(registryPath, {
-          candidatePortBases: [16_000],
-          listeningPorts: () => new Set([first.portBase]),
-        }),
-      ),
-    ).toThrow(/port block is still active/u);
+    const next = allocateLocalRuntimePortBlock(
+      second,
+      {},
+      dependencies(registryPath, {
+        candidatePortBases: [16_000, 16_016],
+        listeningPorts: () => new Set([first.portBase]),
+      }),
+    );
+    expect(next.portBase).not.toBe(first.portBase);
+    const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+      reservations: { id: string; portBase: number }[];
+    };
+    expect(registry.reservations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: first.id, portBase: first.portBase }),
+        expect.objectContaining({ id: next.id, portBase: next.portBase }),
+      ]),
+    );
   });
 
   it("consumes the exact parent reservation and rejects divergent values", () => {
@@ -594,19 +641,66 @@ describe("local runtime allocation registry", () => {
     ).toThrow(/Timed out waiting for the local runtime registry lock/u);
   });
 
-  it("fails closed instead of reclaiming an ownerless lock directory", () => {
+  it("keeps a young empty lock directory fail-closed", () => {
     const root = temporaryRoot();
     const registryPath = resolve(root, "allocations.json");
     const lockPath = `${registryPath}.lock`;
     mkdirSync(lockPath);
 
     expect(() =>
+      allocateLocalRuntimePortBlock(root, {}, dependencies(registryPath, { lockTimeoutMs: 0 })),
+    ).toThrow(/Timed out waiting for the local runtime registry lock/u);
+    expect(readdirSync(lockPath)).toEqual([]);
+  });
+
+  it("reclaims an old empty lock directory", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    mkdirSync(lockPath);
+    const now = Date.now();
+    utimesSync(lockPath, new Date(now - 6_000), new Date(now - 6_000));
+
+    expect(
       allocateLocalRuntimePortBlock(
         root,
         {},
-        dependencies(registryPath, { lockTimeoutMs: 0, now: () => Date.now() + 60_000 }),
+        dependencies(registryPath, { lockTimeoutMs: 0, now: () => now }),
+      ).repositoryRoot,
+    ).toBe(root);
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it("does not remove a replacement empty lock during stale recovery", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    mkdirSync(lockPath);
+    const original = statSync(lockPath, { bigint: true });
+    const now = Date.now();
+    utimesSync(lockPath, new Date(now - 6_000), new Date(now - 6_000));
+    let clockReads = 0;
+    const clock = () => {
+      clockReads += 1;
+      if (clockReads === 2) {
+        renameSync(lockPath, `${lockPath}.original`);
+        mkdirSync(lockPath);
+      }
+      return now;
+    };
+
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        {},
+        dependencies(registryPath, { lockTimeoutMs: 0, now: clock }),
       ),
     ).toThrow(/Timed out waiting for the local runtime registry lock/u);
+    const replacement = statSync(lockPath, { bigint: true });
+    expect({ device: replacement.dev, inode: replacement.ino }).not.toEqual({
+      device: original.dev,
+      inode: original.ino,
+    });
     expect(readdirSync(lockPath)).toEqual([]);
   });
 

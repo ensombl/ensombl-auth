@@ -99,12 +99,14 @@ function ensurePrivateDirectory(path: string): void {
   if (!details.isDirectory() || details.isSymbolicLink()) {
     throw new Error(`Local runtime registry directory is not a real directory: ${path}`);
   }
-  const uid = process.getuid?.();
-  if (uid !== undefined && details.uid !== uid) {
-    throw new Error(`Local runtime registry directory has a foreign owner: ${path}`);
-  }
-  if ((details.mode & 0o077) !== 0) {
-    throw new Error(`Local runtime registry directory permissions are not private: ${path}`);
+  if (process.platform !== "win32") {
+    const uid = process.getuid?.();
+    if (uid !== undefined && details.uid !== uid) {
+      throw new Error(`Local runtime registry directory has a foreign owner: ${path}`);
+    }
+    if ((details.mode & 0o077) !== 0) {
+      throw new Error(`Local runtime registry directory permissions are not private: ${path}`);
+    }
   }
 }
 
@@ -356,12 +358,14 @@ function readRegistry(path: string): LocalRuntimeRegistry {
     if (!details.isFile() || details.isSymbolicLink()) {
       throw new Error(`Local runtime registry is not a regular file: ${path}`);
     }
-    const uid = process.getuid?.();
-    if (uid !== undefined && details.uid !== uid) {
-      throw new Error(`Local runtime registry has a foreign owner: ${path}`);
-    }
-    if ((details.mode & 0o077) !== 0) {
-      throw new Error(`Local runtime registry permissions are not private: ${path}`);
+    if (process.platform !== "win32") {
+      const uid = process.getuid?.();
+      if (uid !== undefined && details.uid !== uid) {
+        throw new Error(`Local runtime registry has a foreign owner: ${path}`);
+      }
+      if ((details.mode & 0o077) !== 0) {
+        throw new Error(`Local runtime registry permissions are not private: ${path}`);
+      }
     }
     document = readFileSync(path, "utf8");
   } catch (error) {
@@ -507,6 +511,64 @@ function removeIncompleteLock(lockPath: string): boolean {
   }
 }
 
+function directoryHasIdentity(details: BigIntStats, expected: DirectoryIdentity): boolean {
+  return String(details.dev) === expected.device && String(details.ino) === expected.inode;
+}
+
+function restoreQuarantinedLock(quarantinePath: string, lockPath: string): void {
+  try {
+    renameSync(quarantinePath, lockPath);
+  } catch (error) {
+    throw new Error(`Local runtime registry lock ownership changed unexpectedly: ${lockPath}`, {
+      cause: error,
+    });
+  }
+}
+
+function removeEmptyLock(lockPath: string, expected: DirectoryIdentity): boolean {
+  let current: BigIntStats;
+  try {
+    current = lstatSync(lockPath, { bigint: true });
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return true;
+    throw error;
+  }
+  if (
+    !current.isDirectory() ||
+    current.isSymbolicLink() ||
+    !directoryHasIdentity(current, expected)
+  ) {
+    return false;
+  }
+
+  const quarantinePath = `${lockPath}.stale.${String(process.pid)}.${randomUUID()}`;
+  try {
+    renameSync(lockPath, quarantinePath);
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return true;
+    throw error;
+  }
+
+  let quarantined: BigIntStats;
+  try {
+    quarantined = lstatSync(quarantinePath, { bigint: true });
+  } catch (error) {
+    restoreQuarantinedLock(quarantinePath, lockPath);
+    throw error;
+  }
+  if (
+    !quarantined.isDirectory() ||
+    quarantined.isSymbolicLink() ||
+    !directoryHasIdentity(quarantined, expected) ||
+    readdirSync(quarantinePath).length !== 0
+  ) {
+    restoreQuarantinedLock(quarantinePath, lockPath);
+    return false;
+  }
+  rmdirSync(quarantinePath);
+  return true;
+}
+
 function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
   const expectedOwnerFile = lockOwnerFileName(expectedOwner);
   let entries: string[];
@@ -538,7 +600,7 @@ function removeLock(lockPath: string, expectedOwner: LockIdentity): boolean {
 
 function recoverStaleLock(
   lockPath: string,
-  now: number,
+  now: () => number,
   processInstanceId: (pid: number) => string | undefined,
   processIsAlive: (pid: number) => boolean,
 ): boolean {
@@ -552,12 +614,20 @@ function recoverStaleLock(
   if (!details.isDirectory() || details.isSymbolicLink()) {
     throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
   }
-  const uid = process.getuid?.();
-  if (uid !== undefined && details.uid !== BigInt(uid)) {
-    throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
+  if (process.platform !== "win32") {
+    const uid = process.getuid?.();
+    if (uid !== undefined && details.uid !== BigInt(uid)) {
+      throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
+    }
   }
   const entries = readdirSync(lockPath);
-  if (entries.length === 0) return false;
+  if (entries.length === 0) {
+    if (now() - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
+    return removeEmptyLock(lockPath, {
+      device: String(details.dev),
+      inode: String(details.ino),
+    });
+  }
   if (entries.length !== 1) {
     throw new Error(`Local runtime registry lock contains foreign files: ${lockPath}`);
   }
@@ -605,7 +675,7 @@ function recoverStaleLock(
     ) {
       throw error;
     }
-    if (now - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
+    if (now() - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
     return removeLock(lockPath, ownerIdentity);
   }
 }
@@ -668,7 +738,7 @@ function withRegistryLock<Result>(
       break;
     } catch (error) {
       if (systemErrorCode(error) !== "EEXIST") throw error;
-      if (recoverStaleLock(lockPath, now(), processInstanceId, processIsAlive)) continue;
+      if (recoverStaleLock(lockPath, now, processInstanceId, processIsAlive)) continue;
       if (now() >= deadline) {
         throw new Error(`Timed out waiting for the local runtime registry lock: ${lockPath}`);
       }
@@ -712,12 +782,7 @@ function cleanStaleReservations(
     if (current?.device === reservation.device && current.inode === reservation.inode) {
       return true;
     }
-    if (!portBlockIsAvailable(portBlock(reservation.portBase))) {
-      throw new Error(
-        `Cannot recover stale local runtime reservation ${reservation.id}: its port block is still active`,
-      );
-    }
-    return false;
+    return !portBlockIsAvailable(portBlock(reservation.portBase));
   });
 }
 
