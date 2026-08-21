@@ -23,7 +23,6 @@ const lastPortBlockBase = 65_520;
 const lockRetryMilliseconds = 25;
 const lockTimeoutMilliseconds = 5_000;
 const invalidLockStaleMilliseconds = 5_000;
-const portableEphemeralPortRange = [32_768, 65_535] as const;
 const lockOwnerFilePattern =
   /^owner\.([0-9]+)\.([0-9]+)\.([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.json$/u;
 const standardFreightClaimsPorts = new Set([
@@ -70,6 +69,7 @@ export interface LocalRuntimeAllocationDependencies {
   readonly candidatePortBases?: readonly number[];
   readonly directoryIdentity?: (path: string) => DirectoryIdentity | undefined;
   readonly ephemeralPortRange?: readonly [number, number];
+  readonly hostEphemeralPortRange?: () => readonly [number, number] | undefined;
   readonly listeningPorts?: () => ReadonlySet<number>;
   readonly lockTimeoutMs?: number;
   readonly now?: () => number;
@@ -115,6 +115,82 @@ function defaultDirectoryIdentity(path: string): DirectoryIdentity | undefined {
     if (systemErrorCode(error) === "ENOENT") return undefined;
     throw error;
   }
+}
+
+function validatedEphemeralPortRange(
+  range: readonly [number, number],
+  errorMessage: string,
+): readonly [number, number] {
+  const [first, last] = range;
+  if (
+    !Number.isInteger(first) ||
+    !Number.isInteger(last) ||
+    first < firstNonPrivilegedPort ||
+    last > 65_535 ||
+    first > last
+  ) {
+    throw new Error(errorMessage);
+  }
+  return range;
+}
+
+function configuredEphemeralPortRange(
+  value: string | undefined,
+): readonly [number, number] | undefined {
+  if (!value?.trim()) return undefined;
+  const match = /^(\d+)-(\d+)$/u.exec(value.trim());
+  if (!match?.[1] || !match[2]) {
+    throw new Error("LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE is invalid");
+  }
+  return validatedEphemeralPortRange(
+    [Number(match[1]), Number(match[2])],
+    "LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE is invalid",
+  );
+}
+
+function defaultHostEphemeralPortRange(): readonly [number, number] | undefined {
+  if (process.platform !== "linux") return undefined;
+  const values = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8")
+    .trim()
+    .split(/\s+/u)
+    .map(Number);
+  if (values.length !== 2 || values[0] === undefined || values[1] === undefined) {
+    throw new Error("The live host ephemeral port range is invalid");
+  }
+  return validatedEphemeralPortRange(
+    [values[0], values[1]],
+    "The live host ephemeral port range is invalid",
+  );
+}
+
+function resolveEphemeralPortRange(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  dependencies: LocalRuntimeAllocationDependencies,
+): readonly [number, number] {
+  if (dependencies.ephemeralPortRange) {
+    return validatedEphemeralPortRange(
+      dependencies.ephemeralPortRange,
+      "The supplied ephemeral port range is invalid",
+    );
+  }
+  const configured = configuredEphemeralPortRange(environment.LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE);
+  if (configured) return configured;
+
+  let discovered: readonly [number, number] | undefined;
+  try {
+    discovered = (dependencies.hostEphemeralPortRange ?? defaultHostEphemeralPortRange)();
+  } catch (error) {
+    throw new Error(
+      "Could not determine the live host ephemeral port range; set LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE from the host TCP port policy",
+      { cause: error },
+    );
+  }
+  if (!discovered) {
+    throw new Error(
+      "This host does not expose its ephemeral port range; set LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE from the host TCP port policy",
+    );
+  }
+  return validatedEphemeralPortRange(discovered, "The live host ephemeral port range is invalid");
 }
 
 const portableTcpPortProbe = `
@@ -604,7 +680,7 @@ export function allocateLocalRuntimePortBlock(
   const owner = directoryIdentity(repositoryRoot);
   if (!owner) throw new Error(`Local runtime root does not exist: ${repositoryRoot}`);
   const id = allocationId(repositoryRoot);
-  const ephemeralPortRange = dependencies.ephemeralPortRange ?? portableEphemeralPortRange;
+  const ephemeralPortRange = resolveEphemeralPortRange(environment, dependencies);
   const reservedPorts = parseReservedPorts(environment.LOCAL_RUNTIME_RESERVED_PORTS);
   const candidates = candidatePortBases(dependencies, ephemeralPortRange, reservedPorts);
   const requestedPortBase = environment.LOCAL_RUNTIME_PORT_BASE?.trim();

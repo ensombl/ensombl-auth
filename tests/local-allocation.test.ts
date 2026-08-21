@@ -135,6 +135,96 @@ describe("local runtime allocation registry", () => {
     }
   });
 
+  it("excludes a live host ephemeral range configured below 32768", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const allocation = allocateLocalRuntimePortBlock(
+      root,
+      {},
+      {
+        candidatePortBases: [16_000, 16_016, 16_032],
+        hostEphemeralPortRange: () => [16_000, 16_031],
+        listeningPorts: () => new Set(),
+        registryPath,
+      },
+    );
+
+    expect(allocation.portBase).toBe(16_032);
+  });
+
+  it("accepts a reviewed host ephemeral range from the production environment", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+    const allocation = allocateLocalRuntimePortBlock(
+      root,
+      { LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE: "16000-16031" },
+      {
+        candidatePortBases: [16_000, 16_016, 16_032],
+        hostEphemeralPortRange: () => {
+          throw new Error("host discovery must not run");
+        },
+        listeningPorts: () => new Set(),
+        registryPath,
+      },
+    );
+
+    expect(allocation.portBase).toBe(16_032);
+  });
+
+  it("fails closed when the host ephemeral range is unsupported or unreadable", () => {
+    const unsupportedRoot = temporaryRoot("unsupported");
+    const unsupportedRegistry = resolve(unsupportedRoot, "allocations.json");
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        unsupportedRoot,
+        {},
+        {
+          candidatePortBases: [16_000],
+          hostEphemeralPortRange: () => undefined,
+          listeningPorts: () => new Set(),
+          registryPath: unsupportedRegistry,
+        },
+      ),
+    ).toThrow(/LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE/u);
+    expect(existsSync(unsupportedRegistry)).toBe(false);
+
+    const unreadableRoot = temporaryRoot("unreadable");
+    const unreadableRegistry = resolve(unreadableRoot, "allocations.json");
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        unreadableRoot,
+        {},
+        {
+          candidatePortBases: [16_000],
+          hostEphemeralPortRange: () => {
+            throw new Error("host policy unavailable");
+          },
+          listeningPorts: () => new Set(),
+          registryPath: unreadableRegistry,
+        },
+      ),
+    ).toThrow(/Could not determine the live host ephemeral port range/u);
+    expect(existsSync(unreadableRegistry)).toBe(false);
+  });
+
+  it("rejects an invalid configured host ephemeral range", () => {
+    const root = temporaryRoot();
+    const registryPath = resolve(root, "allocations.json");
+
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        { LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE: "16031-16000" },
+        {
+          candidatePortBases: [16_032],
+          listeningPorts: () => new Set(),
+          registryPath,
+        },
+      ),
+    ).toThrow(/LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE is invalid/u);
+    expect(existsSync(registryPath)).toBe(false);
+  });
+
   it("detects an occupied block with the portable Node TCP probe before writing", async () => {
     const root = temporaryRoot();
     const registryPath = resolve(root, "portable", "allocations.json");

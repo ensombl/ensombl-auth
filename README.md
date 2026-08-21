@@ -28,6 +28,11 @@ pass the same reservation into auth instead of allocating another block. The pro
 Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightClaims
 application URL.
 
+On Linux, allocation excludes the live TCP/UDP range from
+[`ip_local_port_range`](https://docs.kernel.org/networking/ip-sysctl.html#ip-variables). On other
+hosts, set `LOCAL_RUNTIME_EPHEMERAL_PORT_RANGE=<first>-<last>` from the reviewed host TCP dynamic-port
+policy. Allocation fails if the range is unavailable or invalid.
+
 Run the repository checks with:
 
 ```bash
