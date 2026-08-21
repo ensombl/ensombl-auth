@@ -23,8 +23,10 @@ pnpm install
 pnpm dev
 ```
 
-The local issuer is `http://localhost:24455`; its Console is available at
-`http://localhost:24455/ui/console`. Mailpit is available at `http://localhost:28025`.
+The command reserves a local profile in the shared per-user runtime registry. Product repositories
+pass the same reservation into auth instead of allocating another block. The profile scopes the
+Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and local product
+application URL.
 
 Run the repository checks with:
 

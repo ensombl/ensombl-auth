@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { z } from "zod";
+import type { LocalCatalogProfile } from "./local-profile.js";
 
 const roleSchema = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
@@ -279,6 +280,27 @@ export async function loadCatalog(path: string): Promise<Catalog> {
       },
     })),
   };
+}
+
+export function applyLocalCatalogProfile(catalog: Catalog, profile: LocalCatalogProfile): Catalog {
+  let localApplications = 0;
+  const configured = {
+    ...catalog,
+    issuer: profile.issuer,
+    products: catalog.products.map((product) => ({
+      ...product,
+      auth_origin: profile.issuer,
+      applications: product.applications.map((application) => {
+        if (application.environment !== "local") return application;
+        localApplications += 1;
+        return { ...application, base_url: profile.applicationBaseUrl };
+      }),
+    })),
+  };
+  if (localApplications === 0) {
+    throw new Error("A local runtime profile requires at least one local product application");
+  }
+  return catalogSchema.parse(configured);
 }
 
 export function rolesForProduct(catalog: Catalog, product: Product): Role[] {

@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { catalogSchema, rolesForProduct, secretPrefix } from "../src/catalog.js";
+import {
+  applyLocalCatalogProfile,
+  catalogSchema,
+  rolesForProduct,
+  secretPrefix,
+} from "../src/catalog.js";
 
 const baseCatalog = {
   issuer: "https://auth.example.com",
@@ -145,6 +150,41 @@ describe("product catalog", () => {
       ],
     });
     expect(catalog.products[0]?.migration_service_account?.verify_imported_passwords).toBe(true);
+  });
+
+  it("applies the runtime issuer and application origin to the local catalog only", () => {
+    const catalog = catalogSchema.parse({
+      ...baseCatalog,
+      products: [
+        {
+          ...baseCatalog.products[0],
+          applications: [
+            {
+              ...baseCatalog.products[0]?.applications[0],
+              environment: "local",
+            },
+          ],
+        },
+      ],
+    });
+
+    const configured = applyLocalCatalogProfile(catalog, {
+      applicationBaseUrl: "http://localhost:26033",
+      issuer: "http://localhost:26041",
+    });
+
+    expect(configured.issuer).toBe("http://localhost:26041");
+    expect(configured.products[0]?.auth_origin).toBe("http://localhost:26041");
+    expect(configured.products[0]?.applications[0]?.base_url).toBe("http://localhost:26033");
+  });
+
+  it("rejects a local profile for a catalog without a local application", () => {
+    expect(() =>
+      applyLocalCatalogProfile(catalogSchema.parse(baseCatalog), {
+        applicationBaseUrl: "http://localhost:26033",
+        issuer: "http://localhost:26041",
+      }),
+    ).toThrow(/requires at least one local product application/u);
   });
 
   it("rejects a migration account that reuses an application management identity", () => {

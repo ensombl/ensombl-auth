@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { provisionLocalHumans } from "../src/bootstrap.js";
+import { bootstrapCatalog, provisionLocalHumans } from "../src/bootstrap.js";
 import type { Product } from "../src/catalog.js";
+import { applyLocalCatalogProfile, catalogSchema } from "../src/catalog.js";
 import type { ZitadelClient } from "../src/zitadel.js";
 
 const passwordChangeUser: NonNullable<Product["local_fixture"]>["users"][number] = {
@@ -126,5 +127,117 @@ describe("local human fixtures", () => {
       email: "admin@example.com",
       displayName: "Platform Admin",
     });
+  });
+});
+
+describe("local bootstrap profile", () => {
+  it("configures ZITADEL clients from the profiled catalog origins", async () => {
+    const catalog = applyLocalCatalogProfile(
+      catalogSchema.parse({
+        issuer: "http://localhost:24455",
+        console_path: "/ui/console",
+        instance_organization: { name: "Ensombl", domain: "ensombl.localhost" },
+        email: {
+          from_address: "noreply@notifications.ensombl.io",
+          default_from_name: "Ensombl",
+        },
+        products: [
+          {
+            id: "freightclaims",
+            display_name: "FreightClaims",
+            auth_origin: "http://localhost:24455",
+            email_from_name: "FreightClaims",
+            owner_organization: { name: "Ensombl", domain: "ensombl.localhost" },
+            branding: {
+              primary_color: "#123456",
+              warn_color: "#123456",
+              background_color: "#123456",
+              font_color: "#123456",
+              primary_color_dark: "#123456",
+              warn_color_dark: "#123456",
+              background_color_dark: "#123456",
+              font_color_dark: "#123456",
+            },
+            applications: [
+              {
+                environment: "local",
+                name: "FreightClaims local web",
+                base_url: "http://localhost:4200",
+                development_mode: true,
+                management_service_account: {
+                  id: "01900000-0000-7000-8000-000000000100",
+                  username: "freightclaims-local-management",
+                  display_name: "FreightClaims local management",
+                },
+              },
+            ],
+          },
+        ],
+      }),
+      {
+        applicationBaseUrl: "http://localhost:26033",
+        issuer: "http://localhost:26041",
+      },
+    );
+    const client = {
+      addTrustedDomain: vi.fn().mockResolvedValue(undefined),
+      applyBranding: vi.fn().mockResolvedValue(undefined),
+      configureOidcApplicationLogin: vi.fn().mockResolvedValue(undefined),
+      configureProject: vi.fn().mockResolvedValue(undefined),
+      createOidcApplication: vi.fn().mockResolvedValue({
+        applicationId: "application-id",
+        clientId: "client-id",
+        clientSecret: "client-secret",
+      }),
+      createServiceAccount: vi.fn().mockResolvedValue(undefined),
+      deleteAdministrator: vi.fn().mockResolvedValue(undefined),
+      disableInstanceLoginV2Override: vi.fn().mockResolvedValue(undefined),
+      ensureAdministrator: vi.fn().mockResolvedValue(undefined),
+      ensureLoginPolicy: vi.fn().mockResolvedValue(undefined),
+      ensurePrimaryOrganizationDomain: vi.fn().mockResolvedValue(undefined),
+      findApplicationByName: vi.fn().mockResolvedValue({
+        applicationId: "console-application-id",
+        name: "Management Console",
+        oidcConfiguration: { clientId: "console-client-id" },
+        projectId: "console-project-id",
+      }),
+      generateServiceAccountSecret: vi.fn().mockResolvedValue("management-secret"),
+      getUser: vi.fn().mockResolvedValue(undefined),
+      listApplications: vi.fn().mockResolvedValue([]),
+      listOrganizations: vi
+        .fn()
+        .mockResolvedValue([{ id: "ensombl-organization-id", name: "Ensombl" }]),
+      listProjectRoles: vi.fn().mockResolvedValue([]),
+      listProjects: vi.fn().mockResolvedValue([
+        {
+          projectId: "console-project-id",
+          organizationId: "ensombl-organization-id",
+          name: "ZITADEL",
+        },
+        {
+          projectId: "freightclaims-project-id",
+          organizationId: "ensombl-organization-id",
+          name: "FreightClaims",
+        },
+      ]),
+    } as unknown as ZitadelClient;
+
+    const runtime = await bootstrapCatalog(client, catalog, { rotateMissingSecrets: true });
+
+    expect(client.configureOidcApplicationLogin).toHaveBeenCalledWith(
+      expect.objectContaining({
+        loginBaseUri: "http://localhost:26041/ui/v2/login/",
+      }),
+    );
+    expect(client.createOidcApplication).toHaveBeenCalledWith(
+      expect.objectContaining({
+        baseUrl: "http://localhost:26033",
+        loginBaseUri: "http://localhost:26041/ui/v2/login/",
+      }),
+    );
+    expect(runtime.issuer).toBe("http://localhost:26041");
+    expect(runtime.products.freightclaims?.applications.local?.baseUrl).toBe(
+      "http://localhost:26033",
+    );
   });
 });

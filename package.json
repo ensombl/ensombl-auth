@@ -10,13 +10,13 @@
   },
   "packageManager": "pnpm@11.17.0",
   "scripts": {
-    "dev": "node -e \"require('node:fs').mkdirSync('.local', { recursive: true })\" && docker compose up -d --wait && docker compose build product-bootstrap && docker compose run --rm product-bootstrap",
+    "dev": "node --import tsx src/local-dev.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm validate:compose",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "validate:compose": "docker compose config --quiet && BWS_ACCESS_TOKEN=compose-validation BWS_PROJECT_ID=00000000-0000-0000-0000-000000000000 docker compose -f deploy/dokploy/compose.yml config --quiet"
+    "validate:compose": "node --import tsx src/local-dev.ts config && BWS_ACCESS_TOKEN=compose-validation BWS_PROJECT_ID=00000000-0000-0000-0000-000000000000 docker compose -f deploy/dokploy/compose.yml config --quiet"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
