@@ -34,7 +34,11 @@ function dockerConfigDirectory(environment: Readonly<NodeJS.ProcessEnv>): string
     }
     return resolve(configured);
   }
-  return resolve(environment.HOME?.trim() || homedir(), ".docker");
+  const homeDirectory =
+    (process.platform === "win32"
+      ? environment.USERPROFILE?.trim() || environment.HOME?.trim()
+      : environment.HOME?.trim()) || homedir();
+  return resolve(homeDirectory, ".docker");
 }
 
 function dockerCurrentContext(configDirectory: string): string {
@@ -129,7 +133,10 @@ function assertDockerEndpointIsClientLocal(endpoint: string, selection: string):
   }
 }
 
-function assertClientLocalDockerEndpoint(environment: Readonly<NodeJS.ProcessEnv>): void {
+function assertClientLocalDockerEndpoint(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  configDirectory = dockerConfigDirectory(environment),
+): void {
   const configuredHost = environment.DOCKER_HOST;
   const configuredContext = environment.DOCKER_CONTEXT;
   const hostSelected = configuredHost !== undefined && configuredHost !== "";
@@ -141,7 +148,6 @@ function assertClientLocalDockerEndpoint(environment: Readonly<NodeJS.ProcessEnv
       throw new Error("DOCKER_CONTEXT is invalid");
     }
     if (configuredContext !== "default") {
-      const configDirectory = dockerConfigDirectory(environment);
       assertDockerEndpointIsClientLocal(
         dockerContextEndpoint(configuredContext, configDirectory),
         `Docker context ${configuredContext}`,
@@ -151,7 +157,6 @@ function assertClientLocalDockerEndpoint(environment: Readonly<NodeJS.ProcessEnv
   }
   if (hostSelected) return;
 
-  const configDirectory = dockerConfigDirectory(environment);
   const context = dockerCurrentContext(configDirectory);
   if (context !== "default") {
     assertDockerEndpointIsClientLocal(
@@ -226,12 +231,14 @@ export function localAuthComposeEnvironment(
   profile: LocalAuthRuntimeProfile,
   source: Readonly<NodeJS.ProcessEnv> = process.env,
 ): NodeJS.ProcessEnv {
-  assertClientLocalDockerEndpoint(source);
+  const configDirectory = dockerConfigDirectory(source);
+  assertClientLocalDockerEndpoint(source, configDirectory);
   const environment: NodeJS.ProcessEnv = {
     ...localRuntimeAllocationEnvironment(profile),
     COMPOSE_ANSI: "never",
     COMPOSE_PROGRESS: "quiet",
     COMPOSE_PROJECT_NAME: profile.composeProject,
+    DOCKER_CONFIG: configDirectory,
     LOCAL_APPLICATION_BASE_URL: profile.applicationBaseUrl,
     LOCAL_AUTH_COMPOSE_PROJECT: profile.composeProject,
     LOCAL_AUTH_ISSUER: profile.issuer,
@@ -246,7 +253,6 @@ export function localAuthComposeEnvironment(
     "BUILDKIT_PROGRESS",
     "DOCKER_API_VERSION",
     "DOCKER_CERT_PATH",
-    "DOCKER_CONFIG",
     "DOCKER_CONTEXT",
     "DOCKER_CUSTOM_HEADERS",
     "DOCKER_DEFAULT_PLATFORM",

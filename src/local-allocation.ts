@@ -891,6 +891,13 @@ export function allocateLocalRuntimePortBlock(
       return allocationFromReservation(existing, registryPath, false);
     }
 
+    const identityOwner = reservations.find(
+      (reservation) => reservation.device === owner.device && reservation.inode === owner.inode,
+    );
+    if (identityOwner) {
+      throw new Error(`Local runtime root is already reserved as ${identityOwner.repositoryRoot}`);
+    }
+
     const foreignIdOwner = reservations.find((reservation) => reservation.id === id);
     if (foreignIdOwner) {
       throw new Error(

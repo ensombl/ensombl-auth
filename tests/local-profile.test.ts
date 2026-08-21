@@ -24,8 +24,12 @@ const allocationDependencies = {
 };
 const localDockerEnvironment = { DOCKER_CONFIG: resolve(testRoot, "docker-default") };
 
-function dockerConfig(name: string, host: string, current = false): string {
-  const configDirectory = resolve(testRoot, `docker-${name}`);
+function dockerConfig(
+  name: string,
+  host: string,
+  current = false,
+  configDirectory = resolve(testRoot, `docker-${name}`),
+): string {
   const contextId = createHash("sha256").update(name).digest("hex");
   const metadataDirectory = resolve(configDirectory, "contexts", "meta", contextId);
   mkdirSync(metadataDirectory, { recursive: true });
@@ -98,6 +102,34 @@ describe("local runtime profile", () => {
     });
     expect(environment.COMPOSE_FILE).toBeUndefined();
     expect(new Set([profile.proxyPort, profile.mailpitPort]).size).toBe(2);
+  });
+
+  it("pins the inspected Windows user-profile Docker config for Compose", () => {
+    const profile = localAuthRuntimeProfile(
+      firstRoot,
+      localDockerEnvironment,
+      allocationDependencies,
+    );
+    const userProfile = resolve(testRoot, "windows-user");
+    const dockerConfigDirectory = dockerConfig(
+      "windows-desktop",
+      "npipe:////./pipe/docker_engine",
+      true,
+      resolve(userProfile, ".docker"),
+    );
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    try {
+      const environment = localAuthComposeEnvironment(profile, {
+        COMPOSE_FILE: "foreign-compose.yml",
+        USERPROFILE: userProfile,
+      });
+
+      expect(environment.DOCKER_CONFIG).toBe(dockerConfigDirectory);
+      expect(environment.COMPOSE_FILE).toBeUndefined();
+      expect(environment.USERPROFILE).toBeUndefined();
+    } finally {
+      platform.mockRestore();
+    }
   });
 
   it("treats a port-only override as a new allocation", () => {

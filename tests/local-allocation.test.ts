@@ -10,6 +10,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -474,6 +475,57 @@ describe("local runtime allocation registry", () => {
       ),
     ).toThrow(`Local runtime allocation ID ${collisionId} is already owned by ${foreignRoot}`);
     expect(readFileSync(registryPath, "utf8")).toBe(originalRegistry);
+  });
+
+  it.runIf(process.platform !== "win32")(
+    "rejects a symlink alias without changing its reservation",
+    () => {
+      const root = temporaryRoot("canonical");
+      const container = resolve(root, "..");
+      const alias = resolve(container, "alias");
+      symlinkSync(root, alias, "dir");
+      const registryPath = resolve(container, "allocations.json");
+      const options = dependencies(registryPath, { candidatePortBases: [16_000, 16_016] });
+      const allocation = allocateLocalRuntimePortBlock(root, {}, options);
+      const originalRegistry = readFileSync(registryPath, "utf8");
+
+      expect(() => allocateLocalRuntimePortBlock(alias, {}, options)).toThrow(
+        `Local runtime root is already reserved as ${root}`,
+      );
+      expect(readFileSync(registryPath, "utf8")).toBe(originalRegistry);
+      const registry = JSON.parse(originalRegistry) as {
+        readonly reservations: readonly { readonly portBase: number }[];
+      };
+      expect(registry.reservations).toHaveLength(1);
+      expect(registry.reservations[0]?.portBase).toBe(allocation.portBase);
+    },
+  );
+
+  it.each([
+    "case-variant",
+    "bind-mount",
+  ])("rejects a %s identity alias without changing its reservation", (aliasName) => {
+    const root = temporaryRoot("canonical");
+    const container = resolve(root, "..");
+    const alias = resolve(container, aliasName);
+    const registryPath = resolve(container, "allocations.json");
+    const identity = { device: "shared-device", inode: "shared-inode" };
+    const options = dependencies(registryPath, {
+      candidatePortBases: [16_000, 16_016],
+      directoryIdentity: () => identity,
+    });
+    const allocation = allocateLocalRuntimePortBlock(root, {}, options);
+    const originalRegistry = readFileSync(registryPath, "utf8");
+
+    expect(() => allocateLocalRuntimePortBlock(alias, {}, options)).toThrow(
+      `Local runtime root is already reserved as ${root}`,
+    );
+    expect(readFileSync(registryPath, "utf8")).toBe(originalRegistry);
+    const registry = JSON.parse(originalRegistry) as {
+      readonly reservations: readonly { readonly portBase: number }[];
+    };
+    expect(registry.reservations).toHaveLength(1);
+    expect(registry.reservations[0]?.portBase).toBe(allocation.portBase);
   });
 
   it("recovers a stale reservation only after the recorded directory and ports are gone", () => {
