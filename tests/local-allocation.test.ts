@@ -127,7 +127,14 @@ describe("local runtime allocation registry", () => {
     const originalPath = process.env.PATH;
     process.env.PATH = "";
     try {
-      const allocation = allocateLocalRuntimePortBlock(root, {}, { registryPath });
+      const allocation = allocateLocalRuntimePortBlock(
+        root,
+        {},
+        {
+          ephemeralPortRange: [32_768, 60_999],
+          registryPath,
+        },
+      );
       expect(allocation.portBase).toBeLessThan(32_768);
     } finally {
       if (originalPath === undefined) delete process.env.PATH;
