@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 import {
   allocateLocalRuntimePortBlock,
   consumeLocalRuntimePortBlock,
@@ -22,6 +26,141 @@ export interface LocalAuthRuntimeProfile extends LocalCatalogProfile {
   readonly repositoryRoot: string;
 }
 
+function dockerConfigDirectory(environment: Readonly<NodeJS.ProcessEnv>): string {
+  const configured = environment.DOCKER_CONFIG;
+  if (configured !== undefined && configured !== "") {
+    if (!configured.trim() || configured !== configured.trim()) {
+      throw new Error("DOCKER_CONFIG is invalid");
+    }
+    return resolve(configured);
+  }
+  return resolve(environment.HOME?.trim() || homedir(), ".docker");
+}
+
+function dockerCurrentContext(configDirectory: string): string {
+  const configPath = resolve(configDirectory, "config.json");
+  let contents: string;
+  try {
+    contents = readFileSync(configPath, "utf8");
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return "default";
+    }
+    throw new Error(`Could not read the Docker client configuration: ${configPath}`, {
+      cause: error,
+    });
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents);
+  } catch (error) {
+    throw new Error(`The Docker client configuration is invalid JSON: ${configPath}`, {
+      cause: error,
+    });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`The Docker client configuration is invalid: ${configPath}`);
+  }
+  const currentContext = (parsed as { readonly currentContext?: unknown }).currentContext;
+  if (currentContext === undefined || currentContext === "") return "default";
+  if (
+    typeof currentContext !== "string" ||
+    !currentContext.trim() ||
+    currentContext !== currentContext.trim()
+  ) {
+    throw new Error(`The Docker client current context is invalid: ${configPath}`);
+  }
+  return currentContext;
+}
+
+function dockerContextEndpoint(context: string, configDirectory: string): string {
+  const contextId = createHash("sha256").update(context).digest("hex");
+  const metadataPath = resolve(configDirectory, "contexts", "meta", contextId, "meta.json");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(metadataPath, "utf8"));
+  } catch (error) {
+    throw new Error(`Could not read Docker context ${context}`, { cause: error });
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Docker context ${context} is invalid`);
+  }
+  const metadata = parsed as {
+    readonly Endpoints?: { readonly docker?: { readonly Host?: unknown } };
+    readonly Name?: unknown;
+  };
+  const host = metadata.Endpoints?.docker?.Host;
+  if (
+    metadata.Name !== context ||
+    typeof host !== "string" ||
+    !host.trim() ||
+    host !== host.trim()
+  ) {
+    throw new Error(`Docker context ${context} is invalid`);
+  }
+  return host;
+}
+
+function dockerEndpointIsClientLocal(endpoint: string): boolean {
+  if (process.platform === "win32" && /^npipe:\/\/\/\/.\/pipe\/[^/]+$/iu.test(endpoint)) {
+    return true;
+  }
+
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return false;
+  }
+  if (url.username || url.password || url.search || url.hash) return false;
+  if (url.protocol === "unix:") {
+    return !url.host && url.pathname.startsWith("/") && url.pathname !== "/";
+  }
+  if (url.protocol !== "tcp:" || (url.pathname !== "" && url.pathname !== "/")) return false;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+}
+
+function assertDockerEndpointIsClientLocal(endpoint: string, selection: string): void {
+  if (!endpoint || endpoint !== endpoint.trim() || !dockerEndpointIsClientLocal(endpoint)) {
+    throw new Error(
+      `${selection} selects a remote or unsupported Docker endpoint; local development requires a client-local Docker daemon`,
+    );
+  }
+}
+
+function assertClientLocalDockerEndpoint(environment: Readonly<NodeJS.ProcessEnv>): void {
+  const configuredHost = environment.DOCKER_HOST;
+  const configuredContext = environment.DOCKER_CONTEXT;
+  const hostSelected = configuredHost !== undefined && configuredHost !== "";
+  const contextSelected = configuredContext !== undefined && configuredContext !== "";
+  if (hostSelected) assertDockerEndpointIsClientLocal(configuredHost, "DOCKER_HOST");
+
+  if (contextSelected) {
+    if (!configuredContext.trim() || configuredContext !== configuredContext.trim()) {
+      throw new Error("DOCKER_CONTEXT is invalid");
+    }
+    if (configuredContext !== "default") {
+      const configDirectory = dockerConfigDirectory(environment);
+      assertDockerEndpointIsClientLocal(
+        dockerContextEndpoint(configuredContext, configDirectory),
+        `Docker context ${configuredContext}`,
+      );
+    }
+    return;
+  }
+  if (hostSelected) return;
+
+  const configDirectory = dockerConfigDirectory(environment);
+  const context = dockerCurrentContext(configDirectory);
+  if (context !== "default") {
+    assertDockerEndpointIsClientLocal(
+      dockerContextEndpoint(context, configDirectory),
+      `Docker context ${context}`,
+    );
+  }
+}
+
 function localOrigin(value: string, name: string): string {
   const url = new URL(value);
   if (
@@ -44,6 +183,7 @@ export function localAuthRuntimeProfile(
   environment: Readonly<NodeJS.ProcessEnv> = process.env,
   dependencies: LocalRuntimeAllocationDependencies = {},
 ): LocalAuthRuntimeProfile {
+  assertClientLocalDockerEndpoint(environment);
   const inheritedNames = ["LOCAL_RUNTIME_ROOT", "LOCAL_RUNTIME_ID"] as const;
   const inherited = inheritedNames.some((name) => environment[name]?.trim());
   const allocation = inherited
@@ -86,6 +226,7 @@ export function localAuthComposeEnvironment(
   profile: LocalAuthRuntimeProfile,
   source: Readonly<NodeJS.ProcessEnv> = process.env,
 ): NodeJS.ProcessEnv {
+  assertClientLocalDockerEndpoint(source);
   const environment: NodeJS.ProcessEnv = {
     ...localRuntimeAllocationEnvironment(profile),
     COMPOSE_ANSI: "never",
