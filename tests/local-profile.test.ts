@@ -213,6 +213,38 @@ describe("local runtime profile", () => {
     }
   });
 
+  it("rejects a remote Windows named pipe before registry creation and Compose", () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+    const root = resolve(testRoot, "remote-windows-named-pipe");
+    const registryPath = resolve(root, "state", "allocations.json");
+    const environment = { DOCKER_HOST: "npipe:////x/pipe/docker_engine" };
+    mkdirSync(root);
+    try {
+      expect(() =>
+        localAuthRuntimeProfile(root, environment, {
+          ...allocationDependencies,
+          processInstanceId: (pid) => `test-${String(pid)}`,
+          registryPath,
+        }),
+      ).toThrow(/remote or unsupported Docker endpoint/u);
+      expect(existsSync(registryPath)).toBe(false);
+      expect(existsSync(`${registryPath}.lock`)).toBe(false);
+      const localProfile = localAuthRuntimeProfile(
+        firstRoot,
+        { DOCKER_HOST: "npipe:////./pipe/docker_engine" },
+        {
+          ...allocationDependencies,
+          processInstanceId: (pid) => `test-${String(pid)}`,
+        },
+      );
+      expect(() => localAuthComposeEnvironment(localProfile, environment)).toThrow(
+        /remote or unsupported Docker endpoint/u,
+      );
+    } finally {
+      platform.mockRestore();
+    }
+  });
+
   it("validates paired local catalog origins", () => {
     expect(
       localCatalogProfileFromEnvironment({

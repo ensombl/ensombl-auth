@@ -103,7 +103,7 @@ function dockerContextEndpoint(context: string, configDirectory: string): string
 }
 
 function dockerEndpointIsClientLocal(endpoint: string): boolean {
-  if (process.platform === "win32" && /^npipe:\/\/\/\/.\/pipe\/[^/]+$/iu.test(endpoint)) {
+  if (process.platform === "win32" && /^npipe:\/\/\/\/\.\/pipe\/[^/]+$/iu.test(endpoint)) {
     return true;
   }
 
