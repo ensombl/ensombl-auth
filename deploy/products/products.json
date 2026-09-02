@@ -55,7 +55,8 @@
       "migration_service_account": {
         "id": "afbead5c-1b97-4d63-8136-32fea6673fde",
         "username": "freightclaims-migration",
-        "display_name": "FreightClaims migration"
+        "display_name": "FreightClaims migration",
+        "verify_imported_passwords": true
       },
       "applications": [
         {
