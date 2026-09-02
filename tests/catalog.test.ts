@@ -97,6 +97,19 @@ describe("product catalog", () => {
     });
   });
 
+  it("enables imported-password verification only for hosted FreightClaims", () => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(
+        readFileSync(new URL("../deploy/products/products.json", import.meta.url), "utf8"),
+      ),
+    );
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
+
+    expect(freightclaims?.migration_service_account?.verify_imported_passwords).toBe(true);
+    expect(freightcheck?.migration_service_account?.verify_imported_passwords).toBe(false);
+  });
+
   it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];

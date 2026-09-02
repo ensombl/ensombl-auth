@@ -15,7 +15,7 @@ Each product declares:
 
 A migration account is an explicitly trusted control-plane identity, not an application runtime.
 The migration account receives `ORG_USER_MANAGER` only on its product organization so it can
-import product-owned humans. A local account may receive `IAM_LOGIN_CLIENT` only for the imported
+import product-owned humans. The hosted FreightClaims account receives `IAM_LOGIN_CLIENT` only for the imported
 password verification test. The bootstrap never gives an application management account an
 instance role and never creates customer-tenant organizations.
 

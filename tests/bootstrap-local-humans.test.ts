@@ -158,6 +158,12 @@ describe("local bootstrap profile", () => {
               background_color_dark: "#123456",
               font_color_dark: "#123456",
             },
+            migration_service_account: {
+              id: "01900000-0000-7000-8000-000000000200",
+              username: "freightclaims-local-migration",
+              display_name: "FreightClaims local migration",
+              verify_imported_passwords: true,
+            },
             applications: [
               {
                 environment: "local",
@@ -179,6 +185,8 @@ describe("local bootstrap profile", () => {
         issuer: "http://localhost:26041",
       },
     );
+    const ensureAdministrator = vi.fn().mockResolvedValue(undefined);
+    const deleteAdministrator = vi.fn().mockResolvedValue(undefined);
     const client = {
       addTrustedDomain: vi.fn().mockResolvedValue(undefined),
       applyBranding: vi.fn().mockResolvedValue(undefined),
@@ -190,9 +198,9 @@ describe("local bootstrap profile", () => {
         clientSecret: "client-secret",
       }),
       createServiceAccount: vi.fn().mockResolvedValue(undefined),
-      deleteAdministrator: vi.fn().mockResolvedValue(undefined),
+      deleteAdministrator,
       disableInstanceLoginV2Override: vi.fn().mockResolvedValue(undefined),
-      ensureAdministrator: vi.fn().mockResolvedValue(undefined),
+      ensureAdministrator,
       ensureLoginPolicy: vi.fn().mockResolvedValue(undefined),
       ensurePrimaryOrganizationDomain: vi.fn().mockResolvedValue(undefined),
       findApplicationByName: vi.fn().mockResolvedValue({
@@ -239,5 +247,41 @@ describe("local bootstrap profile", () => {
     expect(runtime.products.freightclaims?.applications.local?.baseUrl).toBe(
       "http://localhost:26033",
     );
+    expect(
+      ensureAdministrator.mock.calls.filter(([input]) => "instance" in input.resource),
+    ).toEqual([
+      [
+        {
+          userId: "01900000-0000-7000-8000-000000000200",
+          resource: { instance: true },
+          roles: ["IAM_LOGIN_CLIENT"],
+        },
+      ],
+    ]);
+    expect(ensureAdministrator).toHaveBeenCalledWith({
+      userId: "01900000-0000-7000-8000-000000000200",
+      resource: { organizationId: "ensombl-organization-id" },
+      roles: ["ORG_USER_MANAGER"],
+    });
+
+    const product = catalog.products[0];
+    if (!product?.migration_service_account) throw new Error("Expected migration service account");
+    const withoutVerification = catalogSchema.parse({
+      ...catalog,
+      products: [
+        {
+          ...product,
+          migration_service_account: {
+            ...product.migration_service_account,
+            verify_imported_passwords: false,
+          },
+        },
+      ],
+    });
+    await bootstrapCatalog(client, withoutVerification, { rotateMissingSecrets: true });
+    expect(deleteAdministrator).toHaveBeenCalledWith({
+      userId: "01900000-0000-7000-8000-000000000200",
+      resource: { instance: true },
+    });
   });
 });

@@ -53,7 +53,7 @@ explicit control-plane operations.
 
 FreightClaims and FreightCheck each have one dedicated migration service account with
 `ORG_USER_MANAGER` on their own organization. Neither receives `IAM_OWNER`, `IAM_ORG_MANAGER`, nor
-general user-management permission across the instance. The disposable local FreightClaims account
+general user-management permission across the instance. The hosted FreightClaims account
 additionally receives `IAM_LOGIN_CLIENT` solely for the bounded imported-password verification
 test; FreightCheck's migration account has no `verify_imported_passwords` declaration and does not
 receive `IAM_LOGIN_CLIENT`, since it imports no legacy password.
