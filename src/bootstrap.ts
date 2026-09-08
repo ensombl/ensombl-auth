@@ -293,10 +293,18 @@ export async function bootstrapCatalog(
             `ZITADEL_ROTATE_MISSING_CLIENT_SECRETS=true once to rotate it.`,
         );
       }
-      await client.deleteAdministrator({
-        userId: account.id,
-        resource: { organizationId: instanceOrganization.id },
-      });
+      if (product.instance_org_user_lookup && ownerOrganization.id !== instanceOrganization.id) {
+        await client.ensureAdministrator({
+          userId: account.id,
+          resource: { organizationId: instanceOrganization.id },
+          roles: ["ORG_OWNER_VIEWER"],
+        });
+      } else {
+        await client.deleteAdministrator({
+          userId: account.id,
+          resource: { organizationId: instanceOrganization.id },
+        });
+      }
       if (ownerOrganization.id !== instanceOrganization.id) {
         await client.ensureAdministrator({
           userId: account.id,
