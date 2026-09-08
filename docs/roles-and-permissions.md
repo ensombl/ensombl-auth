@@ -20,8 +20,11 @@ Administrator roles authorize management of ZITADEL itself. They never grant pro
 | Project | `PROJECT_OWNER` | Administer one project's apps and optional project roles |
 
 Human instance ownership is reserved for named Ensombl operators. Product runtime accounts receive
-`ORG_USER_MANAGER` only on their product organization. Product runtime and migration accounts are
-not project administrators.
+`ORG_USER_MANAGER` only on their product organization. A product that sets `cross_org_user_lookup`
+in the catalog also gives its management accounts `ORG_USER_MANAGER` on the instance organization,
+so the product can resolve identities owned by named Ensombl operators who also use that product;
+this stays an organization role, not an `IAM_*` instance role. Product runtime and migration
+accounts are not project administrators.
 
 ## Product boundary
 
