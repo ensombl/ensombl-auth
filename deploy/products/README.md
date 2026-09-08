@@ -9,8 +9,8 @@ Each product declares:
 - optional product-wide project roles; there are no defaults;
 - one OIDC BFF application per canonical `local`, `staging`, or `production` environment;
 - one management service account per application, with `ORG_USER_MANAGER` on the product
-  organization — plus `ORG_USER_MANAGER` on the instance organization when the product sets
-  `cross_org_user_lookup: true` (to resolve Ensombl operators who also use the product);
+  organization — plus read-only `ORG_OWNER_VIEWER` on the instance organization when the product
+  sets `instance_org_user_lookup: true` (to resolve Ensombl operators who also use the product);
 - an optional migration service account for importing identities into the product organization;
 - optional disposable local human and service-account fixtures for product integration tests.
 

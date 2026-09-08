@@ -160,7 +160,7 @@
         "name": "FreightCheck",
         "domain": "freightcheck.localhost"
       },
-      "cross_org_user_lookup": true,
+      "instance_org_user_lookup": true,
       "branding": {
         "primary_color": "#7F56D9",
         "warn_color": "#D92D20",

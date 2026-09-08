@@ -16,7 +16,7 @@ const branding = {
 
 const managementServiceAccountId = "01900000-0000-7000-8000-0000000000aa";
 
-function catalogFor(crossOrgUserLookup: boolean) {
+function catalogFor(instanceOrgUserLookup: boolean) {
   return catalogSchema.parse({
     issuer: "https://auth.ensombl.io",
     console_path: "/ui/console",
@@ -32,7 +32,7 @@ function catalogFor(crossOrgUserLookup: boolean) {
         auth_origin: "https://auth.freightcheck.io",
         email_from_name: "FreightCheck",
         owner_organization: { name: "FreightCheck", domain: "freightcheck.io" },
-        cross_org_user_lookup: crossOrgUserLookup,
+        instance_org_user_lookup: instanceOrgUserLookup,
         branding,
         applications: [
           {
@@ -102,7 +102,7 @@ function mockClient() {
 const instanceOrgResource = { resource: { organizationId: "ensombl-organization-id" } };
 
 describe("management service account instance-organization grant", () => {
-  it("grants ORG_USER_MANAGER on the instance organization when cross_org_user_lookup is set", async () => {
+  it("grants read-only ORG_OWNER_VIEWER on the instance organization when instance_org_user_lookup is set", async () => {
     const { client, ensureAdministrator, deleteAdministrator } = mockClient();
 
     await bootstrapCatalog(client, catalogFor(true), { rotateMissingSecrets: true });
@@ -110,7 +110,7 @@ describe("management service account instance-organization grant", () => {
     expect(ensureAdministrator).toHaveBeenCalledWith({
       userId: managementServiceAccountId,
       resource: { organizationId: "ensombl-organization-id" },
-      roles: ["ORG_USER_MANAGER"],
+      roles: ["ORG_OWNER_VIEWER"],
     });
     expect(ensureAdministrator).toHaveBeenCalledWith({
       userId: managementServiceAccountId,
@@ -129,7 +129,7 @@ describe("management service account instance-organization grant", () => {
     });
   });
 
-  it("strips any instance-organization membership when cross_org_user_lookup is not set", async () => {
+  it("strips any instance-organization membership when instance_org_user_lookup is not set", async () => {
     const { client, ensureAdministrator, deleteAdministrator } = mockClient();
 
     await bootstrapCatalog(client, catalogFor(false), { rotateMissingSecrets: true });

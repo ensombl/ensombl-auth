@@ -90,7 +90,7 @@
         "name": "FreightCheck",
         "domain": "freightcheck.io"
       },
-      "cross_org_user_lookup": true,
+      "instance_org_user_lookup": true,
       "migration_service_account": {
         "id": "1c7e65a1-d014-4264-afb2-bcdfa3030556",
         "username": "freightcheck-migration",

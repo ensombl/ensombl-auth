@@ -95,9 +95,9 @@ const productSchema = z.object({
   }),
   branding: brandingSchema,
   login_policy: loginPolicySchema.default(defaultLoginPolicy),
-  // Also grants the product's management service accounts ORG_USER_MANAGER on
-  // the instance organization (see docs/roles-and-permissions.md).
-  cross_org_user_lookup: z.boolean().default(false),
+  // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
+  // only) on the instance organization (see docs/roles-and-permissions.md).
+  instance_org_user_lookup: z.boolean().default(false),
   roles: z.array(roleSchema).default([]),
   migration_service_account: migrationServiceAccountSchema.optional(),
   applications: z.array(applicationSchema).min(1),

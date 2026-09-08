@@ -20,17 +20,19 @@ Administrator roles authorize management of ZITADEL itself. They never grant pro
 | Project | `PROJECT_OWNER` | Administer one project's apps and optional project roles |
 
 Human instance ownership is reserved for named Ensombl operators. Product runtime accounts receive
-`ORG_USER_MANAGER` only on their product organization. A product that sets `cross_org_user_lookup`
-in the catalog also gives its management accounts `ORG_USER_MANAGER` on the instance organization,
-so the product can resolve identities owned by named Ensombl operators who also use that product;
-this stays an organization role, not an `IAM_*` instance role. Product runtime and migration
-accounts are not project administrators.
+`ORG_USER_MANAGER` on their product organization. A product that sets `instance_org_user_lookup`
+in the catalog also gives its management accounts `ORG_OWNER_VIEWER` (read only) on the instance
+organization, so the product can resolve identities owned by named Ensombl operators who also use
+that product; this stays an organization role, not an `IAM_*` instance role. Product runtime and
+migration accounts are not project administrators.
 
 ## Product boundary
 
 Every product has one owner organization. It owns the product project, OIDC applications, service
-accounts, login branding, and human identities admitted to that product. Consumer application
-tenancy is not represented by ZITADEL organizations.
+accounts, login branding, and the human identities created for that product. A named Ensombl
+operator keeps a single identity in the instance organization and may still be admitted to a
+product that sets `instance_org_user_lookup`; the product reads that identity but never owns or
+modifies it. Consumer application tenancy is not represented by ZITADEL organizations.
 
 The OIDC request pins the product owner organization so another product's identities cannot enter
 that product's login flow. The canonical issuer remains `https://auth.ensombl.io`.
