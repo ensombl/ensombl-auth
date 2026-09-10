@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
   type BigIntStats,
@@ -153,11 +153,19 @@ function configuredEphemeralPortRange(
 }
 
 function defaultHostEphemeralPortRange(): readonly [number, number] | undefined {
-  if (process.platform !== "linux") return undefined;
-  const values = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8")
-    .trim()
-    .split(/\s+/u)
-    .map(Number);
+  let range: string;
+  if (process.platform === "linux") {
+    range = readFileSync("/proc/sys/net/ipv4/ip_local_port_range", "utf8");
+  } else if (process.platform === "darwin") {
+    range = execFileSync(
+      "/usr/sbin/sysctl",
+      ["-n", "net.inet.ip.portrange.first", "net.inet.ip.portrange.last"],
+      { encoding: "utf8" },
+    );
+  } else {
+    return undefined;
+  }
+  const values = range.trim().split(/\s+/u).map(Number);
   if (values.length !== 2 || values[0] === undefined || values[1] === undefined) {
     throw new Error("The live host ephemeral port range is invalid");
   }
