@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -211,6 +211,37 @@ describe("local runtime allocation registry", () => {
       if (originalPath === undefined) delete process.env.PATH;
       else process.env.PATH = originalPath;
     }
+  });
+
+  it.runIf(process.platform === "darwin")("discovers the macOS host ephemeral range", () => {
+    const root = temporaryRoot();
+    const first = Number(
+      execFileSync("/usr/sbin/sysctl", ["-n", "net.inet.ip.portrange.first"], {
+        encoding: "utf8",
+      }).trim(),
+    );
+    const portBase = Math.ceil(first / localRuntimePortBlockSize) * localRuntimePortBlockSize;
+    expect(() =>
+      allocateLocalRuntimePortBlock(
+        root,
+        { LOCAL_RUNTIME_PORT_BASE: String(portBase) },
+        {
+          listeningPorts: () => new Set(),
+          registryPath: resolve(root, "allocations.json"),
+        },
+      ),
+    ).toThrow("LOCAL_RUNTIME_PORT_BASE must be an aligned, non-reserved, non-ephemeral port block");
+    expect(
+      allocateLocalRuntimePortBlock(
+        root,
+        {},
+        {
+          listeningPorts: () => new Set(),
+          processInstanceId: () => "test-process",
+          registryPath: resolve(root, "allocations.json"),
+        },
+      ).portBase + localRuntimePortBlockSize,
+    ).toBeLessThanOrEqual(first);
   });
 
   it("excludes a live host ephemeral range configured below 32768", () => {
