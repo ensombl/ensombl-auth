@@ -110,6 +110,20 @@ describe("product catalog", () => {
     expect(freightcheck?.migration_service_account?.verify_imported_passwords).toBe(false);
   });
 
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("enables instance-organization user lookup only for FreightCheck in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+
+    expect(freightcheck?.instance_org_user_lookup).toBe(true);
+    expect(freightclaims?.instance_org_user_lookup).toBe(false);
+  });
+
   it("defaults products to no project roles", () => {
     const catalog = catalogSchema.parse(baseCatalog);
     const product = catalog.products[0];
