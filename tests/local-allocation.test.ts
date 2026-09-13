@@ -27,6 +27,11 @@ import {
   releaseLocalRuntimePortBlock,
 } from "../src/local-allocation.js";
 
+const lockInspectionRace = vi.hoisted(() => ({
+  lockPath: undefined as string | undefined,
+  afterInspection: undefined as (() => void) | undefined,
+}));
+
 const staleRestoreRace = vi.hoisted(() => ({
   competitorIdentity: undefined as { readonly device: bigint; readonly inode: bigint } | undefined,
   lockPath: undefined as string | undefined,
@@ -36,7 +41,12 @@ vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   const lstatSync = ((...arguments_: unknown[]) => {
     try {
-      return Reflect.apply(actual.lstatSync, actual, arguments_);
+      const details = Reflect.apply(actual.lstatSync, actual, arguments_);
+      if (arguments_[0] === lockInspectionRace.lockPath) {
+        lockInspectionRace.lockPath = undefined;
+        lockInspectionRace.afterInspection?.();
+      }
+      return details;
     } catch (error) {
       const [path] = arguments_;
       if (
@@ -124,6 +134,8 @@ function writeLockOwner(
 }
 
 afterEach(() => {
+  lockInspectionRace.lockPath = undefined;
+  lockInspectionRace.afterInspection = undefined;
   staleRestoreRace.competitorIdentity = undefined;
   staleRestoreRace.lockPath = undefined;
   for (const root of temporaryRoots.splice(0)) {
@@ -982,6 +994,95 @@ describe("local runtime allocation registry", () => {
       allocateLocalRuntimePortBlock(root, { LOCAL_RUNTIME_PORT_BASE: "32768" }, options),
     ).toThrow(/non-reserved, non-ephemeral/u);
   });
+
+  it("allocates after another process releases the lock between stat and directory read", async () => {
+    const ownerRoot = temporaryRoot("owner");
+    const container = resolve(ownerRoot, "..");
+    const contenderRoot = resolve(container, "contender");
+    mkdirSync(contenderRoot, { mode: 0o700 });
+    const registryPath = resolve(container, "allocations.json");
+    const lockPath = `${registryPath}.lock`;
+    const acquired = resolve(container, "acquired");
+    const release = resolve(container, "release");
+    const released = resolve(container, "released");
+    const moduleUrl = new URL("../src/local-allocation.ts", import.meta.url).href;
+    const source = [
+      'import { existsSync, writeFileSync } from "node:fs";',
+      `import { allocateLocalRuntimePortBlock } from ${JSON.stringify(moduleUrl)};`,
+      "const deadline = Date.now() + 5000;",
+      "const allocation = allocateLocalRuntimePortBlock(process.env.TEST_OWNER_ROOT, {}, {",
+      "registryPath: process.env.TEST_REGISTRY,",
+      "candidatePortBases: [16000, 16016], ephemeralPortRange: [32768, 60999],",
+      "listeningPorts: () => {",
+      "writeFileSync(process.env.TEST_ACQUIRED, 'acquired');",
+      "while (!existsSync(process.env.TEST_RELEASE)) {",
+      "if (Date.now() > deadline) throw new Error('Owner release signal was not received');",
+      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);",
+      "}",
+      "return new Set();",
+      "},",
+      "});",
+      "writeFileSync(process.env.TEST_RELEASED, JSON.stringify(allocation));",
+    ].join("\n");
+    const child = spawn(
+      process.execPath,
+      ["--import", "tsx", "--input-type=module", "--eval", source],
+      {
+        env: {
+          ...process.env,
+          TEST_OWNER_ROOT: ownerRoot,
+          TEST_REGISTRY: registryPath,
+          TEST_ACQUIRED: acquired,
+          TEST_RELEASE: release,
+          TEST_RELEASED: released,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      },
+    );
+    let stderr = "";
+    child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
+    const result = new Promise<number | null>((resolveExit, reject) => {
+      child.once("error", reject);
+      child.once("exit", resolveExit);
+    });
+    try {
+      await waitForPath(acquired);
+      const [ownerFile] = readdirSync(lockPath);
+      if (!ownerFile) throw new Error("Expected the owner lock file");
+      expect(JSON.parse(readFileSync(resolve(lockPath, ownerFile), "utf8")).pid).toBe(child.pid);
+      const parentMode = statSync(container).mode;
+      lockInspectionRace.lockPath = lockPath;
+      lockInspectionRace.afterInspection = () => {
+        writeFileSync(release, "release");
+        const deadline = Date.now() + 5000;
+        while (!existsSync(released)) {
+          if (Date.now() > deadline) throw new Error("Owner did not release its lock");
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+        }
+        expect(existsSync(lockPath)).toBe(false);
+      };
+      const contender = allocateLocalRuntimePortBlock(
+        contenderRoot,
+        {},
+        dependencies(registryPath),
+      );
+      expect(await result, stderr).toBe(0);
+      const owner = JSON.parse(readFileSync(released, "utf8"));
+      expect(contender.portBase).not.toBe(owner.portBase);
+      const registry = JSON.parse(readFileSync(registryPath, "utf8"));
+      expect(registry.reservations).toHaveLength(2);
+      expect(
+        registry.reservations.map((row: { repositoryRoot: string }) => row.repositoryRoot).sort(),
+      ).toEqual([ownerRoot, contenderRoot].sort());
+      expect(existsSync(lockPath)).toBe(false);
+      expect(statSync(container).mode).toBe(parentMode);
+      expect(lockInspectionRace.lockPath).toBeUndefined();
+    } finally {
+      writeFileSync(release, "release");
+      if (child.exitCode === null) child.kill();
+      await Promise.allSettled([result]);
+    }
+  }, 10_000);
 
   it("serializes concurrent colliding allocations across processes", async () => {
     const first = temporaryRoot("first");
