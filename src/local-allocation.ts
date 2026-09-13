@@ -646,7 +646,13 @@ function recoverStaleLock(
       throw new Error(`Local runtime registry lock has a foreign owner: ${lockPath}`);
     }
   }
-  const entries = readdirSync(lockPath);
+  let entries: string[];
+  try {
+    entries = readdirSync(lockPath);
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return true;
+    throw error;
+  }
   if (entries.length === 0) {
     if (now() - Number(details.mtimeMs) < invalidLockStaleMilliseconds) return false;
     return removeEmptyLock(
