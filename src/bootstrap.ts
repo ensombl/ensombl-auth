@@ -103,6 +103,7 @@ export async function bootstrapCatalog(
   catalog: Catalog,
   options: BootstrapOptions,
 ): Promise<RuntimeConfig> {
+  await client.ensureRegistrationGuidance();
   const organizations = await client.listOrganizations();
   const projects = await client.listProjects();
   const runtime: RuntimeConfig = {
@@ -305,10 +306,18 @@ export async function bootstrapCatalog(
         });
       }
       await client.deleteAdministrator({ userId: account.id, resource: { projectId } });
-      await client.deleteAdministrator({
-        userId: account.id,
-        resource: { instance: true },
-      });
+      if (product.id === "freightcheck") {
+        await client.ensureAdministrator({
+          userId: account.id,
+          resource: { instance: true },
+          roles: ["IAM_FREIGHTCHECK_DIRECTORY_READER"],
+        });
+      } else {
+        await client.deleteAdministrator({
+          userId: account.id,
+          resource: { instance: true },
+        });
+      }
       applicationRuntime.managementServiceAccount = {
         userId: account.id,
         clientId: account.username,

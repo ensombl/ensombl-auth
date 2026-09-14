@@ -131,7 +131,10 @@ describe("local human fixtures", () => {
 });
 
 describe("local bootstrap profile", () => {
-  it("configures ZITADEL clients from the profiled catalog origins", async () => {
+  it.each([
+    "freightclaims",
+    "freightcheck",
+  ])("configures %s clients and directory permissions", async (productId) => {
     const catalog = applyLocalCatalogProfile(
       catalogSchema.parse({
         issuer: "http://localhost:24455",
@@ -185,6 +188,7 @@ describe("local bootstrap profile", () => {
         issuer: "http://localhost:26041",
       },
     );
+    for (const product of catalog.products) product.id = productId;
     const ensureAdministrator = vi.fn().mockResolvedValue(undefined);
     const deleteAdministrator = vi.fn().mockResolvedValue(undefined);
     const client = {
@@ -201,6 +205,7 @@ describe("local bootstrap profile", () => {
       deleteAdministrator,
       disableInstanceLoginV2Override: vi.fn().mockResolvedValue(undefined),
       ensureAdministrator,
+      ensureRegistrationGuidance: vi.fn().mockResolvedValue(undefined),
       ensureLoginPolicy: vi.fn().mockResolvedValue(undefined),
       ensurePrimaryOrganizationDomain: vi.fn().mockResolvedValue(undefined),
       findApplicationByName: vi.fn().mockResolvedValue({
@@ -244,12 +249,21 @@ describe("local bootstrap profile", () => {
       }),
     );
     expect(runtime.issuer).toBe("http://localhost:26041");
-    expect(runtime.products.freightclaims?.applications.local?.baseUrl).toBe(
-      "http://localhost:26033",
-    );
+    expect(runtime.products[productId]?.applications.local?.baseUrl).toBe("http://localhost:26033");
     expect(
       ensureAdministrator.mock.calls.filter(([input]) => "instance" in input.resource),
     ).toEqual([
+      ...(productId === "freightcheck"
+        ? [
+            [
+              {
+                userId: "01900000-0000-7000-8000-000000000100",
+                resource: { instance: true },
+                roles: ["IAM_FREIGHTCHECK_DIRECTORY_READER"],
+              },
+            ],
+          ]
+        : []),
       [
         {
           userId: "01900000-0000-7000-8000-000000000200",

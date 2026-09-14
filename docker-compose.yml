@@ -57,6 +57,8 @@ services:
     user: "0"
     command:
       - start-from-init
+      - --config
+      - /zitadel/permissions.json
       - --steps
       - /zitadel/steps.yaml
       - --masterkey
@@ -92,6 +94,7 @@ services:
       ZITADEL_DEFAULTINSTANCE_DOMAINPOLICY_SMTPSENDERADDRESSMATCHESINSTANCEDOMAIN: "false"
     volumes:
       - ./deploy/zitadel/steps.yaml:/zitadel/steps.yaml:ro
+      - ./deploy/zitadel/permissions.json:/zitadel/permissions.json:ro
       - bootstrap:/zitadel/bootstrap
     networks:
       - auth
@@ -150,6 +153,13 @@ services:
       - traefik.docker.network=${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
       - traefik.http.services.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.loadbalancer.server.port=3000
       - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.replacepath.path=/ui/v2/login/
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.redirectregex.regex=^https?://[^/]+(.*)
+      - traefik.http.middlewares.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.redirectregex.replacement=${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}$${1}
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.rule=!Host(`localhost`) && (Path(`/`) || PathPrefix(`/ui/`))
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.middlewares=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-canonical.priority=400
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.rule=Path(`/`)
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.entrypoints=web
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root.middlewares=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root

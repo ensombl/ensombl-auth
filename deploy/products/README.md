@@ -16,8 +16,9 @@ Each product declares:
 A migration account is an explicitly trusted control-plane identity, not an application runtime.
 The migration account receives `ORG_USER_MANAGER` only on its product organization so it can
 import product-owned humans. The hosted FreightClaims account receives `IAM_LOGIN_CLIENT` only for the imported
-password verification test. The bootstrap never gives an application management account an
-instance role and never creates customer-tenant organizations.
+password verification test. FreightCheck application management accounts additionally receive
+`IAM_FREIGHTCHECK_DIRECTORY_READER` for cross-organization identity lookup. FreightCheck memberships
+control tenant access; there is no synchronized enrollment role. Bootstrap never creates customer-tenant organizations.
 
 The catalog bootstrap requires a clean ZITADEL instance. Recovery and reset procedures are defined
 in [the Dokploy deployment guide](../../docs/dokploy.md).

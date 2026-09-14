@@ -67,6 +67,37 @@ domain records.
 
 ## Recovery
 
+Catalog bootstrap also applies English registration guidance through the Settings V2 translation
+API, preserving unrelated instance text. Creation failures offer retry or a return to sign-in
+without confirming whether an address exists. The existing Back button retains the login flow;
+no account lookup or automatic redirect is added. Restart the login service after bootstrap to
+refresh cached translations immediately, or allow its translation cache to expire.
+
 Recovery uses a native PostgreSQL backup together with the matching reviewed Git revision. Configure
 a documented retention policy, monitor backup completion, and perform periodic restore tests into
 an isolated database before relying on the backup for disaster recovery.
+
+## FreightCheck directory reader rollout
+
+`deploy/zitadel/permissions.json` preserves all 26 built-in role mappings from
+[ZITADEL v4.16.2](https://github.com/zitadel/zitadel/blob/v4.16.2/cmd/defaults.yaml) and adds
+`IAM_FREIGHTCHECK_DIRECTORY_READER` with only `user.read`. Both Compose definitions load this file.
+The pinned-default digest in `tests/directory-permissions.test.ts` detects changes to built-in roles.
+Refresh the built-in mappings and digest from the reviewed upstream release when upgrading ZITADEL.
+Do not override the mapping list with the custom role alone.
+
+Deploy the auth configuration first. `start-from-init` runs setup, which synchronizes the role
+mappings before catalog bootstrap replaces FreightCheck management accounts' instance viewer role
+with the custom reader. Deploy the FreightCheck API and worker after bootstrap succeeds. Confirm
+that the management credential can read an Ensombl identity but cannot update it or read instance
+login policies. Directory visibility checks deliberately reject missing or organization-only reader
+assignments. Existing organization-scoped user management permissions remain in place.
+
+Before deploying the removal of experimental enrollment tracking, inspect outbox rows of type
+`identity.enrolled` and pg-boss jobs named `identity-enrollment`. Stop old producers and workers,
+retire only those jobs, and mark their outbox rows processed without changing memberships. Remove
+only `enrolled` from FreightCheck project grants, preserve other role assignments, then remove the
+project role. If no enrollment tracking was deployed, no queue or grant cleanup is needed.
+
+Rollback requires restoring the previous application visibility check together with the previous
+service-account role. Do not remove the custom mapping while an application still requires it.

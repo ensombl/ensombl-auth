@@ -25,6 +25,8 @@ services:
       - start-from-init
       - --config
       - /run/ensombl-auth/config.json
+      - --config
+      - /zitadel/permissions.json
       - --steps
       - /run/ensombl-auth/steps.yaml
       - --masterkeyFile
@@ -54,6 +56,7 @@ services:
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "true"
     volumes:
       - runtime-secrets:/run/ensombl-auth:ro
+      - ../zitadel/permissions.json:/zitadel/permissions.json:ro
       - bootstrap:/zitadel/bootstrap
     networks:
       - auth-internal

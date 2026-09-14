@@ -29,12 +29,44 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
   };
 }
 
+it("preserves other login text and applies neutral registration guidance idempotently", async () => {
+  let translations = {
+    common: { back: "Back" },
+    register: { title: "Register", errors: { required: "Required" } },
+  };
+  const request = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    if (init?.method === "PUT") {
+      translations = JSON.parse(String(init.body)).translations;
+      return Response.json({});
+    }
+    return Response.json({ translations });
+  });
+  const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
+  await client.ensureRegistrationGuidance();
+  await client.ensureRegistrationGuidance();
+  expect(request.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+  expect(translations).toMatchObject({
+    common: { back: "Back" },
+    register: {
+      title: "Register",
+      description: "Create an account. Already have one? Go back to sign in.",
+      errors: {
+        required: "Required",
+        couldNotCreateUser:
+          "We couldn't complete registration. Try again, or go back to sign in with an existing account.",
+        couldNotRegisterUser:
+          "We couldn't complete registration. Try again, or go back to sign in with an existing account.",
+      },
+    },
+  });
+});
+
 describe("ZitadelClient human users", () => {
   it("creates a human fixture with its requested password-change state", async () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(Response.json({ id: "user-id" }));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.createHumanUser({
       organizationId: "organization-id",
@@ -57,7 +89,7 @@ describe("ZitadelClient human users", () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(Response.json({ id: "migration-user-id" }));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(
       client.createHumanUserWithoutPassword({
@@ -105,7 +137,7 @@ describe("ZitadelClient human users", () => {
         }),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(client.getUser("user-id")).resolves.toEqual({
       id: "user-id",
@@ -146,7 +178,7 @@ describe("ZitadelClient OIDC applications", () => {
         },
       }),
     );
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.createOidcApplication({
       projectId: "project-id",
@@ -169,7 +201,7 @@ describe("ZitadelClient OIDC applications", () => {
 
   it("configures applications with the product Login V2 base URI", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.configureOidcApplication({
       applicationId: "application-id",
@@ -203,7 +235,7 @@ describe("ZitadelClient OIDC applications", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(
       Response.json({ code: 9, message }, { status: 400 }),
     );
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(
       client.configureOidcApplication({
@@ -229,38 +261,38 @@ describe("ZitadelClient OIDC applications", () => {
             name: "Management Console",
             oidcConfiguration: {
               clientId: "console-client-id",
-              redirectUris: ["https://auth.ensombl.io/ui/console/auth/callback"],
+              redirectUris: ["https://auth.example.test/ui/console/auth/callback"],
               responseTypes: ["OIDC_RESPONSE_TYPE_CODE"],
               grantTypes: ["OIDC_GRANT_TYPE_AUTHORIZATION_CODE"],
               applicationType: "OIDC_APP_TYPE_USER_AGENT",
               authMethodType: "OIDC_AUTH_METHOD_TYPE_NONE",
-              postLogoutRedirectUris: ["https://auth.ensombl.io/ui/console/signedout"],
+              postLogoutRedirectUris: ["https://auth.example.test/ui/console/signedout"],
               developmentMode: false,
             },
           },
         }),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.configureOidcApplicationLogin({
       applicationId: "console-application-id",
       projectId: "console-project-id",
       organizationId: "ensombl-organization-id",
-      loginBaseUri: "https://auth.ensombl.io/ui/v2/login/",
+      loginBaseUri: "https://auth.example.test/ui/v2/login/",
     });
 
     expect(requestBody(request, 1)).toMatchObject({
       appType: "OIDC_APP_TYPE_USER_AGENT",
       loginVersion: {
-        loginV2: { baseUri: "https://auth.ensombl.io/ui/v2/login/" },
+        loginV2: { baseUri: "https://auth.example.test/ui/v2/login/" },
       },
     });
   });
 
   it("disables the instance-wide override so application login hosts apply", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.disableInstanceLoginV2Override();
 
@@ -273,7 +305,7 @@ describe("ZitadelClient project authorization", () => {
     const request = vi
       .spyOn(globalThis, "fetch")
       .mockResolvedValue(Response.json({ projectId: "project-id" }));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(client.createProject("organization-id", "Product")).resolves.toBe("project-id");
 
@@ -287,7 +319,7 @@ describe("ZitadelClient project authorization", () => {
 
   it("removes an obsolete project role and its dependent assignments", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.removeProjectRole("project-id", "obsolete-role");
 
@@ -302,7 +334,7 @@ describe("ZitadelClient project authorization", () => {
 
   it("configures a role-free project without an authorization gate", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.configureProject("project-id", false);
 
@@ -319,7 +351,7 @@ describe("ZitadelClient project authorization", () => {
 
   it("asserts project roles without requiring one for login", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.configureProject("project-id", true);
 
@@ -348,7 +380,7 @@ describe("ZitadelClient project authorization", () => {
         }),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.ensureAuthorization({
       userId: "user-id",
@@ -403,7 +435,7 @@ describe("ZitadelClient product login presentation", () => {
       .mockResolvedValueOnce(Response.json(currentPolicy))
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
 
@@ -444,7 +476,7 @@ describe("ZitadelClient product login presentation", () => {
       )
       .mockResolvedValueOnce(Response.json({ policy: desiredPolicy, isDefault: false }))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.applyBranding("freightclaims-org", branding);
 
@@ -498,7 +530,7 @@ describe("ZitadelClient product login presentation", () => {
         ),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(client.applyBranding("freightclaims-org", branding)).resolves.toBeUndefined();
 
@@ -554,7 +586,7 @@ describe("ZitadelClient product login presentation", () => {
             passwordlessType: "PASSWORDLESS_TYPE_NOT_ALLOWED",
             hidePasswordReset: false,
             ignoreUnknownUsernames: false,
-            defaultRedirectUri: "https://auth.ensombl.io/",
+            defaultRedirectUri: "https://auth.example.test/",
             passwordCheckLifetime: "864000s",
             externalLoginCheckLifetime: "864000s",
             mfaInitSkipLifetime: "2592000s",
@@ -570,7 +602,7 @@ describe("ZitadelClient product login presentation", () => {
         }),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.ensureLoginPolicy("freightclaims-org", {
       allow_username_password: true,
@@ -600,7 +632,7 @@ describe("ZitadelClient product login presentation", () => {
 describe("ZitadelClient organization domains", () => {
   it("adds a native instance trusted domain", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.addTrustedDomain("auth.freightcheck.io");
 
@@ -623,7 +655,7 @@ describe("ZitadelClient organization domains", () => {
         { status: 400 },
       ),
     );
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(client.addTrustedDomain("auth.freightclaims.com")).resolves.toBeUndefined();
   });
@@ -644,7 +676,7 @@ describe("ZitadelClient organization domains", () => {
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.ensurePrimaryOrganizationDomain(
       "organization-id",
@@ -673,7 +705,7 @@ describe("ZitadelClient organization domains", () => {
         Response.json({ code: 6, message: "Errors.Already.Exists (V2-e1wse)" }, { status: 409 }),
       )
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(
       client.ensurePrimaryOrganizationDomain("organization-id", "freightclaims.localhost"),
@@ -701,7 +733,7 @@ describe("ZitadelClient SMTP email provider", () => {
       .mockResolvedValueOnce(Response.json({ id: "replacement-provider-id" }))
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(
       client.ensureSmtpEmailProvider({
@@ -740,7 +772,7 @@ describe("ZitadelClient SMTP email provider", () => {
       .mockResolvedValueOnce(Response.json({ result: [] }))
       .mockResolvedValueOnce(Response.json({ id: "new-smtp-provider-id" }))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await expect(
       client.ensureSmtpEmailProvider({
@@ -782,7 +814,7 @@ describe("ZitadelClient SMTP email provider", () => {
       )
       .mockResolvedValueOnce(Response.json({}))
       .mockResolvedValueOnce(Response.json({}));
-    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
 
     await client.ensureSmtpEmailProvider({
       host: "smtp.resend.com:587",

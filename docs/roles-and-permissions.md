@@ -20,17 +20,20 @@ Administrator roles authorize management of ZITADEL itself. They never grant pro
 | Project | `PROJECT_OWNER` | Administer one project's apps and optional project roles |
 
 Human instance ownership is reserved for named Ensombl operators. Product runtime accounts receive
-`ORG_USER_MANAGER` only on their product organization. Product runtime and migration accounts are
-not project administrators.
+`ORG_USER_MANAGER` only on their product organization. FreightCheck management accounts also receive
+`IAM_FREIGHTCHECK_DIRECTORY_READER` with only `user.read` to resolve existing identities across
+organizations without duplicating them.
+Product runtime and migration accounts are not project administrators.
 
 ## Product boundary
 
 Every product has one owner organization. It owns the product project, OIDC applications, service
-accounts, login branding, and human identities admitted to that product. Consumer application
+accounts, login branding, and human identities created by that product. Consumer application
 tenancy is not represented by ZITADEL organizations.
 
-The OIDC request pins the product owner organization so another product's identities cannot enter
-that product's login flow. The canonical issuer remains `https://auth.ensombl.io`.
+FreightCheck accepts existing identities from other organizations without moving them or changing
+their credentials. Its OIDC request does not restrict the identity's owner organization; tenant
+access still requires a FreightCheck membership. The canonical issuer remains `https://auth.ensombl.io`.
 
 ## ZITADEL references
 

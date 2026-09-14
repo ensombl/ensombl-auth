@@ -4,6 +4,18 @@ import { describe, expect, it } from "vitest";
 const localCompose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 
 describe("local Compose profile", () => {
+  it("redirects browser aliases to the issuer without rewriting the login host", () => {
+    expect(localCompose).toContain(
+      "-canonical.rule=!Host(`localhost`) && (Path(`/`) || PathPrefix(`/ui/`))",
+    );
+    expect(localCompose).toContain(
+      `-canonical.redirectregex.replacement=\${LOCAL_AUTH_ISSUER:?LOCAL_AUTH_ISSUER is required}$\${1}`,
+    );
+    expect(localCompose).not.toContain(
+      `-login.middlewares=\${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-host`,
+    );
+  });
+
   it("scopes project, network, ports, provider constraints, and Traefik labels", () => {
     for (const variable of [
       "LOCAL_AUTH_COMPOSE_PROJECT",
