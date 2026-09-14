@@ -228,7 +228,7 @@ function canListen(port, host, ipv6Only = false) {
 
 let available = true;
 for (const port of ports) {
-  const ipv4 = await canListen(port, "0.0.0.0");
+  const ipv4 = await canListen(port, "127.0.0.1");
   const ipv6 = await canListen(port, "::", true);
   if (ipv4 === false || ipv6 === false) {
     available = false;

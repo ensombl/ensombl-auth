@@ -231,17 +231,20 @@ describe("local runtime allocation registry", () => {
         },
       ),
     ).toThrow("LOCAL_RUNTIME_PORT_BASE must be an aligned, non-reserved, non-ephemeral port block");
+    const precedingPortBase =
+      Math.floor((first - 1) / localRuntimePortBlockSize) * localRuntimePortBlockSize;
     expect(
       allocateLocalRuntimePortBlock(
         root,
         {},
         {
+          candidatePortBases: [precedingPortBase],
           listeningPorts: () => new Set(),
           processInstanceId: () => "test-process",
           registryPath: resolve(root, "allocations.json"),
         },
-      ).portBase + localRuntimePortBlockSize,
-    ).toBeLessThanOrEqual(first);
+      ).portBase,
+    ).toBe(precedingPortBase);
   });
 
   it("excludes a live host ephemeral range configured below 32768", () => {
