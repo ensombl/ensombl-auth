@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { Product } from "./catalog.js";
+import type { Catalog, Product } from "./catalog.js";
 
 interface Organization {
   readonly id: string;
@@ -319,22 +319,22 @@ export class ZitadelClient {
     }
   }
 
-  async ensureRegistrationGuidance(): Promise<void> {
+  async ensureRegistrationGuidance(
+    guidance: NonNullable<Catalog["registration_guidance"]>,
+  ): Promise<void> {
     const path = "/v2/settings/hosted_login_translation";
     const { translations = {} } = await this.#request<{
       translations?: Record<string, unknown> & {
         register?: Record<string, unknown> & { errors?: Record<string, unknown> };
       };
     }>(`${path}?instance=true&locale=en&ignoreInheritance=true`, { method: "GET" });
-    const message =
-      "We couldn't complete registration. Try again, or go back to sign in with an existing account.";
     const register = {
       ...translations.register,
-      description: "Create an account. Already have one? Go back to sign in.",
+      description: guidance.description,
       errors: {
         ...translations.register?.errors,
-        couldNotCreateUser: message,
-        couldNotRegisterUser: message,
+        couldNotCreateUser: guidance.creation_error,
+        couldNotRegisterUser: guidance.creation_error,
       },
     };
     if (JSON.stringify(translations.register) === JSON.stringify(register)) return;

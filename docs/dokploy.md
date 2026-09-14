@@ -67,12 +67,6 @@ domain records.
 
 ## Recovery
 
-Catalog bootstrap also applies English registration guidance through the Settings V2 translation
-API, preserving unrelated instance text. Creation failures offer retry or a return to sign-in
-without confirming whether an address exists. The existing Back button retains the login flow;
-no account lookup or automatic redirect is added. Restart the login service after bootstrap to
-refresh cached translations immediately, or allow its translation cache to expire.
-
 Recovery uses a native PostgreSQL backup together with the matching reviewed Git revision. Configure
 a documented retention policy, monitor backup completion, and perform periodic restore tests into
 an isolated database before relying on the backup for disaster recovery.
@@ -87,17 +81,28 @@ Refresh the built-in mappings and digest from the reviewed upstream release when
 Do not override the mapping list with the custom role alone.
 
 Deploy the auth configuration first. `start-from-init` runs setup, which synchronizes the role
-mappings before catalog bootstrap replaces FreightCheck management accounts' instance viewer role
-with the custom reader. Deploy the FreightCheck API and worker after bootstrap succeeds. Confirm
-that the management credential can read an Ensombl identity but cannot update it or read instance
-login policies. Directory visibility checks deliberately reject missing or organization-only reader
+mappings before catalog bootstrap reconciles management accounts from the product catalog.
+FreightCheck sets `instance_user_lookup: true` and no longer sets `instance_org_user_lookup`.
+Bootstrap removes its previous `ORG_OWNER_VIEWER` membership on the Ensombl organization and
+assigns `IAM_FREIGHTCHECK_DIRECTORY_READER` on the instance. These are different resources;
+bootstrap explicitly removes the organization membership. No manual role assignment, user-data
+migration, or secret rotation is required. Deploy the FreightCheck API and worker after bootstrap
+succeeds. Confirm that the management credential can read an Ensombl and a FreightClaims identity
+but cannot update either or read instance login policies. Directory visibility checks deliberately reject missing or organization-only reader
 assignments. Existing organization-scoped user management permissions remain in place.
-
-Before deploying the removal of experimental enrollment tracking, inspect outbox rows of type
-`identity.enrolled` and pg-boss jobs named `identity-enrollment`. Stop old producers and workers,
-retire only those jobs, and mark their outbox rows processed without changing memberships. Remove
-only `enrolled` from FreightCheck project grants, preserve other role assignments, then remove the
-project role. If no enrollment tracking was deployed, no queue or grant cleanup is needed.
 
 Rollback requires restoring the previous application visibility check together with the previous
 service-account role. Do not remove the custom mapping while an application still requires it.
+
+## Registration guidance
+
+The optional top-level `registration_guidance` in each product catalog owns the English
+registration description and creation-error message. It is instance-wide: FreightClaims,
+FreightCheck, and other clients using inherited English login translations receive it.
+Hosted and local catalogs can configure different text. Omitting the field leaves existing
+translations unchanged; it does not undo an earlier deployment.
+
+Bootstrap applies the text after provisioning all organizations, projects, accounts, and grants.
+A translation failure logs a warning and still returns the runtime configuration. Rerun bootstrap
+to retry. Unrelated translations are preserved. Restart the login service after a successful
+update to refresh its cache immediately, or allow the cache to expire.

@@ -98,6 +98,7 @@ const productSchema = z.object({
   // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
   // only) on the instance organization (see docs/roles-and-permissions.md).
   instance_org_user_lookup: z.boolean().default(false),
+  instance_user_lookup: z.boolean().default(false),
   roles: z.array(roleSchema).default([]),
   migration_service_account: migrationServiceAccountSchema.optional(),
   applications: z.array(applicationSchema).min(1),
@@ -125,6 +126,12 @@ export const catalogSchema = z
       from_address: z.email(),
       default_from_name: z.string().min(1).max(200),
     }),
+    registration_guidance: z
+      .object({
+        description: z.string().min(1).max(1000),
+        creation_error: z.string().min(1).max(1000),
+      })
+      .optional(),
     products: z.array(productSchema).min(1),
   })
   .superRefine((catalog, context) => {
@@ -138,6 +145,13 @@ export const catalogSchema = z
         });
       }
       productIds.add(product.id);
+      if (product.instance_org_user_lookup && product.instance_user_lookup) {
+        context.addIssue({
+          code: "custom",
+          message: "Choose either instance_org_user_lookup or instance_user_lookup",
+          path: ["products", productIndex, "instance_user_lookup"],
+        });
+      }
 
       const roles = new Set(product.roles.map((role) => role.key));
       const localUserKeys = new Set<string>();

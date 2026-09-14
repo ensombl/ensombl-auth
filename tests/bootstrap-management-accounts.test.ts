@@ -16,7 +16,7 @@ const branding = {
 
 const managementServiceAccountId = "01900000-0000-7000-8000-0000000000aa";
 
-function catalogFor(instanceOrgUserLookup: boolean) {
+function catalogFor(instanceOrgUserLookup: boolean, instanceUserLookup = false) {
   return catalogSchema.parse({
     issuer: "https://auth.ensombl.io",
     console_path: "/ui/console",
@@ -33,6 +33,7 @@ function catalogFor(instanceOrgUserLookup: boolean) {
         email_from_name: "FreightCheck",
         owner_organization: { name: "FreightCheck", domain: "freightcheck.io" },
         instance_org_user_lookup: instanceOrgUserLookup,
+        instance_user_lookup: instanceUserLookup,
         branding,
         applications: [
           {
@@ -124,10 +125,9 @@ describe("management service account instance-organization grant", () => {
         ...instanceOrgResource,
       }),
     );
-    expect(ensureAdministrator).toHaveBeenCalledWith({
+    expect(deleteAdministrator).toHaveBeenCalledWith({
       userId: managementServiceAccountId,
       resource: { instance: true },
-      roles: ["IAM_FREIGHTCHECK_DIRECTORY_READER"],
     });
   });
 
@@ -151,5 +151,74 @@ describe("management service account instance-organization grant", () => {
       resource: { organizationId: "freightcheck-organization-id" },
       roles: ["ORG_USER_MANAGER"],
     });
+  });
+});
+
+describe("management service account directory grant", () => {
+  it.each([
+    true,
+    false,
+  ])("reconciles instance lookup %s without an instance-organization grant", async (enabled) => {
+    const { client, ensureAdministrator, deleteAdministrator } = mockClient();
+    await bootstrapCatalog(client, catalogFor(false, enabled), { rotateMissingSecrets: true });
+    const instanceGrant = {
+      userId: managementServiceAccountId,
+      resource: { instance: true },
+      roles: ["IAM_FREIGHTCHECK_DIRECTORY_READER"],
+    };
+    if (enabled) {
+      expect(ensureAdministrator).toHaveBeenCalledWith(instanceGrant);
+      expect(deleteAdministrator).not.toHaveBeenCalledWith({
+        userId: managementServiceAccountId,
+        resource: { instance: true },
+      });
+    } else {
+      expect(ensureAdministrator).not.toHaveBeenCalledWith(instanceGrant);
+      expect(deleteAdministrator).toHaveBeenCalledWith({
+        userId: managementServiceAccountId,
+        resource: { instance: true },
+      });
+    }
+    expect(deleteAdministrator).toHaveBeenCalledWith({
+      userId: managementServiceAccountId,
+      ...instanceOrgResource,
+    });
+    expect(ensureAdministrator).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: managementServiceAccountId, ...instanceOrgResource }),
+    );
+  });
+});
+
+describe("catalog registration guidance", () => {
+  it("skips translations when the catalog does not configure them", async () => {
+    const { client } = mockClient();
+    await bootstrapCatalog(client, catalogFor(false), { rotateMissingSecrets: true });
+    expect(client.ensureRegistrationGuidance).not.toHaveBeenCalled();
+  });
+
+  it("finishes provisioning and returns runtime even when configured translations fail", async () => {
+    const { client } = mockClient();
+    const guidance = { description: "Create an account.", creation_error: "Try again or sign in." };
+    vi.mocked(client.ensureRegistrationGuidance).mockImplementation(async () => {
+      expect(client.disableInstanceLoginV2Override).toHaveBeenCalled();
+      throw new Error("translation API unavailable");
+    });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const runtime = await bootstrapCatalog(
+        client,
+        { ...catalogFor(false), registration_guidance: guidance },
+        { rotateMissingSecrets: true },
+      );
+      expect(
+        runtime.products.freightcheck?.applications.staging?.managementServiceAccount.clientSecret,
+      ).toBe("management-secret");
+      expect(client.ensureRegistrationGuidance).toHaveBeenCalledWith(guidance);
+      expect(warning).toHaveBeenCalledWith(
+        "Registration guidance could not be applied; rerun bootstrap to retry.",
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
 });

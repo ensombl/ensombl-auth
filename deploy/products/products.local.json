@@ -9,6 +9,10 @@
     "from_address": "noreply@notifications.ensombl.io",
     "default_from_name": "Ensombl"
   },
+  "registration_guidance": {
+    "description": "Create an account. Already have one? Go back to sign in.",
+    "creation_error": "We couldn't complete registration. Try again, or go back to sign in with an existing account."
+  },
   "products": [
     {
       "id": "freightclaims",
@@ -160,7 +164,7 @@
         "name": "FreightCheck",
         "domain": "freightcheck.localhost"
       },
-      "instance_org_user_lookup": true,
+      "instance_user_lookup": true,
       "branding": {
         "primary_color": "#7F56D9",
         "warn_color": "#D92D20",

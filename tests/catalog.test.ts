@@ -113,15 +113,39 @@ describe("product catalog", () => {
   it.each([
     "products.json",
     "products.local.json",
-  ])("enables instance-organization user lookup only for FreightCheck in %s", (fileName) => {
+  ])("enables instance-wide user lookup only for FreightCheck in %s", (fileName) => {
     const catalog = catalogSchema.parse(
       JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
     );
     const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
     const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
 
-    expect(freightcheck?.instance_org_user_lookup).toBe(true);
+    expect(freightcheck?.instance_user_lookup).toBe(true);
+    expect(freightcheck?.instance_org_user_lookup).toBe(false);
+    expect(freightclaims?.instance_user_lookup).toBe(false);
     expect(freightclaims?.instance_org_user_lookup).toBe(false);
+  });
+
+  it("rejects overlapping directory grants", () => {
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            instance_user_lookup: true,
+            instance_org_user_lookup: true,
+          },
+        ],
+      }),
+    ).toThrow("Choose either instance_org_user_lookup or instance_user_lookup");
+  });
+
+  it.each([
+    { description: "", creation_error: "Retry" },
+    { description: "Register" },
+  ])("rejects invalid registration guidance", (registration_guidance) => {
+    expect(catalogSchema.safeParse({ ...baseCatalog, registration_guidance }).success).toBe(false);
   });
 
   it("defaults products to no project roles", () => {
@@ -129,6 +153,8 @@ describe("product catalog", () => {
     const product = catalog.products[0];
     if (!product) throw new Error("Expected one product");
     expect(rolesForProduct(catalog, product)).toEqual([]);
+    expect(product.instance_user_lookup).toBe(false);
+    expect(product.instance_org_user_lookup).toBe(false);
     expect(product.login_policy).toMatchObject({
       allow_username_password: true,
       allow_self_registration: false,

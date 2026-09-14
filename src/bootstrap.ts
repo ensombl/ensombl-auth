@@ -103,7 +103,6 @@ export async function bootstrapCatalog(
   catalog: Catalog,
   options: BootstrapOptions,
 ): Promise<RuntimeConfig> {
-  await client.ensureRegistrationGuidance();
   const organizations = await client.listOrganizations();
   const projects = await client.listProjects();
   const runtime: RuntimeConfig = {
@@ -314,7 +313,7 @@ export async function bootstrapCatalog(
         });
       }
       await client.deleteAdministrator({ userId: account.id, resource: { projectId } });
-      if (product.id === "freightcheck") {
+      if (product.instance_user_lookup) {
         await client.ensureAdministrator({
           userId: account.id,
           resource: { instance: true },
@@ -455,5 +454,12 @@ export async function bootstrapCatalog(
   }
 
   await client.disableInstanceLoginV2Override();
+  if (catalog.registration_guidance) {
+    try {
+      await client.ensureRegistrationGuidance(catalog.registration_guidance);
+    } catch {
+      console.warn("Registration guidance could not be applied; rerun bootstrap to retry.");
+    }
+  }
   return runtime;
 }

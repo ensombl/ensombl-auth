@@ -9,6 +9,10 @@
     "from_address": "noreply@notifications.ensombl.io",
     "default_from_name": "Ensombl"
   },
+  "registration_guidance": {
+    "description": "Create an account. Already have one? Go back to sign in.",
+    "creation_error": "We couldn't complete registration. Try again, or go back to sign in with an existing account."
+  },
   "products": [
     {
       "id": "freightclaims",
@@ -90,7 +94,7 @@
         "name": "FreightCheck",
         "domain": "freightcheck.io"
       },
-      "instance_org_user_lookup": true,
+      "instance_user_lookup": true,
       "migration_service_account": {
         "id": "1c7e65a1-d014-4264-afb2-bcdfa3030556",
         "username": "freightcheck-migration",

@@ -22,17 +22,19 @@ Administrator roles authorize management of ZITADEL itself. They never grant pro
 Human instance ownership is reserved for named Ensombl operators. Product runtime accounts receive
 `ORG_USER_MANAGER` on their product organization. A product that sets `instance_org_user_lookup`
 in the catalog also gives its management accounts `ORG_OWNER_VIEWER` (read only) on the instance
-organization to resolve Ensombl operator identities. FreightCheck management accounts additionally
-receive `IAM_FREIGHTCHECK_DIRECTORY_READER` with only `user.read` to resolve existing identities
-across organizations without duplicating them. Product runtime and migration accounts are not
-project administrators.
+organization to resolve Ensombl operator identities. Alternatively, `instance_user_lookup` grants
+`IAM_FREIGHTCHECK_DIRECTORY_READER` with only `user.read` across every organization, including
+FreightClaims customers. The flags are mutually exclusive and default to false. FreightCheck opts
+into instance-wide lookup in both catalogs and removes the earlier instance-organization viewer
+grant; its management accounts cannot modify identities outside their product organization.
+Product runtime and migration accounts are not project administrators.
 
 ## Product boundary
 
 Every product has one owner organization. It owns the product project, OIDC applications, service
 accounts, login branding, and the human identities created for that product. A named Ensombl
 operator keeps a single identity in the instance organization and may still be admitted to a
-product that sets `instance_org_user_lookup`; the product reads that identity but never owns or
+product that enables either lookup scope; the product reads that identity but never owns or
 modifies it. Consumer application tenancy is not represented by ZITADEL organizations.
 
 FreightCheck accepts existing identities from other organizations without moving them or changing

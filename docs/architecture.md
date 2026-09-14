@@ -49,9 +49,12 @@ configured initial administrator owns instance bootstrap. Product management ser
 can invite and manage product identities; a product that sets `instance_org_user_lookup` in the
 catalog also gives its management accounts `ORG_OWNER_VIEWER` (read only) on the instance
 organization, so the product can resolve — but never modify — identities owned by named Ensombl
-operators who also use that product. FreightCheck management accounts additionally receive
-`IAM_FREIGHTCHECK_DIRECTORY_READER`, an instance role containing only `user.read`, to resolve
-identities across organizations. Declaring global project roles never grants a runtime or migration account
+operators who also use that product. The mutually exclusive `instance_user_lookup` flag instead
+grants `IAM_FREIGHTCHECK_DIRECTORY_READER`, an instance role containing only `user.read` across
+all organizations, including FreightClaims customers. FreightCheck explicitly enables this flag
+in both catalogs to reuse those identities and detect duplicate emails across the shared directory.
+Bootstrap removes its previous instance-organization viewer grant. Writes remain scoped to the
+product owner organization. Declaring global project roles never grants a runtime or migration account
 project administration; role definitions and assignments remain explicit control-plane operations.
 
 FreightClaims and FreightCheck each have one dedicated migration service account with

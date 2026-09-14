@@ -29,35 +29,39 @@ function requestBody(request: MockInstance<typeof fetch>, index = 0) {
   };
 }
 
-it("preserves other login text and applies neutral registration guidance idempotently", async () => {
-  let translations = {
-    common: { back: "Back" },
-    register: { title: "Register", errors: { required: "Required" } },
-  };
-  const request = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
-    if (init?.method === "PUT") {
-      translations = JSON.parse(String(init.body)).translations;
-      return Response.json({});
-    }
-    return Response.json({ translations });
-  });
-  const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
-  await client.ensureRegistrationGuidance();
-  await client.ensureRegistrationGuidance();
-  expect(request.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
-  expect(translations).toMatchObject({
-    common: { back: "Back" },
-    register: {
-      title: "Register",
-      description: "Create an account. Already have one? Go back to sign in.",
-      errors: {
-        required: "Required",
-        couldNotCreateUser:
-          "We couldn't complete registration. Try again, or go back to sign in with an existing account.",
-        couldNotRegisterUser:
-          "We couldn't complete registration. Try again, or go back to sign in with an existing account.",
+describe("ZitadelClient registration guidance", () => {
+  it("preserves other login text and applies neutral registration guidance idempotently", async () => {
+    let translations = {
+      common: { back: "Back" },
+      register: { title: "Register", errors: { required: "Required" } },
+    };
+    const request = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+      if (init?.method === "PUT") {
+        translations = JSON.parse(String(init.body)).translations;
+        return Response.json({});
+      }
+      return Response.json({ translations });
+    });
+    const guidance = {
+      description: "Create an account or sign in.",
+      creation_error: "Try again or sign in.",
+    };
+    const client = new ZitadelClient("https://auth.example.test", "bootstrap-pat");
+    await client.ensureRegistrationGuidance(guidance);
+    await client.ensureRegistrationGuidance(guidance);
+    expect(request.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(1);
+    expect(translations).toMatchObject({
+      common: { back: "Back" },
+      register: {
+        title: "Register",
+        description: guidance.description,
+        errors: {
+          required: "Required",
+          couldNotCreateUser: guidance.creation_error,
+          couldNotRegisterUser: guidance.creation_error,
+        },
       },
-    },
+    });
   });
 });
 
