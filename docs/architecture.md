@@ -3,7 +3,7 @@
 ## Identity and tenancy model
 
 One ZITADEL instance is the global Ensombl identity service. Each product organization owns the
-identities admitted to that product. Customer tenancy is application data and is not represented
+identities created for that product. Existing identities can retain their original owner organization. Customer tenancy is application data and is not represented
 by ZITADEL organizations.
 
 | Ensombl concept | ZITADEL object |
@@ -12,15 +12,15 @@ by ZITADEL organizations.
 | Product identity owner and product branding | Product owner organization |
 | FreightClaims or FreightCheck | Project |
 | Local, staging, or production BFF | OIDC application |
-| Human admitted to a product | User in the product organization |
+| Human admitted to a product | User in its original owner organization |
 | Customer tenant, membership, and role | Product database |
 | Tenant data isolation | Product database RLS |
 | Admin UI | ZITADEL Console |
 
 Product projects are owned by dedicated product organizations. Enforcing project-owner branding
-therefore makes the login screen deterministic from the OIDC client before the user is known. The
-OIDC request includes the product organization scope, so only identities owned by that product
-organization can log in. Customer-tenant selection and branding belong to the product UI.
+therefore makes the login screen deterministic from the OIDC client before the user is known. FreightCheck
+omits the product organization scope from OIDC requests so existing identities from other
+organizations can sign in; FreightCheck memberships control tenant access. Customer-tenant selection and branding belong to the product UI.
 
 Organization domains are identity-discovery and username-suffix domains, not service hostnames.
 The catalog makes `ensombl.io` primary for the Ensombl organization and the declared
@@ -45,11 +45,14 @@ tokens. The initial IAM-owner PAT exists only inside the auth stack to apply the
 catalog and is mounted from the private bootstrap volume. Product workloads never receive it.
 
 ZITADEL Console access uses built-in administrator permissions, not product project roles. The
-configured initial administrator owns instance bootstrap. Product management service accounts have
-no instance administrator role. They receive `ORG_USER_MANAGER` only on the product organization
-so they can invite and manage product identities. Declaring global project roles never grants a
-runtime or migration account project administration; role definitions and assignments remain
-explicit control-plane operations.
+configured initial administrator owns instance bootstrap. Product management service accounts receive `ORG_USER_MANAGER` on the product organization so they
+can invite and manage product identities; a product that sets `instance_org_user_lookup` in the
+catalog also gives its management accounts `ORG_OWNER_VIEWER` (read only) on the instance
+organization, so the product can resolve — but never modify — identities owned by named Ensombl
+operators who also use that product. FreightCheck management accounts additionally receive
+`IAM_FREIGHTCHECK_DIRECTORY_READER`, an instance role containing only `user.read`, to resolve
+identities across organizations. Declaring global project roles never grants a runtime or migration account
+project administration; role definitions and assignments remain explicit control-plane operations.
 
 FreightClaims and FreightCheck each have one dedicated migration service account with
 `ORG_USER_MANAGER` on their own organization. Neither receives `IAM_OWNER`, `IAM_ORG_MANAGER`, nor
