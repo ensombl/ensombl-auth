@@ -86,11 +86,13 @@ describe("product catalog", () => {
     const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
 
     expect(freightclaims?.login_policy).toMatchObject({
+      allow_self_registration: false,
       disable_login_with_email: false,
       disable_login_with_phone: false,
       ignore_unknown_usernames: true,
     });
     expect(freightcheck?.login_policy).toMatchObject({
+      allow_self_registration: true,
       disable_login_with_email: false,
       disable_login_with_phone: true,
       ignore_unknown_usernames: true,
@@ -113,14 +115,14 @@ describe("product catalog", () => {
   it.each([
     "products.json",
     "products.local.json",
-  ])("enables instance-organization user lookup only for FreightCheck in %s", (fileName) => {
+  ])("disables instance-organization user lookup for interactive products in %s", (fileName) => {
     const catalog = catalogSchema.parse(
       JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
     );
     const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
     const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
 
-    expect(freightcheck?.instance_org_user_lookup).toBe(true);
+    expect(freightcheck?.instance_org_user_lookup).toBe(false);
     expect(freightclaims?.instance_org_user_lookup).toBe(false);
   });
 
