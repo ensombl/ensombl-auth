@@ -11,6 +11,10 @@ const productLoginProxy = readFileSync(
 );
 
 describe("Dokploy Compose ownership", () => {
+  it("requires hosted email verification", () => {
+    expect(hostedCompose).toContain('EMAIL_VERIFICATION: "true"');
+  });
+
   it("leaves public domains and Traefik networking to Dokploy", () => {
     expect(hostedCompose).not.toContain("traefik.");
     expect(hostedCompose).not.toContain("dokploy-network");

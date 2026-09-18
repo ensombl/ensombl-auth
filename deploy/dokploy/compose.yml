@@ -74,6 +74,7 @@ services:
     environment:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
+      EMAIL_VERIFICATION: "true"
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
       CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:auth.ensombl.io,Host:auth.ensombl.io,X-Forwarded-Proto:https
     volumes:

@@ -4,6 +4,10 @@ import { describe, expect, it } from "vitest";
 const localCompose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 
 describe("local Compose profile", () => {
+  it("requires hosted email verification", () => {
+    expect(localCompose).toContain('EMAIL_VERIFICATION: "true"');
+  });
+
   it("scopes project, network, ports, provider constraints, and Traefik labels", () => {
     for (const variable of [
       "LOCAL_AUTH_COMPOSE_PROJECT",
