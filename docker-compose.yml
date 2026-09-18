@@ -118,14 +118,13 @@ services:
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-api.priority=100
 
-  zitadel-login:
+  zitadel-login: &zitadel-login
     image: ghcr.io/zitadel/zitadel-login:v4.16.2
     restart: unless-stopped
     user: "0"
-    environment:
+    environment: &login-environment
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
-      EMAIL_VERIFICATION: "true"
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
       CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:localhost:${LOCAL_AUTH_PROXY_PORT:?LOCAL_AUTH_PROXY_PORT is required},Host:localhost,X-Forwarded-Proto:http
     volumes:
@@ -160,6 +159,25 @@ services:
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.entrypoints=web
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login
       - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-login.priority=200
+
+  freightcheck-login:
+    <<: *zitadel-login
+    environment:
+      <<: *login-environment
+      EMAIL_VERIFICATION: "true"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${LOCAL_AUTH_NETWORK:?LOCAL_AUTH_NETWORK is required}
+      - traefik.http.services.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login.loadbalancer.server.port=3000
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login.rule=Host(`freightcheck.localhost`) && PathPrefix(`/ui/v2/login`)
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login.priority=400
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-root.rule=Host(`freightcheck.localhost`) && Path(`/`)
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-root.entrypoints=web
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-root.middlewares=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-root
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-root.service=${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-login
+      - traefik.http.routers.${LOCAL_RUNTIME_ID:?LOCAL_RUNTIME_ID is required}-freightcheck-root.priority=400
 
   product-bootstrap:
     profiles: ["operator"]

@@ -11,8 +11,10 @@ const productLoginProxy = readFileSync(
 );
 
 describe("Dokploy Compose ownership", () => {
-  it("requires hosted email verification", () => {
-    expect(hostedCompose).toContain('EMAIL_VERIFICATION: "true"');
+  it("requires email verification only in the FreightCheck login service", () => {
+    const [shared, freightcheck] = hostedCompose.split("  freightcheck-login:");
+    expect(shared).not.toContain("EMAIL_VERIFICATION");
+    expect(freightcheck).toContain('EMAIL_VERIFICATION: "true"');
   });
 
   it("leaves public domains and Traefik networking to Dokploy", () => {
@@ -42,6 +44,8 @@ describe("Dokploy Compose ownership", () => {
     expect(productLoginProxy).toContain("resolver 127.0.0.11 valid=10s ipv6=off;");
     expect(productLoginProxy).toContain("proxy_pass http://$zitadel_login_upstream;");
     expect(productLoginProxy).toContain("location /ui/v2/login {");
+    expect(productLoginProxy).toContain("auth.freightcheck.io freightcheck-login:3000;");
+    expect(productLoginProxy).toContain("default zitadel-login:3000;");
     expect(productLoginProxy).not.toContain("return 308 /ui/v2/login/;");
   });
 });

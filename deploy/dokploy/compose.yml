@@ -67,14 +67,13 @@ services:
       retries: 60
       start_period: 30s
 
-  zitadel-login:
+  zitadel-login: &zitadel-login
     image: ghcr.io/zitadel/zitadel-login:v4.16.2
     restart: unless-stopped
     user: "0"
-    environment:
+    environment: &login-environment
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
-      EMAIL_VERIFICATION: "true"
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
       CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:auth.ensombl.io,Host:auth.ensombl.io,X-Forwarded-Proto:https
     volumes:
@@ -96,6 +95,12 @@ services:
       timeout: 30s
       retries: 40
 
+  freightcheck-login:
+    <<: *zitadel-login
+    environment:
+      <<: *login-environment
+      EMAIL_VERIFICATION: "true"
+
   product-login-root:
     image: nginx:1.29.5-alpine
     restart: unless-stopped
@@ -105,6 +110,8 @@ services:
       - auth-internal
     depends_on:
       zitadel-login:
+        condition: service_healthy
+      freightcheck-login:
         condition: service_healthy
     healthcheck:
       test:
