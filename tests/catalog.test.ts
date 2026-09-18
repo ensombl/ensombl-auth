@@ -196,9 +196,8 @@ describe("product catalog", () => {
     const freightcheck = configured.products.find((product) => product.id === "freightcheck");
 
     expect(configured.issuer).toBe("http://localhost:26041");
-    expect(configured.products.every((product) => product.auth_origin === configured.issuer)).toBe(
-      true,
-    );
+    expect(freightclaims?.auth_origin).toBe(configured.issuer);
+    expect(freightcheck?.auth_origin).toBe("http://freightcheck.localhost:26041");
     expect(freightclaims?.applications[0]?.base_url).toBe("http://localhost:26033");
     expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:5173");
   });

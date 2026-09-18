@@ -26,7 +26,8 @@ pnpm dev
 The command reserves a local profile in the shared per-user runtime registry. Product repositories
 pass the same reservation into auth instead of allocating another block. The profile scopes the
 Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightClaims
-application URL.
+application URL. FreightCheck uses `http://freightcheck.localhost:<proxy-port>` for its login UI;
+the issuer stays on `localhost` at the same port.
 
 On Linux, allocation excludes the live TCP/UDP range from
 [`ip_local_port_range`](https://docs.kernel.org/networking/ip-sysctl.html#ip-variables). On other
@@ -60,6 +61,11 @@ tests/         Catalog, Compose, bootstrap, and policy tests
 `https://auth.ensombl.io` is the canonical issuer. Product login hosts provide product branding
 while the issuer and APIs remain canonical. Dokploy builds the repository sources directly; this
 project does not publish container images.
+
+`auth.freightcheck.io` routes to the separate `freightcheck-login` service with
+`EMAIL_VERIFICATION=true`. It shares the ZITADEL API and identities, but requires unverified
+users to verify their email during FreightCheck login. Other product hosts and the canonical
+login keep using `zitadel-login` with their existing verification behavior.
 
 See:
 

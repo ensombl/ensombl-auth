@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 const localCompose = readFileSync(new URL("../docker-compose.yml", import.meta.url), "utf8");
 
 describe("local Compose profile", () => {
+  it("requires email verification only in the FreightCheck login service", () => {
+    const [shared, freightcheck] = localCompose.split("  freightcheck-login:");
+    expect(shared).not.toContain("EMAIL_VERIFICATION");
+    expect(freightcheck).toContain('EMAIL_VERIFICATION: "true"');
+  });
+
   it("scopes project, network, ports, provider constraints, and Traefik labels", () => {
     for (const variable of [
       "LOCAL_AUTH_COMPOSE_PROJECT",
@@ -14,6 +20,7 @@ describe("local Compose profile", () => {
     ]) {
       expect(localCompose).toContain(`\${${variable}:?`);
     }
+    expect(localCompose).toContain("Host(`freightcheck.localhost`) && PathPrefix(`/ui/v2/login`)");
     expect(localCompose).not.toContain("name: ensombl-auth-local");
     expect(localCompose).not.toContain("127.0.0.1:24455");
     expect(localCompose).not.toContain("127.0.0.1:28025");

@@ -289,12 +289,14 @@ export async function loadCatalog(path: string): Promise<Catalog> {
 
 export function applyLocalCatalogProfile(catalog: Catalog, profile: LocalCatalogProfile): Catalog {
   let localApplications = 0;
+  const freightcheckLoginOrigin = new URL(profile.issuer);
+  freightcheckLoginOrigin.hostname = "freightcheck.localhost";
   const configured = {
     ...catalog,
     issuer: profile.issuer,
     products: catalog.products.map((product) => ({
       ...product,
-      auth_origin: profile.issuer,
+      auth_origin: product.id === "freightcheck" ? freightcheckLoginOrigin.origin : profile.issuer,
       applications: product.applications.map((application) => {
         if (product.id !== localApplicationProductId || application.environment !== "local") {
           return application;
