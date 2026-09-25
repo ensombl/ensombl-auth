@@ -171,7 +171,16 @@
         "background_color_dark": "#1D2939",
         "font_color_dark": "#F9FAFB"
       },
-      "roles": [],
+      "roles": [
+        {
+          "key": "platform_admin",
+          "display_name": "Platform admin"
+        },
+        {
+          "key": "platform_support",
+          "display_name": "Platform support"
+        }
+      ],
       "migration_service_account": {
         "id": "b43c7733-d886-4611-aa29-c3577ace9547",
         "username": "freightcheck-local-migration",
@@ -190,6 +199,15 @@
             "display_name": "FreightCheck Developer",
             "password": "FreightCheck-Dev-2026!",
             "roles": []
+          },
+          {
+            "key": "platform-admin",
+            "id": "f5a6f1ac-5d44-4902-88c7-529691fcd641",
+            "email": "platform-admin@freightcheck.test",
+            "display_name": "FreightCheck Platform Admin",
+            "password": "FreightCheck-Admin-2026!",
+            "password_change_required": false,
+            "roles": ["platform_admin"]
           }
         ]
       },

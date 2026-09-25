@@ -58,7 +58,7 @@ describe("product catalog", () => {
   it.each([
     "products.json",
     "products.local.json",
-  ])("declares only FreightClaims global operator roles in %s", (fileName) => {
+  ])("keeps products without staff roles roleless in %s", (fileName) => {
     const catalog = catalogSchema.parse(
       JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
     );
@@ -69,7 +69,7 @@ describe("product catalog", () => {
       { key: "platform_admin", display_name: "Platform Administrator" },
     ]);
     for (const product of catalog.products.filter(
-      (candidate) => candidate.id !== "freightclaims",
+      (candidate) => candidate.id !== "freightclaims" && candidate.id !== "freightcheck",
     )) {
       expect(rolesForProduct(catalog, product)).toEqual([]);
     }
@@ -352,5 +352,29 @@ describe("product catalog", () => {
         ],
       }),
     ).toThrow(new RegExp(`Duplicate local user ${field}`, "u"));
+  });
+});
+
+describe("FreightCheck platform roles", () => {
+  it.each(["products.json", "products.local.json"])("declares staff roles in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const product = catalog.products.find((entry) => entry.id === "freightcheck");
+    expect(product?.roles?.map((role) => role.key)).toEqual(["platform_admin", "platform_support"]);
+  });
+
+  it("keeps the developer roleless alongside the local admin", () => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(
+        readFileSync(new URL("../deploy/products/products.local.json", import.meta.url), "utf8"),
+      ),
+    );
+    const users = catalog.products.find((entry) => entry.id === "freightcheck")?.local_fixture
+      ?.users;
+    expect(users?.find((user) => user.email === "developer@freightcheck.test")?.roles).toEqual([]);
+    expect(users?.find((user) => user.email === "platform-admin@freightcheck.test")?.roles).toEqual(
+      ["platform_admin"],
+    );
   });
 });

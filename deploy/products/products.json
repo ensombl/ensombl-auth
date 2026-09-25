@@ -106,7 +106,16 @@
         "background_color_dark": "#1D2939",
         "font_color_dark": "#F9FAFB"
       },
-      "roles": [],
+      "roles": [
+        {
+          "key": "platform_admin",
+          "display_name": "Platform admin"
+        },
+        {
+          "key": "platform_support",
+          "display_name": "Platform support"
+        }
+      ],
       "applications": [
         {
           "environment": "staging",
