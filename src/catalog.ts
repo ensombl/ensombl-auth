@@ -94,6 +94,7 @@ const productSchema = z.object({
     domain: z.string().min(1).max(253),
   }),
   branding: brandingSchema,
+  domain_policy: z.object({ user_login_must_be_domain: z.boolean() }).optional(),
   login_policy: loginPolicySchema.default(defaultLoginPolicy),
   // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
   // only) on the instance organization (see docs/roles-and-permissions.md).

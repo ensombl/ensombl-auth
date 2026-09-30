@@ -380,3 +380,28 @@ describe("FreightCheck platform roles", () => {
     );
   });
 });
+
+describe("FreightCheck organization-scoped login names", () => {
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("changes only FreightCheck in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
+    expect(freightcheck?.domain_policy).toEqual({ user_login_must_be_domain: true });
+    expect(freightcheck?.login_policy).toMatchObject({
+      disable_login_with_email: false,
+      allow_domain_discovery: false,
+      allow_self_registration: true,
+    });
+    for (const product of catalog.products.filter((product) => product.id !== "freightcheck")) {
+      expect(product.domain_policy).toBeUndefined();
+    }
+  });
+
+  it("leaves domain policies unmanaged when omitted", () => {
+    expect(catalogSchema.parse(baseCatalog).products[0]?.domain_policy).toBeUndefined();
+  });
+});

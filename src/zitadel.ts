@@ -319,6 +319,35 @@ export class ZitadelClient {
     }
   }
 
+  async ensureDomainPolicy(
+    organizationId: string,
+    desired: NonNullable<Product["domain_policy"]>,
+  ): Promise<void> {
+    const path = `/admin/v1/orgs/${encodeURIComponent(organizationId)}/policies/domain`;
+    const response = await this.#request<{
+      policy?: {
+        userLoginMustBeDomain?: boolean;
+        validateOrgDomains?: boolean;
+        smtpSenderAddressMatchesInstanceDomain?: boolean;
+        isDefault?: boolean;
+      };
+      isDefault?: boolean;
+    }>(path, { method: "GET" });
+    const policy = response.policy;
+    if (!policy) throw new Error(`ZITADEL returned no domain policy for ${organizationId}`);
+    if ((policy.userLoginMustBeDomain ?? false) === desired.user_login_must_be_domain) return;
+    await this.#request(path, {
+      method: response.isDefault === true || policy.isDefault === true ? "POST" : "PUT",
+      body: {
+        userLoginMustBeDomain: desired.user_login_must_be_domain,
+        validateOrgDomains: policy.validateOrgDomains ?? false,
+        smtpSenderAddressMatchesInstanceDomain:
+          policy.smtpSenderAddressMatchesInstanceDomain ?? false,
+      },
+      allowNoChanges: true,
+    });
+  }
+
   async ensureLoginPolicy(organizationId: string, desired: Product["login_policy"]): Promise<void> {
     const headers = { "x-zitadel-orgid": organizationId };
     const response = await this.#request<{
