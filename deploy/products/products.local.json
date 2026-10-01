@@ -161,7 +161,11 @@
         "domain": "freightcheck.localhost"
       },
       "login_policy": {
-        "allow_self_registration": true
+        "allow_self_registration": true,
+        "ignore_unknown_usernames": false,
+        "allow_password_reset": true,
+        "allow_domain_discovery": false,
+        "disable_login_with_email": false
       },
       "branding": {
         "primary_color": "#7F56D9",
@@ -225,7 +229,8 @@
             "display_name": "FreightCheck local management"
           }
         }
-      ]
+      ],
+      "user_login_must_be_domain": true
     }
   ]
 }

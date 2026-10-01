@@ -95,8 +95,10 @@ describe("product catalog", () => {
       allow_self_registration: true,
       disable_login_with_email: false,
       disable_login_with_phone: true,
-      ignore_unknown_usernames: true,
+      ignore_unknown_usernames: false,
     });
+    expect(freightcheck?.user_login_must_be_domain).toBe(true);
+    expect(freightclaims?.user_login_must_be_domain).toBeUndefined();
   });
 
   it("enables imported-password verification only for hosted FreightClaims", () => {
