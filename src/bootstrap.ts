@@ -163,6 +163,9 @@ export async function bootstrapCatalog(
       await readBrandingLogo(product.branding.logo_base64_file),
     );
     await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
+    if (product.user_login_must_be_domain !== undefined) {
+      await client.ensureDomainPolicy(ownerOrganization.id, product.user_login_must_be_domain);
+    }
 
     let projectId = projects.find(
       (project) =>

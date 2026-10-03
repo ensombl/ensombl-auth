@@ -5,6 +5,94 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("organization-scoped usernames", () => {
+  it("preserves credential policy fields when enabling scoped email login and remains idempotent", async () => {
+    const preserved = {
+      forceMfa: true,
+      forceMfaLocalOnly: true,
+      passwordlessType: "PASSWORDLESS_TYPE_ALLOWED",
+      defaultRedirectUri: "https://app.freightcheck.io",
+      passwordCheckLifetime: "864000s",
+      externalLoginCheckLifetime: "864000s",
+      mfaInitSkipLifetime: "2592000s",
+      secondFactorCheckLifetime: "64800s",
+      multiFactorCheckLifetime: "43200s",
+    };
+    const desired = {
+      allow_username_password: true,
+      allow_self_registration: true,
+      allow_external_identity_providers: false,
+      allow_password_reset: true,
+      ignore_unknown_usernames: false,
+      allow_domain_discovery: false,
+      disable_login_with_email: false,
+      disable_login_with_phone: true,
+    };
+    const body = {
+      ...preserved,
+      allowUsernamePassword: true,
+      allowRegister: true,
+      allowExternalIdp: false,
+      hidePasswordReset: false,
+      ignoreUnknownUsernames: false,
+      allowDomainDiscovery: false,
+      disableLoginWithEmail: false,
+      disableLoginWithPhone: true,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        Response.json({ policy: { ...body, ignoreUnknownUsernames: true }, isDefault: false }),
+      )
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(Response.json({ policy: body, isDefault: false }));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    await client.ensureLoginPolicy("freightcheck-org", desired);
+    await client.ensureLoginPolicy("freightcheck-org", desired);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(request.mock.calls[1]?.[1]?.headers).toMatchObject({
+      "x-zitadel-orgid": "freightcheck-org",
+    });
+    expect(requestBody(request, 1)).toEqual(body);
+  });
+
+  it.each([
+    true,
+    false,
+  ])("preserves domain policy fields and is idempotent (default %s)", async (isDefault) => {
+    const policy = {
+      userLoginMustBeDomain: false,
+      validateOrgDomains: true,
+      smtpSenderAddressMatchesInstanceDomain: false,
+      isDefault,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy, isDefault }))
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(
+        Response.json({
+          policy: { ...policy, userLoginMustBeDomain: true, isDefault: false },
+          isDefault: false,
+        }),
+      );
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    await client.ensureDomainPolicy("freightcheck-org", true);
+    await client.ensureDomainPolicy("freightcheck-org", true);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(new URL(String(request.mock.calls[1]?.[0])).pathname).toBe(
+      "/admin/v1/orgs/freightcheck-org/policies/domain",
+    );
+    expect(request.mock.calls[1]?.[1]?.method).toBe(isDefault ? "POST" : "PUT");
+    expect(requestBody(request, 1)).toEqual({
+      userLoginMustBeDomain: true,
+      validateOrgDomains: true,
+      smtpSenderAddressMatchesInstanceDomain: false,
+    });
+  });
+});
+
 function requestBody(request: MockInstance<typeof fetch>, index = 0) {
   const init = request.mock.calls[index]?.[1];
   if (typeof init?.body !== "string") throw new Error("Expected a JSON request body");

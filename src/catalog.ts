@@ -99,6 +99,7 @@ const productSchema = z.object({
   }),
   branding: brandingSchema,
   login_policy: loginPolicySchema.default(defaultLoginPolicy),
+  user_login_must_be_domain: z.boolean().optional(),
   // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
   // only) on the instance organization (see docs/roles-and-permissions.md).
   instance_org_user_lookup: z.boolean().default(false),

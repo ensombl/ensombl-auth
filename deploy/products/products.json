@@ -92,7 +92,11 @@
         "domain": "freightcheck.io"
       },
       "login_policy": {
-        "allow_self_registration": true
+        "allow_self_registration": true,
+        "ignore_unknown_usernames": false,
+        "allow_password_reset": true,
+        "allow_domain_discovery": false,
+        "disable_login_with_email": false
       },
       "migration_service_account": {
         "id": "1c7e65a1-d014-4264-afb2-bcdfa3030556",
@@ -140,7 +144,8 @@
             "display_name": "FreightCheck production management"
           }
         }
-      ]
+      ],
+      "user_login_must_be_domain": true
     }
   ]
 }
