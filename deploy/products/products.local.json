@@ -161,6 +161,9 @@
         "name": "FreightCheck",
         "domain": "freightcheck.localhost"
       },
+      "domain_policy": {
+        "user_login_must_be_domain": true
+      },
       "login_policy": {
         "allow_self_registration": true
       },

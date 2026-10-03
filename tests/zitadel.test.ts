@@ -886,3 +886,86 @@ describe("ZitadelClient SMTP email provider", () => {
     expect(requestBody(request, 2)).toEqual({ password: "rotated-resend-api-key" });
   });
 });
+
+describe("ZitadelClient domain policy", () => {
+  it.each([
+    { isDefault: true, policyDefault: undefined, method: "POST" },
+    { isDefault: undefined, policyDefault: true, method: "POST" },
+    { isDefault: false, policyDefault: false, method: "PUT" },
+  ])("reconciles with $method and preserves other fields", async ({
+    isDefault,
+    policyDefault,
+    method,
+  }) => {
+    const policy = {
+      userLoginMustBeDomain: false,
+      validateOrgDomains: true,
+      smtpSenderAddressMatchesInstanceDomain: false,
+      isDefault: policyDefault,
+    };
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy, isDefault }))
+      .mockResolvedValueOnce(Response.json({}))
+      .mockResolvedValueOnce(
+        Response.json({ policy: { ...policy, userLoginMustBeDomain: true, isDefault: false } }),
+      );
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+    await client.ensureDomainPolicy("freightcheck-org", { user_login_must_be_domain: true });
+    await client.ensureDomainPolicy("freightcheck-org", { user_login_must_be_domain: true });
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(request.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(
+      Array(3).fill("/admin/v1/orgs/freightcheck-org/policies/domain"),
+    );
+    expect(request.mock.calls[1]?.[1]?.method).toBe(method);
+    expect(requestBody(request, 1)).toEqual({
+      userLoginMustBeDomain: true,
+      validateOrgDomains: true,
+      smtpSenderAddressMatchesInstanceDomain: false,
+    });
+  });
+
+  it.each([
+    true,
+    false,
+  ])("leaves a matching effective policy unchanged (default: %s)", async (isDefault) => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        policy: { userLoginMustBeDomain: true, isDefault },
+      }),
+    );
+    await new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat").ensureDomainPolicy(
+      "freightcheck-org",
+      { user_login_must_be_domain: true },
+    );
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]?.[1]?.method).toBe("GET");
+  });
+
+  it("preserves omitted protobuf boolean defaults", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy: {}, isDefault: true }))
+      .mockResolvedValueOnce(Response.json({}));
+    await new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat").ensureDomainPolicy(
+      "freightcheck-org",
+      { user_login_must_be_domain: true },
+    );
+    expect(requestBody(request, 1)).toEqual({
+      userLoginMustBeDomain: true,
+      validateOrgDomains: false,
+      smtpSenderAddressMatchesInstanceDomain: false,
+    });
+  });
+
+  it("fails without writing when the effective policy is missing", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({}));
+    await expect(
+      new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat").ensureDomainPolicy(
+        "freightcheck-org",
+        { user_login_must_be_domain: true },
+      ),
+    ).rejects.toThrow(/no domain policy/);
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});

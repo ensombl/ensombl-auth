@@ -91,6 +91,9 @@
         "name": "FreightCheck",
         "domain": "freightcheck.io"
       },
+      "domain_policy": {
+        "user_login_must_be_domain": true
+      },
       "login_policy": {
         "allow_self_registration": true
       },

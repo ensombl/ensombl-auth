@@ -131,7 +131,10 @@ describe("local human fixtures", () => {
 });
 
 describe("local bootstrap profile", () => {
-  it("configures ZITADEL clients from the profiled catalog origins", async () => {
+  it.each([
+    false,
+    true,
+  ])("configures profiled clients and optional domain policy (%s)", async (domainPolicy) => {
     const catalog = applyLocalCatalogProfile(
       catalogSchema.parse({
         issuer: "http://localhost:24455",
@@ -143,6 +146,7 @@ describe("local bootstrap profile", () => {
         },
         products: [
           {
+            ...(domainPolicy ? { domain_policy: { user_login_must_be_domain: true } } : {}),
             id: "freightclaims",
             display_name: "FreightClaims",
             auth_origin: "http://localhost:24455",
@@ -201,6 +205,7 @@ describe("local bootstrap profile", () => {
       deleteAdministrator,
       disableInstanceLoginV2Override: vi.fn().mockResolvedValue(undefined),
       ensureAdministrator,
+      ensureDomainPolicy: vi.fn().mockResolvedValue(undefined),
       ensureLoginPolicy: vi.fn().mockResolvedValue(undefined),
       ensurePrimaryOrganizationDomain: vi.fn().mockResolvedValue(undefined),
       findApplicationByName: vi.fn().mockResolvedValue({
@@ -231,6 +236,13 @@ describe("local bootstrap profile", () => {
     } as unknown as ZitadelClient;
 
     const runtime = await bootstrapCatalog(client, catalog, { rotateMissingSecrets: true });
+    if (domainPolicy) {
+      expect(client.ensureDomainPolicy).toHaveBeenCalledWith("ensombl-organization-id", {
+        user_login_must_be_domain: true,
+      });
+    } else {
+      expect(client.ensureDomainPolicy).not.toHaveBeenCalled();
+    }
 
     expect(client.configureOidcApplicationLogin).toHaveBeenCalledWith(
       expect.objectContaining({
