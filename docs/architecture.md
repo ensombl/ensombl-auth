@@ -96,8 +96,17 @@ asset APIs. Applications never render or collect credentials themselves.
 ZITADEL system notifications use `Ensombl <noreply@notifications.ensombl.io>` through Resend SMTP
 with authenticated STARTTLS on port 587. The one-shot catalog bootstrap applies the active provider
 through ZITADEL's Admin API so an existing instance receives the same configuration as a fresh
-instance. Product-initiated invitations are sent by the initiating product with its configured From
-name; generic account recovery has no product context and intentionally uses the Ensombl default.
+instance. ZITADEL sends every message, invitations included, from that sender: `email_from_name`
+in the catalog is not applied to ZITADEL mail, and the sender is an instance setting that no
+organization can override. A product that invites a user controls the wording and the link, not the
+sender: it passes `applicationName` and a `urlTemplate` with the `invite_code` request. Generic
+account recovery has no product context and intentionally uses the Ensombl default.
+
+A user who finishes a flow ZITADEL did not start from an OIDC request, such as activating an
+invitation, is sent to the product organization's login-policy `defaultRedirectUri`; without one
+ZITADEL leaves them on its Console. The catalog's `login_policy.default_redirect_uri` sets it and
+must sit under one of the product's applications. An organization has one value, so a product with
+a staging and a production application picks one.
 
 ## Runtime and secrets
 

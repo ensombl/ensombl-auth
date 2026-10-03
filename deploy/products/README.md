@@ -6,6 +6,10 @@ Each product declares:
 
 - its product-owner organization, native hosted-login policy, colors, theme, and optional
   base64-encoded logo asset;
+- optionally `login_policy.default_redirect_uri`: where ZITADEL sends a user who finishes a flow it
+  did not start from an OIDC request (activating an invitation), instead of its Console. It must be
+  under one of the product's applications; the local catalog's value follows the local runtime
+  profile's application port. Omitted, the organization's existing value is kept;
 - optional product-wide project roles; there are no defaults;
 - one OIDC BFF application per canonical `local`, `staging`, or `production` environment;
 - one management service account per application, with `ORG_USER_MANAGER` on the product

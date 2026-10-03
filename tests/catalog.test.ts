@@ -201,6 +201,40 @@ describe("product catalog", () => {
     );
     expect(freightclaims?.applications[0]?.base_url).toBe("http://localhost:26033");
     expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:5173");
+    expect(freightclaims?.login_policy.default_redirect_uri).toBe("http://localhost:26033/");
+    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+  });
+
+  it.each([
+    "products.json",
+    "products.local.json",
+  ])("sends only FreightClaims invitees back to a FreightClaims application in %s", (fileName) => {
+    const catalog = catalogSchema.parse(
+      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
+    );
+    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
+    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
+
+    const redirect = freightclaims?.login_policy.default_redirect_uri;
+    expect(redirect).toBeDefined();
+    expect(
+      freightclaims?.applications.map((application) => new URL(application.base_url).origin),
+    ).toContain(new URL(String(redirect)).origin);
+    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+  });
+
+  it("rejects a default redirect that is not under one of the product's applications", () => {
+    expect(() =>
+      catalogSchema.parse({
+        ...baseCatalog,
+        products: [
+          {
+            ...baseCatalog.products[0],
+            login_policy: { default_redirect_uri: "https://elsewhere.example.com/" },
+          },
+        ],
+      }),
+    ).toThrow(/default_redirect_uri is not under an application of freightcheck/u);
   });
 
   it("rejects a local profile without a local application for the selected product", () => {

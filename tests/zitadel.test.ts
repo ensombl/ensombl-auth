@@ -597,6 +597,90 @@ describe("ZitadelClient product login presentation", () => {
   });
 });
 
+describe("ZitadelClient login policy default redirect", () => {
+  const existingPolicy = {
+    allowUsernamePassword: true,
+    allowRegister: false,
+    allowExternalIdp: false,
+    forceMfa: false,
+    passwordlessType: "PASSWORDLESS_TYPE_NOT_ALLOWED",
+    hidePasswordReset: false,
+    ignoreUnknownUsernames: true,
+    defaultRedirectUri: "https://auth.ensombl.io/",
+    passwordCheckLifetime: "864000s",
+    externalLoginCheckLifetime: "864000s",
+    mfaInitSkipLifetime: "2592000s",
+    secondFactorCheckLifetime: "64800s",
+    multiFactorCheckLifetime: "43200s",
+    allowDomainDiscovery: false,
+    disableLoginWithEmail: false,
+    disableLoginWithPhone: false,
+    forceMfaLocalOnly: false,
+  };
+  const desired = {
+    allow_username_password: true,
+    allow_self_registration: false,
+    allow_external_identity_providers: false,
+    allow_password_reset: true,
+    ignore_unknown_usernames: true,
+    allow_domain_discovery: false,
+    disable_login_with_email: false,
+    disable_login_with_phone: false,
+  };
+
+  it("sends the declared default redirect URI instead of the one the organization has", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy: existingPolicy, isDefault: false }))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureLoginPolicy("freightclaims-org", {
+      ...desired,
+      default_redirect_uri: "https://app.freightclaims.ensombl.io/",
+    });
+
+    expect(request.mock.calls[1]?.[1]?.method).toBe("PUT");
+    expect(requestBody(request, 1)).toMatchObject({
+      defaultRedirectUri: "https://app.freightclaims.ensombl.io/",
+    });
+  });
+
+  it("keeps the organization's existing default redirect URI when none is declared", async () => {
+    const request = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(Response.json({ policy: existingPolicy, isDefault: false }))
+      .mockResolvedValueOnce(Response.json({}));
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureLoginPolicy("freightcheck-org", {
+      ...desired,
+      allow_self_registration: true,
+    });
+
+    expect(requestBody(request, 1)).toMatchObject({
+      defaultRedirectUri: "https://auth.ensombl.io/",
+    });
+  });
+
+  it("writes nothing when the organization already has the declared policy", async () => {
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
+      Response.json({
+        policy: { ...existingPolicy, defaultRedirectUri: "https://app.freightclaims.ensombl.io/" },
+        isDefault: false,
+      }),
+    );
+    const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
+
+    await client.ensureLoginPolicy("freightclaims-org", {
+      ...desired,
+      default_redirect_uri: "https://app.freightclaims.ensombl.io/",
+    });
+
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("ZitadelClient organization domains", () => {
   it("adds a native instance trusted domain", async () => {
     const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({}));

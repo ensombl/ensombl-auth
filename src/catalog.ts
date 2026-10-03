@@ -35,6 +35,10 @@ const loginPolicySchema = z.object({
   allow_domain_discovery: z.boolean().default(false),
   disable_login_with_email: z.boolean().default(false),
   disable_login_with_phone: z.boolean().default(true),
+  // Where ZITADEL sends a user who finishes a flow it did not start from an OIDC request, such
+  // as activating an invitation. Without it the user is left on ZITADEL's Console. It must be
+  // under one of the product's applications; omitted, the organization's existing value is kept.
+  default_redirect_uri: z.url().optional(),
 });
 
 const defaultLoginPolicy = {
@@ -211,6 +215,20 @@ export const catalogSchema = z
         }
       }
 
+      const redirectUri = product.login_policy.default_redirect_uri;
+      if (
+        redirectUri !== undefined &&
+        !product.applications.some(
+          (application) => new URL(application.base_url).origin === new URL(redirectUri).origin,
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: `default_redirect_uri is not under an application of ${product.id}: ${redirectUri}`,
+          path: ["products", productIndex, "login_policy", "default_redirect_uri"],
+        });
+      }
+
       const environments = new Set<string>();
       const managementAccountIds = new Set<string>();
       const managementAccountUsernames = new Set<string>();
@@ -292,17 +310,37 @@ export function applyLocalCatalogProfile(catalog: Catalog, profile: LocalCatalog
   const configured = {
     ...catalog,
     issuer: profile.issuer,
-    products: catalog.products.map((product) => ({
-      ...product,
-      auth_origin: profile.issuer,
-      applications: product.applications.map((application) => {
-        if (product.id !== localApplicationProductId || application.environment !== "local") {
-          return application;
-        }
-        localApplications += 1;
-        return { ...application, base_url: profile.applicationBaseUrl };
-      }),
-    })),
+    products: catalog.products.map((product) => {
+      const localApplication =
+        product.id === localApplicationProductId
+          ? product.applications.find((application) => application.environment === "local")
+          : undefined;
+      const redirectUri = product.login_policy.default_redirect_uri;
+      return {
+        ...product,
+        auth_origin: profile.issuer,
+        // A redirect into the local application follows the application to the profile's port.
+        login_policy:
+          localApplication !== undefined &&
+          redirectUri !== undefined &&
+          new URL(redirectUri).origin === new URL(localApplication.base_url).origin
+            ? {
+                ...product.login_policy,
+                default_redirect_uri: redirectUri.replace(
+                  new URL(redirectUri).origin,
+                  new URL(profile.applicationBaseUrl).origin,
+                ),
+              }
+            : product.login_policy,
+        applications: product.applications.map((application) => {
+          if (product.id !== localApplicationProductId || application.environment !== "local") {
+            return application;
+          }
+          localApplications += 1;
+          return { ...application, base_url: profile.applicationBaseUrl };
+        }),
+      };
+    }),
   };
   if (localApplications === 0) {
     throw new Error(

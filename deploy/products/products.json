@@ -40,7 +40,8 @@
         "ignore_unknown_usernames": true,
         "allow_domain_discovery": false,
         "disable_login_with_email": false,
-        "disable_login_with_phone": false
+        "disable_login_with_phone": false,
+        "default_redirect_uri": "https://app.freightclaims.ensombl.io/"
       },
       "roles": [
         {

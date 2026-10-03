@@ -16,7 +16,7 @@ const branding = {
 
 const managementServiceAccountId = "01900000-0000-7000-8000-0000000000aa";
 
-function catalogFor(instanceOrgUserLookup: boolean) {
+function catalogFor(instanceOrgUserLookup: boolean, defaultRedirectUri?: string) {
   return catalogSchema.parse({
     issuer: "https://auth.ensombl.io",
     console_path: "/ui/console",
@@ -33,6 +33,9 @@ function catalogFor(instanceOrgUserLookup: boolean) {
         email_from_name: "FreightCheck",
         owner_organization: { name: "FreightCheck", domain: "freightcheck.io" },
         instance_org_user_lookup: instanceOrgUserLookup,
+        ...(defaultRedirectUri === undefined
+          ? {}
+          : { login_policy: { default_redirect_uri: defaultRedirectUri } }),
         branding,
         applications: [
           {
@@ -149,5 +152,31 @@ describe("management service account instance-organization grant", () => {
       resource: { organizationId: "freightcheck-organization-id" },
       roles: ["ORG_USER_MANAGER"],
     });
+  });
+});
+
+describe("login policy default redirect", () => {
+  it("hands the product's default redirect URI to the organization's login policy", async () => {
+    const { client } = mockClient();
+
+    await bootstrapCatalog(client, catalogFor(false, "https://app.staging.freightcheck.io/"), {
+      rotateMissingSecrets: true,
+    });
+
+    expect(client.ensureLoginPolicy).toHaveBeenCalledWith(
+      "freightcheck-organization-id",
+      expect.objectContaining({ default_redirect_uri: "https://app.staging.freightcheck.io/" }),
+    );
+  });
+
+  it("declares none when the product does not", async () => {
+    const { client } = mockClient();
+
+    await bootstrapCatalog(client, catalogFor(false), { rotateMissingSecrets: true });
+
+    expect(client.ensureLoginPolicy).toHaveBeenCalledWith(
+      "freightcheck-organization-id",
+      expect.not.objectContaining({ default_redirect_uri: expect.anything() }),
+    );
   });
 });

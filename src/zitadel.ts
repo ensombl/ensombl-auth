@@ -335,7 +335,7 @@ export class ZitadelClient {
       passwordlessType: policy.passwordlessType,
       hidePasswordReset: !desired.allow_password_reset,
       ignoreUnknownUsernames: desired.ignore_unknown_usernames,
-      defaultRedirectUri: policy.defaultRedirectUri,
+      defaultRedirectUri: desired.default_redirect_uri ?? policy.defaultRedirectUri,
       passwordCheckLifetime: policy.passwordCheckLifetime,
       externalLoginCheckLifetime: policy.externalLoginCheckLifetime,
       mfaInitSkipLifetime: policy.mfaInitSkipLifetime,
