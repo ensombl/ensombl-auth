@@ -26,3 +26,5 @@ instance role and never creates customer-tenant organizations.
 
 The catalog bootstrap requires a clean ZITADEL instance. Recovery and reset procedures are defined
 in [the Dokploy deployment guide](../../docs/dokploy.md).
+
+FreightCheck also declares a dedicated optional `invitation_service_account` per application. Bootstrap grants it `ORG_USER_MANAGER` only in the FreightCheck organization and writes its credentials to `invitationServiceAccount` runtime output and the product/environment `INVITATION_CLIENT_ID` and `INVITATION_CLIENT_SECRET` Bitwarden keys. Native setup returns to the catalog login policy `default_redirect_uri`; change the hosted FreightCheck destination from staging to production at launch. The canonical-domain and SMTP-default changes require the coordinated other-product removal before deployment.

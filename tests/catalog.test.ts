@@ -202,7 +202,12 @@ describe("product catalog", () => {
     expect(freightclaims?.applications[0]?.base_url).toBe("http://localhost:26033");
     expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:5173");
     expect(freightclaims?.login_policy.default_redirect_uri).toBe("http://localhost:26033/");
-    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+    expect(freightcheck?.login_policy.default_redirect_uri).toBe(
+      new URL(
+        "/auth/login?returnTo=%2Finvitations",
+        freightcheck?.applications[0]?.base_url,
+      ).toString(),
+    );
   });
 
   it.each([
@@ -220,7 +225,12 @@ describe("product catalog", () => {
     expect(
       freightclaims?.applications.map((application) => new URL(application.base_url).origin),
     ).toContain(new URL(String(redirect)).origin);
-    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+    expect(freightcheck?.login_policy.default_redirect_uri).toBe(
+      new URL(
+        "/auth/login?returnTo=%2Finvitations",
+        freightcheck?.applications[0]?.base_url,
+      ).toString(),
+    );
   });
 
   it("rejects a default redirect that is not under one of the product's applications", () => {

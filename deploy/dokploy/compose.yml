@@ -31,12 +31,12 @@ services:
       - /run/ensombl-auth/masterkey
     environment:
       ZITADEL_PORT: "8080"
-      ZITADEL_EXTERNALDOMAIN: auth.ensombl.io
+      ZITADEL_EXTERNALDOMAIN: auth.freightcheck.io
       ZITADEL_EXTERNALPORT: "443"
       ZITADEL_EXTERNALSECURE: "true"
       ZITADEL_TLS_ENABLED: "false"
       ZITADEL_SYSTEMDEFAULTS_PASSWORDHASHER_VERIFIERS: argon2
-      ZITADEL_FIRSTINSTANCE_INSTANCENAME: Ensombl
+      ZITADEL_FIRSTINSTANCE_INSTANCENAME: FreightCheck
       ZITADEL_FIRSTINSTANCE_ORG_NAME: Ensombl
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_USERNAME: patrick@ensombl.io
       ZITADEL_FIRSTINSTANCE_ORG_HUMAN_EMAIL_ADDRESS: patrick@ensombl.io
@@ -48,9 +48,9 @@ services:
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_USERNAME: login-client
       ZITADEL_FIRSTINSTANCE_ORG_LOGINCLIENT_MACHINE_NAME: ZITADEL Login
       ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
-      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://auth.ensombl.io/ui/v2/login/
-      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://auth.ensombl.io/ui/v2/login/login?authRequest=
-      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://auth.ensombl.io/ui/v2/login/logout?post_logout_redirect=
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_BASEURI: https://auth.freightcheck.io/ui/v2/login/
+      ZITADEL_OIDC_DEFAULTLOGINURLV2: https://auth.freightcheck.io/ui/v2/login/login?authRequest=
+      ZITADEL_OIDC_DEFAULTLOGOUTURLV2: https://auth.freightcheck.io/ui/v2/login/logout?post_logout_redirect=
       ZITADEL_LOGSTORE_ACCESS_STDOUT_ENABLED: "true"
     volumes:
       - runtime-secrets:/run/ensombl-auth:ro
@@ -75,7 +75,7 @@ services:
       ZITADEL_API_URL: http://zitadel-api:8080
       NEXT_PUBLIC_BASE_PATH: /ui/v2/login
       ZITADEL_SERVICE_USER_TOKEN_FILE: /zitadel/bootstrap/login-client.pat
-      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:auth.ensombl.io,Host:auth.ensombl.io,X-Forwarded-Proto:https
+      CUSTOM_REQUEST_HEADERS: X-ZITADEL-INSTANCE-HOST:auth.freightcheck.io,Host:auth.freightcheck.io,X-Forwarded-Proto:https
     volumes:
       - bootstrap:/zitadel/bootstrap:ro
     networks:
@@ -127,7 +127,7 @@ services:
     environment:
       <<: *bws
       ZITADEL_URL: http://zitadel-api:8080
-      ZITADEL_REQUEST_HOST: auth.ensombl.io
+      ZITADEL_REQUEST_HOST: auth.freightcheck.io
       ZITADEL_FORWARDED_PROTO: https
       ZITADEL_ADMIN_PAT_FILE: /zitadel/bootstrap/admin.pat
       PRODUCT_CATALOG_PATH: /app/deploy/products/products.json

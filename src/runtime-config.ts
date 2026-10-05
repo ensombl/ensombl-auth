@@ -18,6 +18,7 @@ export interface ApplicationRuntime {
   clientId: string;
   clientSecret: string;
   baseUrl: string;
+  invitationServiceAccount?: { userId: string; clientId: string; clientSecret: string };
   managementServiceAccount: {
     userId: string;
     clientId: string;

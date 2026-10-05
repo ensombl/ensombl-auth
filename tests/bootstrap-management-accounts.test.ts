@@ -180,3 +180,28 @@ describe("login policy default redirect", () => {
     );
   });
 });
+
+it("provisions a dedicated invitation account only in the product organization", async () => {
+  const { client, ensureAdministrator } = mockClient();
+  const catalog = catalogFor(false);
+  const application = catalog.products[0]?.applications[0];
+  if (!application) throw new Error("Missing fixture application");
+  const id = "01900000-0000-7000-8000-0000000000bb";
+  application.invitation_service_account = {
+    id,
+    username: "freightcheck-staging-invitations",
+    display_name: "FreightCheck invitations",
+  };
+  const runtime = await bootstrapCatalog(client, catalog, { rotateMissingSecrets: true });
+  expect(ensureAdministrator).toHaveBeenCalledWith({
+    userId: id,
+    resource: { organizationId: "freightcheck-organization-id" },
+    roles: ["ORG_USER_MANAGER"],
+  });
+  expect(ensureAdministrator).not.toHaveBeenCalledWith(
+    expect.objectContaining({ userId: id, resource: { instance: true } }),
+  );
+  expect(
+    runtime.products.freightcheck?.applications.staging?.invitationServiceAccount?.userId,
+  ).toBe(id);
+});

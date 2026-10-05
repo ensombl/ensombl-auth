@@ -64,9 +64,9 @@ jq -n \
           }
         },
         TLS: true,
-        From: "noreply@notifications.ensombl.io",
-        FromName: "Ensombl",
-        ReplyToAddress: "noreply@notifications.ensombl.io"
+        From: "noreply@notifications.freightcheck.io",
+        FromName: "FreightCheck",
+        ReplyToAddress: "noreply@notifications.freightcheck.io"
       }
     }
   }' >"$ZITADEL_SECRET_DIRECTORY/config.json"

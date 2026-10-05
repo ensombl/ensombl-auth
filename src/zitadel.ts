@@ -259,20 +259,23 @@ export class ZitadelClient {
     organizationId: string,
     branding: Product["branding"],
     logo?: Uint8Array,
+    instance = false,
+    icon?: Uint8Array,
   ): Promise<void> {
-    const headers = { "x-zitadel-orgid": organizationId };
+    const headers = instance ? {} : { "x-zitadel-orgid": organizationId };
+    const prefix = instance ? "/admin/v1" : "/management/v1";
     type LabelPolicyResponse = {
       policy?: Readonly<Record<string, unknown>> & { isDefault?: boolean };
       isDefault?: boolean;
     };
-    const active = await this.#request<LabelPolicyResponse>("/management/v1/policies/label", {
+    const active = await this.#request<LabelPolicyResponse>(`${prefix}/policies/label`, {
       method: "GET",
       headers,
     });
-    const preview = await this.#request<LabelPolicyResponse>(
-      "/management/v1/policies/label/_preview",
-      { method: "GET", headers },
-    );
+    const preview = await this.#request<LabelPolicyResponse>(`${prefix}/policies/label/_preview`, {
+      method: "GET",
+      headers,
+    });
     const body = {
       primaryColor: branding.primary_color,
       warnColor: branding.warn_color,
@@ -290,8 +293,11 @@ export class ZitadelClient {
       policy !== undefined && Object.entries(body).every(([key, value]) => policy[key] === value);
     let needsActivation = !matches(active.policy);
     if (!matches(preview.policy)) {
-      await this.#request("/management/v1/policies/label", {
-        method: preview.isDefault === true || preview.policy?.isDefault === true ? "POST" : "PUT",
+      await this.#request(`${prefix}/policies/label`, {
+        method:
+          !instance && (preview.isDefault === true || preview.policy?.isDefault === true)
+            ? "POST"
+            : "PUT",
         body,
         headers,
         allowNoChanges: true,
@@ -304,19 +310,57 @@ export class ZitadelClient {
       const previewLogoUrl =
         typeof preview.policy?.logoUrl === "string" ? preview.policy.logoUrl : undefined;
       if (!(await this.#assetMatches(previewLogoUrl, logo, headers))) {
-        await this.#uploadOrganizationLogo(logo, headers);
+        await this.#uploadOrganizationLogo(logo, headers, instance);
         needsActivation = true;
       } else if (activeLogoUrl !== previewLogoUrl) {
         needsActivation = true;
       }
     }
+    if (icon) {
+      const iconUrl =
+        typeof preview.policy?.iconUrl === "string" ? preview.policy.iconUrl : undefined;
+      if (!(await this.#assetMatches(iconUrl, icon, headers))) {
+        await this.#uploadOrganizationLogo(icon, headers, instance, "icon");
+        needsActivation = true;
+      }
+    }
     if (needsActivation) {
-      await this.#request("/management/v1/policies/label/_activate", {
+      await this.#request(`${prefix}/policies/label/_activate`, {
         method: "POST",
         body: {},
         headers,
       });
     }
+  }
+
+  async ensurePrivacyPolicy(
+    organizationId: string,
+    desired: NonNullable<Product["privacy_policy"]>,
+    instance = false,
+  ): Promise<void> {
+    const headers = instance ? {} : { "x-zitadel-orgid": organizationId };
+    const path = instance ? "/admin/v1/policies/privacy" : "/management/v1/policies/privacy";
+    const current = await this.#request<{ policy?: Record<string, unknown>; isDefault?: boolean }>(
+      path,
+      { method: "GET", headers },
+    );
+    const body = {
+      tosLink: desired.tos_link,
+      privacyLink: desired.privacy_link,
+      helpLink: desired.help_link,
+    };
+    if (
+      current.isDefault !== true &&
+      current.policy &&
+      Object.entries(body).every(([key, value]) => current.policy?.[key] === value)
+    )
+      return;
+    await this.#request(path, {
+      method: !instance && (current.isDefault || current.policy?.isDefault) ? "POST" : "PUT",
+      headers,
+      body,
+      allowNoChanges: true,
+    });
   }
 
   async ensureLoginPolicy(organizationId: string, desired: Product["login_policy"]): Promise<void> {
@@ -935,10 +979,14 @@ export class ZitadelClient {
   async #uploadOrganizationLogo(
     logo: Uint8Array,
     headers: Readonly<Record<string, string>>,
+    instance = false,
+    kind: "logo" | "icon" = "logo",
   ): Promise<void> {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(logo)], { type: "image/png" }), "logo.png");
-    const path = "/assets/v1/org/policy/label/logo";
+    const path = instance
+      ? `/assets/v1/policy/label/${kind}`
+      : `/assets/v1/org/policy/label/${kind}`;
     const response = await fetch(`${this.#baseUrl}${path}`, {
       method: "POST",
       headers: {

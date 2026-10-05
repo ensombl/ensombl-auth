@@ -162,17 +162,21 @@
         "domain": "freightcheck.localhost"
       },
       "login_policy": {
-        "allow_self_registration": true
+        "allow_self_registration": true,
+        "default_redirect_uri": "http://localhost:5173/auth/login?returnTo=%2Finvitations"
       },
       "branding": {
-        "primary_color": "#7F56D9",
+        "primary_color": "#7C3AED",
         "warn_color": "#D92D20",
-        "background_color": "#F9FAFB",
-        "font_color": "#101828",
-        "primary_color_dark": "#B692F6",
+        "background_color": "#FFFFFF",
+        "font_color": "#18181B",
+        "primary_color_dark": "#A78BFA",
         "warn_color_dark": "#FDA29B",
-        "background_color_dark": "#1D2939",
-        "font_color_dark": "#F9FAFB"
+        "background_color_dark": "#18181B",
+        "font_color_dark": "#FAFAFA",
+        "logo_base64_file": "assets/freightcheck-logo.png.base64",
+        "hide_login_name_suffix": true,
+        "icon_base64_file": "assets/freightcheck-logo.png.base64"
       },
       "roles": [
         {
@@ -224,9 +228,19 @@
             "id": "ac7dd065-a112-474d-9d04-8c53a9e37ff0",
             "username": "freightcheck-local-management",
             "display_name": "FreightCheck local management"
+          },
+          "invitation_service_account": {
+            "id": "2eb40203-80c5-5960-96d2-51ff1dc3336c",
+            "username": "freightcheck-local-invitations",
+            "display_name": "FreightCheck local invitations"
           }
         }
-      ]
+      ],
+      "privacy_policy": {
+        "tos_link": "https://freightcheck.io/terms",
+        "privacy_link": "https://freightcheck.io/privacy",
+        "help_link": "https://freightcheck.io/contact"
+      }
     }
   ]
 }

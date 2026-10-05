@@ -24,6 +24,7 @@ const brandingSchema = z.object({
     .default("THEME_MODE_AUTO"),
   hide_login_name_suffix: z.boolean().default(false),
   logo_base64_file: z.string().min(1).optional(),
+  icon_base64_file: z.string().min(1).optional(),
 });
 
 const loginPolicySchema = z.object({
@@ -57,6 +58,13 @@ const applicationSchema = z.object({
   name: z.string().min(1).max(200),
   base_url: z.url(),
   development_mode: z.boolean().default(false),
+  invitation_service_account: z
+    .object({
+      id: z.uuid(),
+      username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
+      display_name: z.string().min(1).max(200),
+    })
+    .optional(),
   management_service_account: z.object({
     id: z.uuid(),
     username: z.string().regex(/^[a-z][a-z0-9-]{0,127}$/),
@@ -98,6 +106,9 @@ const productSchema = z.object({
     domain: z.string().min(1).max(253),
   }),
   branding: brandingSchema,
+  privacy_policy: z
+    .object({ tos_link: z.url(), privacy_link: z.url(), help_link: z.url() })
+    .optional(),
   login_policy: loginPolicySchema.default(defaultLoginPolicy),
   // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
   // only) on the instance organization (see docs/roles-and-permissions.md).
@@ -295,6 +306,9 @@ export async function loadCatalog(path: string): Promise<Catalog> {
       ...product,
       branding: {
         ...product.branding,
+        ...(product.branding.icon_base64_file
+          ? { icon_base64_file: resolve(catalogDirectory, product.branding.icon_base64_file) }
+          : {}),
         ...(product.branding.logo_base64_file
           ? {
               logo_base64_file: resolve(catalogDirectory, product.branding.logo_base64_file),
