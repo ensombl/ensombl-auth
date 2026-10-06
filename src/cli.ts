@@ -45,10 +45,10 @@ async function main(): Promise<void> {
       host: "smtp.resend.com:587",
       user: "resend",
       password: resendApiKey,
-      senderAddress: "noreply@notifications.ensombl.io",
-      senderName: "Ensombl",
-      replyToAddress: "noreply@notifications.ensombl.io",
-      description: "Ensombl system notifications via Resend",
+      senderAddress: catalog.email.from_address,
+      senderName: catalog.email.default_from_name,
+      replyToAddress: catalog.email.from_address,
+      description: `${catalog.email.default_from_name} system notifications via Resend`,
       tls: true,
     });
   }

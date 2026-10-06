@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import type { LocalCatalogProfile } from "./local-profile.js";
 
-const localApplicationProductId = "freightclaims";
+const localApplicationProductId = "freightcheck";
 
 const roleSchema = z.object({
   key: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),

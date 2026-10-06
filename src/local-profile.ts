@@ -189,17 +189,37 @@ export function localAuthRuntimeProfile(
   dependencies: LocalRuntimeAllocationDependencies = {},
 ): LocalAuthRuntimeProfile {
   assertClientLocalDockerEndpoint(environment);
+  const applicationBaseUrl = localOrigin(
+    environment.LOCAL_APPLICATION_BASE_URL?.trim() ||
+      `http://localhost:${environment.WEB_PORT?.trim() || "5173"}`,
+    "LOCAL_APPLICATION_BASE_URL",
+  );
   const inheritedNames = ["LOCAL_RUNTIME_ROOT", "LOCAL_RUNTIME_ID"] as const;
   const inherited = inheritedNames.some((name) => environment[name]?.trim());
   const allocation = inherited
     ? consumeLocalRuntimePortBlock(environment, dependencies)
-    : allocateLocalRuntimePortBlock(path, environment, dependencies);
+    : allocateLocalRuntimePortBlock(
+        path,
+        {
+          ...environment,
+          LOCAL_RUNTIME_RESERVED_PORTS: [
+            environment.LOCAL_RUNTIME_RESERVED_PORTS,
+            new URL(applicationBaseUrl).port,
+          ]
+            .filter(Boolean)
+            .join(","),
+        },
+        dependencies,
+      );
   const { id, portBase } = allocation;
   const composeProject = `ensombl-auth-${id}`;
   const proxyPort = portBase + 9;
+  if ([proxyPort, portBase + 10].includes(Number(new URL(applicationBaseUrl).port))) {
+    throw new Error("The application origin conflicts with an allocated auth or Mailpit port");
+  }
   return Object.freeze({
     allocationCreated: allocation.created,
-    applicationBaseUrl: `http://localhost:${String(portBase + 1)}`,
+    applicationBaseUrl,
     composeProject,
     id,
     issuer: `http://localhost:${String(proxyPort)}`,

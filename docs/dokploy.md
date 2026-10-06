@@ -1,72 +1,80 @@
 # Dokploy deployment
 
-The auth stack is a Dokploy Compose application. PostgreSQL is a separate native Dokploy database,
-not a Compose service.
+The `ensombl-auth` project hosts FreightCheck only. Plansombl stays on GitHub authentication;
+other products are deferred. The Ensombl organization remains the operator organization.
+PostgreSQL is a separate native Dokploy database, not a Compose service.
 
-## Required Dokploy environment
+## Required configuration
 
-- `BWS_ACCESS_TOKEN`: token for the `ensombl-auth` Bitwarden machine account.
-- `BWS_PROJECT_ID`: UUID of the `ensombl-auth` Bitwarden project.
+Dokploy receives only `BWS_ACCESS_TOKEN` and `BWS_PROJECT_ID` for the recreated `ensombl-auth`
+Bitwarden project. Its machine account needs read/write access for bootstrap to persist client
+credentials; reduce it to read-only after successful bootstrap and restore write access when
+adding or rotating clients.
 
-The machine account needs write access only for the first successful catalog bootstrap, which
-creates OIDC clients and persists their one-time client secrets. Change it to read-only after the
-first deployment.
+Required Bitwarden secrets:
 
-## Required Bitwarden secrets
-
-- `ZITADEL_DATABASE_URL`: internal native-PostgreSQL DSN with TLS settings appropriate to Dokploy.
-- `ZITADEL_MASTERKEY`: exactly 32 random bytes; immutable for the lifetime of the instance.
+- `ZITADEL_DATABASE_URL`: internal DSN of the dedicated native PostgreSQL database.
+- `ZITADEL_MASTERKEY`: exactly 32 random bytes, immutable for that database's lifetime.
 - `ZITADEL_INITIAL_ADMIN_PASSWORD`: initial password for `patrick@ensombl.io`.
-- `RESEND_API_KEY`: sending-only Resend key for `noreply@notifications.ensombl.io`.
+- `RESEND_API_KEY`: preserve the existing auth key unchanged. Do not create, rotate, or substitute it.
 
-The bootstrap creates the product runtime entries documented in
-[`deploy/secrets/manifest.json`](../deploy/secrets/manifest.json). These are consumed by product
-deployments; they are not injected into the ZITADEL runtime.
+Initial setup and reconciliation both use `FreightCheck <noreply@notifications.ensombl.io>`
+with reply-to `noreply@notifications.ensombl.io`. Before deployment, verify the existing key's
+permitted sender domain. Resolve any discrepancy before sending; the screenshot of
+“Freightcheck - Staging API” does not select or authorize a replacement key.
+
+Generated credentials are listed in [the manifest](../deploy/secrets/manifest.json), including
+staging and production invitation accounts. Keep their values out of logs and PRs.
+
+## Fresh rebuild procedure
+
+This is future operational work; the code changes do not perform any reset or deployment.
+
+1. Inspect the existing `freightclaims-auth` deployment read-only and record the structure to
+   replicate. This comparison is still pending; do not modify that reference deployment.
+2. Inventory the exact `ensombl-auth` BWS and Dokploy project IDs, machine-account access,
+   domains, database, backups, and named volumes. Record which database and volume state is
+   removed or recreated. Project deletion alone does not guarantee a fresh instance.
+3. Securely preserve the selected auth `RESEND_API_KEY` and confirm its sender-domain access.
+4. Delete and recreate the BWS project named `ensombl-auth`. Supply the required bootstrap
+   secrets and the same Resend key. Pair the master key with the intended new database state.
+5. Delete and recreate the Dokploy project named `ensombl-auth` using the reference structure,
+   dedicated fresh PostgreSQL state, and explicitly inventoried volume handling. Configure the
+   reviewed revision and the routes below. Preserve the reference deployment and other products.
+6. Deploy that revision and bootstrap FreightCheck only. Verify the Ensombl operator
+   organization, FreightCheck organization, roles, applications, management/migration accounts,
+   and organization-scoped invitation accounts. Check that no FreightClaims resources or
+   generated credentials exist in the recreated projects.
+7. Refresh FreightCheck OIDC and invitation credentials from bootstrap output and deploy the
+   coordinated FreightCheck API, worker, scheduler, and web changes.
+8. Verify actual SMTP delivery, native account setup, login, pending invitations, membership
+   acceptance, and FreightCheck branding in light and dark mode.
+9. Before production launch, change the organization-wide invitation return destination from
+   `https://app.staging.freightcheck.io/auth/login?returnTo=%2Finvitations` to
+   `https://app.freightcheck.io/auth/login?returnTo=%2Finvitations`. Standalone invitation setup
+   cannot choose a separate destination per OIDC application.
 
 ## Routing
 
-Dokploy Traefik terminates TLS. Public routing is owned by the Compose application's **Domains**
-tab; `deploy/dokploy/compose.yml` intentionally contains no Traefik labels or manually declared
-`dokploy-network`. Dokploy injects both when it deploys the registered domains.
-
-Configure these HTTPS domains with a Let's Encrypt certificate:
+The canonical issuer is `https://auth.freightcheck.io`. Dokploy Traefik terminates TLS.
+Configure the Compose application's Domains tab with HTTPS and Let's Encrypt; Dokploy injects
+routing labels and its network. The Compose file deliberately declares neither.
 
 | Host | Public path | Service | Port | Internal path | Strip path |
 | --- | --- | --- | ---: | --- | --- |
-| `auth.ensombl.io` | `/` | `zitadel-api` | 8080 | `/` | No |
-| `auth.ensombl.io` | `/ui/v2/login` | `product-login-root` | 8080 | `/` | No |
-| `auth.ensombl.io` | `/admin/v1` | `zitadel-api` | 8080 | `/` | No |
-| `auth.ensombl.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
-| `auth.freightclaims.com` | `/` | `product-login-root` | 8080 | `/` | No |
-| `auth.freightclaims.com` | `/ui/v2/login` | `product-login-root` | 8080 | `/` | No |
-| `auth.freightclaims.com` | `/assets` | `product-login-root` | 8080 | `/` | No |
-| `auth.freightcheck.io` | `/` | `product-login-root` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/` | `zitadel-api` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/assets` | `zitadel-api` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/ui/v2/login` | `product-login-root` | 8080 | `/` | No |
-| `auth.freightcheck.io` | `/assets` | `product-login-root` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/admin/v1` | `zitadel-api` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
 
-The more-specific Login V2, branding-asset, and `/admin` paths take precedence over each host's `/`
-route. Login V2 resolves the active organization logo against its public hostname, so
-`product-login-root` proxies Login V2 and `/assets` while preserving the public product hostname. It
-limits repeated username submissions at the public ingress; this bounds native setup-email triggers
-for identities that do not have an authentication method. It redirects the exact `/` path to Login
-V2 and returns 404 for every other product-host path. The native `/admin/v1`
-passthrough must remain more specific than the `/admin` Console shortcut; otherwise the shortcut's
-path rewrite breaks ZITADEL's Admin API. A Compose redeploy is required after changing any of these
-domain records.
-
-- `https://auth.ensombl.io/ui/console` is the ZITADEL Console.
-- `https://auth.ensombl.io/admin` is rewritten internally to the Console.
-- `auth.freightclaims.com` and `auth.freightcheck.io` serve Login V2 for their product applications.
-  The OIDC issuer and API endpoints remain canonical at `auth.ensombl.io`.
-- Each OIDC application receives its product's Login V2 base URI from `auth_origin`. The
-  application context selects product branding; the hostname does not become a second issuer.
-- Login V2 is enabled per application, not forced instance-wide. This lets product applications use
-  their own login hosts while the ZITADEL Console remains on `auth.ensombl.io`.
-- Product login hosts are native trusted domains on the initial ZITADEL instance. Login V2 sends
-  `auth.ensombl.io` as the instance host while preserving the product hostname as the public host.
+Keep more-specific paths ahead of `/`, and `/admin/v1` ahead of the `/admin` shortcut so admin
+API requests retain their path. `/ui/console` remains the native console path; `/admin` is its
+shortcut. Login V2 uses the proxy, while issuer discovery, API requests, and branding assets
+reach `zitadel-api` directly. Do not add FreightClaims routes.
 
 ## Recovery
 
-Recovery uses a native PostgreSQL backup together with the matching reviewed Git revision. Configure
-a documented retention policy, monitor backup completion, and perform periodic restore tests into
-an isolated database before relying on the backup for disaster recovery.
+Back up the native PostgreSQL database with its matching master key and reviewed Git revision.
+Document retention, monitor backup completion, and test restores into isolated database and
+volume state before relying on them for recovery.

@@ -25,7 +25,7 @@ const lockTimeoutMilliseconds = 5_000;
 const invalidLockStaleMilliseconds = 5_000;
 const lockOwnerFilePattern =
   /^owner\.([0-9]+)\.([0-9]+)\.([a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})\.json$/u;
-const standardFreightClaimsPorts = new Set([
+const standardDevelopmentPorts = new Set([
   3_000, 3_306, 3_310, 4_200, 11_025, 18_025, 18_080, 24_455, 28_025, 29_000, 29_001, 33_306,
   55_432, 55_433,
 ]);
@@ -87,10 +87,10 @@ function systemErrorCode(error: unknown): string | undefined {
 }
 
 function defaultRegistryPath(environment: Readonly<NodeJS.ProcessEnv>): string {
-  const configured = environment.FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH?.trim();
+  const configured = environment.ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH?.trim();
   if (configured) return resolve(configured);
   const parent = environment.XDG_STATE_HOME?.trim() || resolve(homedir(), ".local/state");
-  return resolve(parent, "freightclaims", "local-runtime-allocations.json");
+  return resolve(parent, "ensombl-auth", "local-runtime-allocations.json");
 }
 
 function ensurePrivateDirectory(path: string): void {
@@ -264,7 +264,7 @@ function portBlockAvailability(
 }
 
 function parseReservedPorts(value: string | undefined): ReadonlySet<number> {
-  const ports = new Set(standardFreightClaimsPorts);
+  const ports = new Set(standardDevelopmentPorts);
   if (!value?.trim()) return ports;
   for (const entry of value.split(",").map((part) => part.trim())) {
     const match = /^(\d+)(?:-(\d+))?$/u.exec(entry);
@@ -952,7 +952,7 @@ export function localRuntimeAllocationEnvironment(
   allocation: LocalRuntimeAllocationReference,
 ): NodeJS.ProcessEnv {
   return {
-    FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: allocation.registryPath,
+    ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH: allocation.registryPath,
     LOCAL_RUNTIME_ID: allocation.id,
     LOCAL_RUNTIME_PORT_BASE: String(allocation.portBase),
     LOCAL_RUNTIME_ROOT: allocation.repositoryRoot,

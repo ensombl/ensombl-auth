@@ -167,10 +167,7 @@ export async function bootstrapCatalog(
     await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
     if (product.privacy_policy)
       await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy);
-    if (
-      product.id === "freightcheck" &&
-      new URL(catalog.issuer).hostname === "auth.freightcheck.io"
-    ) {
+    if (product.id === "freightcheck") {
       if (product.privacy_policy)
         await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy, true);
       await client.applyBranding(

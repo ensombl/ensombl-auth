@@ -317,10 +317,14 @@ export class ZitadelClient {
       }
     }
     if (icon) {
-      const iconUrl =
+      const activeIconUrl =
+        typeof active.policy?.iconUrl === "string" ? active.policy.iconUrl : undefined;
+      const previewIconUrl =
         typeof preview.policy?.iconUrl === "string" ? preview.policy.iconUrl : undefined;
-      if (!(await this.#assetMatches(iconUrl, icon, headers))) {
+      if (!(await this.#assetMatches(previewIconUrl, icon, headers))) {
         await this.#uploadOrganizationLogo(icon, headers, instance, "icon");
+        needsActivation = true;
+      } else if (activeIconUrl !== previewIconUrl) {
         needsActivation = true;
       }
     }
