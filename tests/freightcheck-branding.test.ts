@@ -19,7 +19,7 @@ it("uses FreightCheck issuer, mail identity, assets, and hosted return destinati
   );
 });
 
-it("activates instance branding and uploads the icon through instance endpoints", async () => {
+it("activates instance branding and uploads the logo and icon through instance endpoints", async () => {
   const catalog = await loadCatalog("deploy/products/products.json");
   const product = catalog.products.find((entry) => entry.id === "freightcheck");
   if (!product) throw new Error("Missing FreightCheck");
@@ -28,13 +28,14 @@ it("activates instance branding and uploads the icon through instance endpoints"
   await client.applyBranding(
     "freightcheck",
     product.branding,
-    undefined,
+    new Uint8Array([1, 2, 3]),
     true,
     new Uint8Array([1, 2, 3]),
   );
   const urls = fetcher.mock.calls.map(([url]) => String(url));
   expect(urls).toContain("https://auth.freightcheck.io/admin/v1/policies/label/_activate");
-  expect(urls).toContain("https://auth.freightcheck.io/assets/v1/policy/label/icon");
+  expect(urls).toContain("https://auth.freightcheck.io/assets/v1/instance/policy/label/logo");
+  expect(urls).toContain("https://auth.freightcheck.io/assets/v1/instance/policy/label/icon");
   expect(urls.some((url) => url.includes("/management/"))).toBe(false);
 });
 

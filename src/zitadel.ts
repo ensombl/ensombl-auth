@@ -989,7 +989,7 @@ export class ZitadelClient {
     const form = new FormData();
     form.append("file", new Blob([new Uint8Array(logo)], { type: "image/png" }), "logo.png");
     const path = instance
-      ? `/assets/v1/policy/label/${kind}`
+      ? `/assets/v1/instance/policy/label/${kind}`
       : `/assets/v1/org/policy/label/${kind}`;
     const response = await fetch(`${this.#baseUrl}${path}`, {
       method: "POST",
