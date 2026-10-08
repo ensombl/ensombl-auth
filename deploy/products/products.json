@@ -1,5 +1,5 @@
 {
-  "issuer": "https://auth.ensombl.io",
+  "issuer": "https://auth.freightcheck.io",
   "console_path": "/ui/console",
   "instance_organization": {
     "name": "Ensombl",
@@ -7,81 +7,9 @@
   },
   "email": {
     "from_address": "noreply@notifications.ensombl.io",
-    "default_from_name": "Ensombl"
+    "default_from_name": "FreightCheck"
   },
   "products": [
-    {
-      "id": "freightclaims",
-      "display_name": "FreightClaims",
-      "auth_origin": "https://auth.freightclaims.com",
-      "email_from_name": "FreightClaims",
-      "owner_organization": {
-        "name": "FreightClaims",
-        "domain": "freightclaims.com"
-      },
-      "branding": {
-        "primary_color": "#126B56",
-        "warn_color": "#BA1A1A",
-        "background_color": "#F2F4F3",
-        "font_color": "#000000",
-        "primary_color_dark": "#84ADFF",
-        "warn_color_dark": "#FDA29B",
-        "background_color_dark": "#101828",
-        "font_color_dark": "#F9FAFB",
-        "theme_mode": "THEME_MODE_LIGHT",
-        "hide_login_name_suffix": true,
-        "logo_base64_file": "assets/freightclaims-logo.png.base64"
-      },
-      "login_policy": {
-        "allow_username_password": true,
-        "allow_self_registration": false,
-        "allow_external_identity_providers": false,
-        "allow_password_reset": true,
-        "ignore_unknown_usernames": true,
-        "allow_domain_discovery": false,
-        "disable_login_with_email": false,
-        "disable_login_with_phone": false,
-        "default_redirect_uri": "https://app.freightclaims.com/"
-      },
-      "roles": [
-        {
-          "key": "platform_support",
-          "display_name": "Platform Support"
-        },
-        {
-          "key": "platform_admin",
-          "display_name": "Platform Administrator"
-        }
-      ],
-      "migration_service_account": {
-        "id": "afbead5c-1b97-4d63-8136-32fea6673fde",
-        "username": "freightclaims-migration",
-        "display_name": "FreightClaims migration",
-        "verify_imported_passwords": true
-      },
-      "applications": [
-        {
-          "environment": "staging",
-          "name": "FreightClaims staging web",
-          "base_url": "https://app.staging.freightclaims.com",
-          "management_service_account": {
-            "id": "f1659442-a65a-4da6-bbd7-4efa55b7c7ef",
-            "username": "freightclaims-staging-management",
-            "display_name": "FreightClaims staging management"
-          }
-        },
-        {
-          "environment": "production",
-          "name": "FreightClaims production web",
-          "base_url": "https://app.freightclaims.com",
-          "management_service_account": {
-            "id": "7ea4dd05-da93-4a19-a63b-be7e9bd2bef1",
-            "username": "freightclaims-production-management",
-            "display_name": "FreightClaims production management"
-          }
-        }
-      ]
-    },
     {
       "id": "freightcheck",
       "display_name": "FreightCheck",
@@ -92,7 +20,8 @@
         "domain": "freightcheck.io"
       },
       "login_policy": {
-        "allow_self_registration": true
+        "allow_self_registration": true,
+        "default_redirect_uri": "https://app.staging.freightcheck.io/auth/login?returnTo=%2Finvitations"
       },
       "migration_service_account": {
         "id": "1c7e65a1-d014-4264-afb2-bcdfa3030556",
@@ -100,14 +29,17 @@
         "display_name": "FreightCheck migration"
       },
       "branding": {
-        "primary_color": "#7F56D9",
+        "primary_color": "#7C3AED",
         "warn_color": "#D92D20",
-        "background_color": "#F9FAFB",
-        "font_color": "#101828",
-        "primary_color_dark": "#B692F6",
+        "background_color": "#FFFFFF",
+        "font_color": "#18181B",
+        "primary_color_dark": "#A78BFA",
         "warn_color_dark": "#FDA29B",
-        "background_color_dark": "#1D2939",
-        "font_color_dark": "#F9FAFB"
+        "background_color_dark": "#18181B",
+        "font_color_dark": "#FAFAFA",
+        "logo_base64_file": "assets/freightcheck-logo.png.base64",
+        "hide_login_name_suffix": true,
+        "icon_base64_file": "assets/freightcheck-logo.png.base64"
       },
       "roles": [
         {
@@ -128,6 +60,11 @@
             "id": "ed9353c3-d6ac-4f63-91fd-a5a92fbb284b",
             "username": "freightcheck-staging-management",
             "display_name": "FreightCheck staging management"
+          },
+          "invitation_service_account": {
+            "id": "8effe99a-8480-5587-8d9b-35b6fdfd0ab7",
+            "username": "freightcheck-staging-invitations",
+            "display_name": "FreightCheck staging invitations"
           }
         },
         {
@@ -138,9 +75,19 @@
             "id": "245097ab-5609-41b1-99cb-5f9d2efbbdb7",
             "username": "freightcheck-production-management",
             "display_name": "FreightCheck production management"
+          },
+          "invitation_service_account": {
+            "id": "bc3048e5-4ec1-5cc8-8057-4c9ebfd6bde7",
+            "username": "freightcheck-production-invitations",
+            "display_name": "FreightCheck production invitations"
           }
         }
-      ]
+      ],
+      "privacy_policy": {
+        "tos_link": "https://freightcheck.io/terms",
+        "privacy_link": "https://freightcheck.io/privacy",
+        "help_link": "https://freightcheck.io/contact"
+      }
     }
   ]
 }

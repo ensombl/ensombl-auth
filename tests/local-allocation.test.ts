@@ -144,13 +144,39 @@ afterEach(() => {
 });
 
 describe("local runtime allocation registry", () => {
+  it("uses an auth-only registry without changing another product's registry", () => {
+    const root = temporaryRoot();
+    const stateRoot = resolve(root, "state");
+    const otherRegistry = resolve(stateRoot, "freightclaims", "local-runtime-allocations.json");
+    mkdirSync(resolve(stateRoot, "freightclaims"), { recursive: true });
+    writeFileSync(otherRegistry, "foreign state");
+    const { registryPath: _, ...options } = dependencies(resolve(root, "unused"), {
+      processInstanceId: () => "test-process",
+    });
+    const allocation = allocateLocalRuntimePortBlock(
+      root,
+      {
+        XDG_STATE_HOME: stateRoot,
+        FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: otherRegistry,
+      },
+      options,
+    );
+    expect(allocation.registryPath).toBe(
+      resolve(stateRoot, "ensombl-auth", "local-runtime-allocations.json"),
+    );
+    expect(
+      localRuntimeAllocationEnvironment(allocation).ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH,
+    ).toBe(allocation.registryPath);
+    expect(readFileSync(otherRegistry, "utf8")).toBe("foreign state");
+  });
+
   it.runIf(process.platform !== "win32")("never changes shared registry parent permissions", () => {
     const root = temporaryRoot();
     const sharedParent = resolve(root, "shared");
     mkdirSync(sharedParent, { mode: 0o755 });
     chmodSync(sharedParent, 0o755);
     const sharedRegistry = resolve(sharedParent, "allocations.json");
-    const environment = { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: sharedRegistry };
+    const environment = { ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH: sharedRegistry };
     const options: LocalRuntimeAllocationDependencies = {
       candidatePortBases: [16_000, 16_016, 16_032, 16_048],
       ephemeralPortRange: [32_768, 60_999],
@@ -164,21 +190,21 @@ describe("local runtime allocation registry", () => {
     expect(statSync(sharedParent).mode & 0o777).toBe(before);
     expect(existsSync(sharedRegistry)).toBe(false);
 
-    const privateRegistry = resolve(sharedParent, "freightclaims", "allocations.json");
+    const privateRegistry = resolve(sharedParent, "ensombl-auth", "allocations.json");
     const allocation = allocateLocalRuntimePortBlock(
       root,
-      { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
+      { ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
       options,
     );
     expect(allocation.registryPath).toBe(privateRegistry);
     expect(statSync(sharedParent).mode & 0o777).toBe(before);
-    expect(statSync(resolve(sharedParent, "freightclaims")).mode & 0o777).toBe(0o700);
+    expect(statSync(resolve(sharedParent, "ensombl-auth")).mode & 0o777).toBe(0o700);
 
     chmodSync(privateRegistry, 0o644);
     expect(() =>
       allocateLocalRuntimePortBlock(
         root,
-        { FREIGHTCLAIMS_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
+        { ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH: privateRegistry },
         options,
       ),
     ).toThrow(/registry permissions are not private/u);

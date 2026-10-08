@@ -35,7 +35,7 @@ product that sets `instance_org_user_lookup`; the product reads that identity bu
 modifies it. Consumer application tenancy is not represented by ZITADEL organizations.
 
 The OIDC request pins the product owner organization so another product's identities cannot enter
-that product's login flow. The canonical issuer remains `https://auth.ensombl.io`.
+that product's login flow. The canonical issuer remains `https://auth.freightcheck.io`.
 
 ## ZITADEL references
 

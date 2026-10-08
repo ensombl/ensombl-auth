@@ -1,6 +1,6 @@
 # Ensombl Auth
 
-Ensombl Auth is the shared, self-hosted ZITADEL identity platform for Ensombl products. It owns
+Ensombl Auth is the self-hosted ZITADEL identity service for FreightCheck. It owns
 authentication, credentials, account recovery, product login branding, OIDC applications, and
 product-scoped service accounts.
 
@@ -25,7 +25,7 @@ pnpm dev
 
 The command reserves a local profile in the shared per-user runtime registry. Product repositories
 pass the same reservation into auth instead of allocating another block. The profile scopes the
-Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightClaims
+Compose project, network, volumes, proxy and Mailpit ports, Traefik labels, issuer, and FreightCheck
 application URL.
 
 On Linux, allocation excludes the live TCP/UDP range from
@@ -42,6 +42,14 @@ pnpm check
 Product repositories consume this repository as a pinned submodule so local development uses the
 same ZITADEL and catalog bootstrap implementation as hosted environments.
 
+The local application origin uses `LOCAL_APPLICATION_BASE_URL`, otherwise
+`http://localhost:${WEB_PORT}` with `WEB_PORT` defaulting to `5173`. Its invitation return
+path stays `/auth/login?returnTo=%2Finvitations`; auth and Mailpit retain their allocated ports.
+
+The registry uses `ENSOMBL_AUTH_LOCAL_RUNTIME_REGISTRY_PATH` when set; otherwise it lives in
+`$XDG_STATE_HOME/ensombl-auth` (default `~/.local/state/ensombl-auth`). Existing registries for
+other products are neither migrated nor removed. Port collision checks still apply.
+
 ## Repository layout
 
 ```text
@@ -57,8 +65,7 @@ tests/         Catalog, Compose, bootstrap, and policy tests
 
 ## Hosted service
 
-`https://auth.ensombl.io` is the canonical issuer. Product login hosts provide product branding
-while the issuer and APIs remain canonical. Dokploy builds the repository sources directly; this
+`https://auth.freightcheck.io` is the canonical issuer. FreightCheck branding applies to the instance and product organization. Dokploy builds the repository sources directly; this
 project does not publish container images.
 
 See:

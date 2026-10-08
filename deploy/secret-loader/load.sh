@@ -65,7 +65,7 @@ jq -n \
         },
         TLS: true,
         From: "noreply@notifications.ensombl.io",
-        FromName: "Ensombl",
+        FromName: "FreightCheck",
         ReplyToAddress: "noreply@notifications.ensombl.io"
       }
     }

@@ -161,8 +161,23 @@ export async function bootstrapCatalog(
       ownerOrganization.id,
       product.branding,
       await readBrandingLogo(product.branding.logo_base64_file),
+      false,
+      await readBrandingLogo(product.branding.icon_base64_file),
     );
     await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
+    if (product.privacy_policy)
+      await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy);
+    if (product.id === "freightcheck") {
+      if (product.privacy_policy)
+        await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy, true);
+      await client.applyBranding(
+        ownerOrganization.id,
+        product.branding,
+        await readBrandingLogo(product.branding.logo_base64_file),
+        true,
+        await readBrandingLogo(product.branding.icon_base64_file),
+      );
+    }
 
     let projectId = projects.find(
       (project) =>
@@ -323,6 +338,41 @@ export async function bootstrapCatalog(
         clientSecret: managementClientSecret,
       };
 
+      const invitationAccount = application.invitation_service_account;
+      if (invitationAccount) {
+        const existing = await client.getUser(invitationAccount.id);
+        if (!existing) {
+          await client.createServiceAccount({
+            organizationId: ownerOrganization.id,
+            userId: invitationAccount.id,
+            username: invitationAccount.username,
+            displayName: invitationAccount.display_name,
+          });
+        }
+        const prefix = `${secretPrefix(product, application)}_INVITATION`;
+        let secret = existing
+          ? (existingApplication?.invitationServiceAccount?.clientSecret ??
+            options.bws?.get(`${prefix}_CLIENT_SECRET`))
+          : undefined;
+        if (!existing || (!secret && options.rotateMissingSecrets))
+          secret = await client.generateServiceAccountSecret(invitationAccount.id);
+        if (!secret)
+          throw new Error(
+            `Missing invitation credentials for ${product.id}/${application.environment}`,
+          );
+        await client.ensureAdministrator({
+          userId: invitationAccount.id,
+          resource: { organizationId: ownerOrganization.id },
+          roles: ["ORG_USER_MANAGER"],
+        });
+        applicationRuntime.invitationServiceAccount = {
+          userId: invitationAccount.id,
+          clientId: invitationAccount.username,
+          clientSecret: secret,
+        };
+        await options.bws?.set(`${prefix}_CLIENT_ID`, invitationAccount.username);
+        await options.bws?.set(`${prefix}_CLIENT_SECRET`, secret);
+      }
       productRuntime.applications[application.environment] = applicationRuntime;
       await persistApplication(
         options.bws,

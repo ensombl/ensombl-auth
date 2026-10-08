@@ -58,72 +58,25 @@ describe("product catalog", () => {
   it.each([
     "products.json",
     "products.local.json",
-  ])("keeps products without staff roles roleless in %s", (fileName) => {
+  ])("provisions only FreightCheck with scoped accounts and staff roles in %s", (fileName) => {
     const catalog = catalogSchema.parse(
       JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
     );
-    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
-    if (!freightclaims) throw new Error("Expected FreightClaims product");
-    expect(rolesForProduct(catalog, freightclaims)).toEqual([
-      { key: "platform_support", display_name: "Platform Support" },
-      { key: "platform_admin", display_name: "Platform Administrator" },
+    expect(catalog.products.map((product) => product.id)).toEqual(["freightcheck"]);
+    const product = catalog.products[0];
+    if (!product) throw new Error("Expected FreightCheck");
+    expect(rolesForProduct(catalog, product)).toEqual([
+      { key: "platform_admin", display_name: "Platform admin" },
+      { key: "platform_support", display_name: "Platform support" },
     ]);
-    for (const product of catalog.products.filter(
-      (candidate) => candidate.id !== "freightclaims" && candidate.id !== "freightcheck",
-    )) {
-      expect(rolesForProduct(catalog, product)).toEqual([]);
-    }
-  });
-
-  it.each([
-    "products.json",
-    "products.local.json",
-  ])("applies the mixed-case login workaround only to FreightClaims in %s", (fileName) => {
-    const catalog = catalogSchema.parse(
-      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
-    );
-    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
-    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
-
-    expect(freightclaims?.login_policy).toMatchObject({
-      allow_self_registration: false,
-      disable_login_with_email: false,
-      disable_login_with_phone: false,
-      ignore_unknown_usernames: true,
-    });
-    expect(freightcheck?.login_policy).toMatchObject({
+    expect(product.login_policy).toMatchObject({
       allow_self_registration: true,
       disable_login_with_email: false,
       disable_login_with_phone: true,
       ignore_unknown_usernames: true,
     });
-  });
-
-  it("enables imported-password verification only for hosted FreightClaims", () => {
-    const catalog = catalogSchema.parse(
-      JSON.parse(
-        readFileSync(new URL("../deploy/products/products.json", import.meta.url), "utf8"),
-      ),
-    );
-    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
-    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
-
-    expect(freightclaims?.migration_service_account?.verify_imported_passwords).toBe(true);
-    expect(freightcheck?.migration_service_account?.verify_imported_passwords).toBe(false);
-  });
-
-  it.each([
-    "products.json",
-    "products.local.json",
-  ])("disables instance-organization user lookup for interactive products in %s", (fileName) => {
-    const catalog = catalogSchema.parse(
-      JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
-    );
-    const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
-    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
-
-    expect(freightcheck?.instance_org_user_lookup).toBe(false);
-    expect(freightclaims?.instance_org_user_lookup).toBe(false);
+    expect(product.migration_service_account?.verify_imported_passwords).toBe(false);
+    expect(product.instance_org_user_lookup).toBe(false);
   });
 
   it("defaults products to no project roles", () => {
@@ -181,7 +134,7 @@ describe("product catalog", () => {
     expect(catalog.products[0]?.migration_service_account?.verify_imported_passwords).toBe(true);
   });
 
-  it("applies the allocated origin only to FreightClaims in the current local catalog", () => {
+  it("applies the local origin and preserves the FreightCheck invitation return path", () => {
     const catalog = catalogSchema.parse(
       JSON.parse(
         readFileSync(new URL("../deploy/products/products.local.json", import.meta.url), "utf8"),
@@ -192,35 +145,41 @@ describe("product catalog", () => {
       applicationBaseUrl: "http://localhost:26033",
       issuer: "http://localhost:26041",
     });
-    const freightclaims = configured.products.find((product) => product.id === "freightclaims");
     const freightcheck = configured.products.find((product) => product.id === "freightcheck");
 
     expect(configured.issuer).toBe("http://localhost:26041");
     expect(configured.products.every((product) => product.auth_origin === configured.issuer)).toBe(
       true,
     );
-    expect(freightclaims?.applications[0]?.base_url).toBe("http://localhost:26033");
-    expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:5173");
-    expect(freightclaims?.login_policy.default_redirect_uri).toBe("http://localhost:26033/");
-    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+    expect(freightcheck?.applications[0]?.base_url).toBe("http://localhost:26033");
+    expect(freightcheck?.login_policy.default_redirect_uri).toBe(
+      new URL(
+        "/auth/login?returnTo=%2Finvitations",
+        freightcheck?.applications[0]?.base_url,
+      ).toString(),
+    );
   });
 
   it.each([
     "products.json",
     "products.local.json",
-  ])("sends only FreightClaims invitees back to a FreightClaims application in %s", (fileName) => {
+  ])("returns invitees to the FreightCheck application in %s", (fileName) => {
     const catalog = catalogSchema.parse(
       JSON.parse(readFileSync(new URL(`../deploy/products/${fileName}`, import.meta.url), "utf8")),
     );
-    const freightclaims = catalog.products.find((product) => product.id === "freightclaims");
     const freightcheck = catalog.products.find((product) => product.id === "freightcheck");
 
-    const redirect = freightclaims?.login_policy.default_redirect_uri;
+    const redirect = freightcheck?.login_policy.default_redirect_uri;
     expect(redirect).toBeDefined();
     expect(
-      freightclaims?.applications.map((application) => new URL(application.base_url).origin),
+      freightcheck?.applications.map((application) => new URL(application.base_url).origin),
     ).toContain(new URL(String(redirect)).origin);
-    expect(freightcheck?.login_policy.default_redirect_uri).toBeUndefined();
+    expect(freightcheck?.login_policy.default_redirect_uri).toBe(
+      new URL(
+        "/auth/login?returnTo=%2Finvitations",
+        freightcheck?.applications[0]?.base_url,
+      ).toString(),
+    );
   });
 
   it("rejects a default redirect that is not under one of the product's applications", () => {
@@ -243,7 +202,7 @@ describe("product catalog", () => {
         applicationBaseUrl: "http://localhost:26033",
         issuer: "http://localhost:26041",
       }),
-    ).toThrow(/requires a local application for product freightclaims/u);
+    ).toThrow(/requires a local application for product freightcheck/u);
   });
 
   it("rejects a migration account that reuses an application management identity", () => {

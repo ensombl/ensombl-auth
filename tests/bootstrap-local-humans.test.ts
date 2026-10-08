@@ -143,10 +143,10 @@ describe("local bootstrap profile", () => {
         },
         products: [
           {
-            id: "freightclaims",
-            display_name: "FreightClaims",
+            id: "freightcheck",
+            display_name: "FreightCheck",
             auth_origin: "http://localhost:24455",
-            email_from_name: "FreightClaims",
+            email_from_name: "FreightCheck",
             owner_organization: { name: "Ensombl", domain: "ensombl.localhost" },
             branding: {
               primary_color: "#123456",
@@ -160,20 +160,20 @@ describe("local bootstrap profile", () => {
             },
             migration_service_account: {
               id: "01900000-0000-7000-8000-000000000200",
-              username: "freightclaims-local-migration",
-              display_name: "FreightClaims local migration",
+              username: "freightcheck-local-migration",
+              display_name: "FreightCheck local migration",
               verify_imported_passwords: true,
             },
             applications: [
               {
                 environment: "local",
-                name: "FreightClaims local web",
+                name: "FreightCheck local web",
                 base_url: "http://localhost:4200",
                 development_mode: true,
                 management_service_account: {
                   id: "01900000-0000-7000-8000-000000000100",
-                  username: "freightclaims-local-management",
-                  display_name: "FreightClaims local management",
+                  username: "freightcheck-local-management",
+                  display_name: "FreightCheck local management",
                 },
               },
             ],
@@ -223,9 +223,9 @@ describe("local bootstrap profile", () => {
           name: "ZITADEL",
         },
         {
-          projectId: "freightclaims-project-id",
+          projectId: "freightcheck-project-id",
           organizationId: "ensombl-organization-id",
-          name: "FreightClaims",
+          name: "FreightCheck",
         },
       ]),
     } as unknown as ZitadelClient;
@@ -243,8 +243,16 @@ describe("local bootstrap profile", () => {
         loginBaseUri: "http://localhost:26041/ui/v2/login/",
       }),
     );
+    expect(client.applyBranding).toHaveBeenCalledWith(
+      "ensombl-organization-id",
+      catalog.products[0]?.branding,
+      undefined,
+      true,
+      undefined,
+    );
+    expect(Object.keys(runtime.products)).toEqual(["freightcheck"]);
     expect(runtime.issuer).toBe("http://localhost:26041");
-    expect(runtime.products.freightclaims?.applications.local?.baseUrl).toBe(
+    expect(runtime.products.freightcheck?.applications.local?.baseUrl).toBe(
       "http://localhost:26033",
     );
     expect(

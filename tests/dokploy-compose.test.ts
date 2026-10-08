@@ -19,7 +19,7 @@ describe("Dokploy Compose ownership", () => {
 
   it("serves product branding assets from the canonical ZITADEL instance", () => {
     expect(productLoginProxy).toContain("location /assets/");
-    expect(productLoginProxy).toContain("proxy_set_header Host auth.ensombl.io;");
+    expect(productLoginProxy).toContain("proxy_set_header Host auth.freightcheck.io;");
     expect(productLoginProxy).toContain("proxy_pass http://$zitadel_api_upstream;");
   });
 

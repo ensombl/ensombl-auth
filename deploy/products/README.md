@@ -1,6 +1,7 @@
 # Product catalog
 
-`products.json` is the hosted catalog and `products.local.json` is the disposable local subset.
+`products.json` is the hosted catalog and `products.local.json` is the disposable local catalog.
+Both contain only FreightCheck.
 
 Each product declares:
 
@@ -20,9 +21,11 @@ Each product declares:
 
 A migration account is an explicitly trusted control-plane identity, not an application runtime.
 The migration account receives `ORG_USER_MANAGER` only on its product organization so it can
-import product-owned humans. The hosted FreightClaims account receives `IAM_LOGIN_CLIENT` only for the imported
-password verification test. The bootstrap never gives an application management account an
-instance role and never creates customer-tenant organizations.
+import product-owned humans. FreightCheck does not import legacy passwords, so its migration
+account receives no `IAM_LOGIN_CLIENT` grant. The bootstrap never gives an application management
+account an instance role and never creates customer-tenant organizations.
 
 The catalog bootstrap requires a clean ZITADEL instance. Recovery and reset procedures are defined
 in [the Dokploy deployment guide](../../docs/dokploy.md).
+
+FreightCheck also declares a dedicated optional `invitation_service_account` per application. Bootstrap grants it `ORG_USER_MANAGER` only in the FreightCheck organization and writes its credentials to `invitationServiceAccount` runtime output and the product/environment `INVITATION_CLIENT_ID` and `INVITATION_CLIENT_SECRET` Bitwarden keys. Native setup returns to the catalog login policy `default_redirect_uri`; change the hosted FreightCheck destination from staging to production at launch. Follow the fresh FreightCheck-only rebuild procedure in the Dokploy guide before deployment.

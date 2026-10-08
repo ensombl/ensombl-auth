@@ -21,6 +21,7 @@ const allocationDependencies = {
   ephemeralPortRange: [32_768, 60_999] as const,
   listeningPorts: () => new Set<number>(),
   registryPath: resolve(testRoot, "allocations.json"),
+  processInstanceId: () => "test-process",
 };
 const localDockerEnvironment = { DOCKER_CONFIG: resolve(testRoot, "docker-default") };
 
@@ -49,6 +50,61 @@ function dockerConfig(
 afterAll(() => rmSync(testRoot, { force: true, recursive: true }));
 
 describe("local runtime profile", () => {
+  it("reserves the application port when allocating auth and Mailpit ports", () => {
+    const profile = localAuthRuntimeProfile(
+      firstRoot,
+      {
+        ...localDockerEnvironment,
+        WEB_PORT: "16009",
+      },
+      { ...allocationDependencies, registryPath: resolve(testRoot, "web-port-registry.json") },
+    );
+    expect(profile.portBase).toBe(16_016);
+    expect(profile.applicationBaseUrl).toBe("http://localhost:16009");
+    expect(() =>
+      localAuthRuntimeProfile(
+        firstRoot,
+        {
+          ...localAuthComposeEnvironment(profile, localDockerEnvironment),
+          LOCAL_APPLICATION_BASE_URL: profile.issuer,
+        },
+        { ...allocationDependencies, registryPath: profile.registryPath },
+      ),
+    ).toThrow(/conflicts with an allocated/u);
+  });
+
+  it.each([
+    [{}, "http://localhost:5173"],
+    [{ WEB_PORT: "5300" }, "http://localhost:5300"],
+    [
+      { WEB_PORT: "5300", LOCAL_APPLICATION_BASE_URL: "http://127.0.0.1:5400" },
+      "http://127.0.0.1:5400",
+    ],
+  ])("resolves the application origin from %j", (environment, expected) => {
+    const profile = localAuthRuntimeProfile(
+      firstRoot,
+      { ...localDockerEnvironment, ...environment },
+      allocationDependencies,
+    );
+    expect(profile.applicationBaseUrl).toBe(expected);
+    expect(profile.proxyPort).toBe(profile.portBase + 9);
+    expect(profile.mailpitPort).toBe(profile.portBase + 10);
+  });
+
+  it.each([
+    "https://example.com",
+    "http://localhost:5300/path",
+    "http://user:pass@localhost:5300",
+  ])("rejects invalid application origin %s", (origin) => {
+    expect(() =>
+      localAuthRuntimeProfile(
+        firstRoot,
+        { ...localDockerEnvironment, LOCAL_APPLICATION_BASE_URL: origin },
+        allocationDependencies,
+      ),
+    ).toThrow(/local HTTP origin/u);
+  });
+
   it("reuses a reservation and assigns a distinct port block per repository path", () => {
     const first = localAuthRuntimeProfile(
       firstRoot,
