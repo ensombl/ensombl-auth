@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import type { Catalog, Product, ProductApplication } from "./catalog.js";
 import { migrationSecretPrefix, rolesForProduct, secretPrefix } from "./catalog.js";
 import type { ApplicationRuntime, BwsRuntimeStore, RuntimeConfig } from "./runtime-config.js";
-import type { ZitadelClient } from "./zitadel.js";
+import type { BrandingAssets, ZitadelClient } from "./zitadel.js";
 
 interface BootstrapOptions {
   readonly existing?: RuntimeConfig;
@@ -98,6 +98,15 @@ async function readBrandingLogo(path: string | undefined): Promise<Uint8Array | 
   return logo;
 }
 
+async function readBrandingAssets(branding: Product["branding"]): Promise<BrandingAssets> {
+  return {
+    logo: await readBrandingLogo(branding.logo_base64_file),
+    icon: await readBrandingLogo(branding.icon_base64_file),
+    logoDark: await readBrandingLogo(branding.logo_dark_base64_file),
+    iconDark: await readBrandingLogo(branding.icon_dark_base64_file),
+  };
+}
+
 export async function bootstrapCatalog(
   client: ZitadelClient,
   catalog: Catalog,
@@ -143,6 +152,12 @@ export async function bootstrapCatalog(
     organizationId: consoleProject.organizationId,
     loginBaseUri: new URL("/ui/v2/login/", catalog.issuer).toString(),
   });
+  if (catalog.hosted_login) {
+    await client.ensureAllowedLanguages(catalog.hosted_login.allowed_languages);
+    for (const [locale, translations] of Object.entries(catalog.hosted_login.translations)) {
+      await client.ensureHostedLoginTranslation(locale, translations);
+    }
+  }
   for (const product of catalog.products) {
     const loginBaseUri = new URL("/ui/v2/login/", product.auth_origin).toString();
     let ownerOrganization = organizations.find(
@@ -157,26 +172,20 @@ export async function bootstrapCatalog(
       product.owner_organization.domain,
       obsoleteGeneratedDomainSuffix,
     );
-    await client.applyBranding(
-      ownerOrganization.id,
-      product.branding,
-      await readBrandingLogo(product.branding.logo_base64_file),
-      false,
-      await readBrandingLogo(product.branding.icon_base64_file),
-    );
+    const brandingAssets = await readBrandingAssets(product.branding);
+    await client.applyBranding(ownerOrganization.id, product.branding, brandingAssets);
     await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
+    // Login V2 reads an organization's texts on its pages, and that lookup falls back to
+    // ZITADEL's defaults rather than the instance texts.
+    for (const [locale, translations] of Object.entries(catalog.hosted_login?.translations ?? {})) {
+      await client.ensureHostedLoginTranslation(locale, translations, ownerOrganization.id);
+    }
     if (product.privacy_policy)
       await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy);
     if (product.id === "freightcheck") {
       if (product.privacy_policy)
         await client.ensurePrivacyPolicy(ownerOrganization.id, product.privacy_policy, true);
-      await client.applyBranding(
-        ownerOrganization.id,
-        product.branding,
-        await readBrandingLogo(product.branding.logo_base64_file),
-        true,
-        await readBrandingLogo(product.branding.icon_base64_file),
-      );
+      await client.applyBranding(ownerOrganization.id, product.branding, brandingAssets, true);
     }
 
     let projectId = projects.find(

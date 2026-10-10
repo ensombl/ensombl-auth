@@ -25,6 +25,28 @@ const brandingSchema = z.object({
   hide_login_name_suffix: z.boolean().default(false),
   logo_base64_file: z.string().min(1).optional(),
   icon_base64_file: z.string().min(1).optional(),
+  // Login V2 shows no logo in dark mode unless these are set.
+  logo_dark_base64_file: z.string().min(1).optional(),
+  icon_dark_base64_file: z.string().min(1).optional(),
+});
+
+const brandingAssetFiles = [
+  "logo_base64_file",
+  "icon_base64_file",
+  "logo_dark_base64_file",
+  "icon_dark_base64_file",
+] as const;
+
+export type Translations = { [key: string]: string | Translations };
+const translationsSchema: z.ZodType<Translations> = z.lazy(() =>
+  z.record(z.string().min(1), z.union([z.string(), translationsSchema])),
+);
+
+// Instance-wide Login V2 settings. `translations` overrides keys of ZITADEL's
+// apps/login/locales/<locale>.json; keys left out keep ZITADEL's text.
+const hostedLoginSchema = z.object({
+  allowed_languages: z.array(z.string().regex(/^[a-z]{2}$/)).min(1),
+  translations: z.record(z.string().regex(/^[a-z]{2}$/), translationsSchema).default({}),
 });
 
 const loginPolicySchema = z.object({
@@ -140,9 +162,19 @@ export const catalogSchema = z
       from_address: z.email(),
       default_from_name: z.string().min(1).max(200),
     }),
+    hosted_login: hostedLoginSchema.optional(),
     products: z.array(productSchema).min(1),
   })
   .superRefine((catalog, context) => {
+    for (const locale of Object.keys(catalog.hosted_login?.translations ?? {})) {
+      if (!catalog.hosted_login?.allowed_languages.includes(locale)) {
+        context.addIssue({
+          code: "custom",
+          message: `hosted_login translations for ${locale} are not in allowed_languages`,
+          path: ["hosted_login", "translations", locale],
+        });
+      }
+    }
     const productIds = new Set<string>();
     for (const [productIndex, product] of catalog.products.entries()) {
       if (productIds.has(product.id)) {
@@ -306,14 +338,12 @@ export async function loadCatalog(path: string): Promise<Catalog> {
       ...product,
       branding: {
         ...product.branding,
-        ...(product.branding.icon_base64_file
-          ? { icon_base64_file: resolve(catalogDirectory, product.branding.icon_base64_file) }
-          : {}),
-        ...(product.branding.logo_base64_file
-          ? {
-              logo_base64_file: resolve(catalogDirectory, product.branding.logo_base64_file),
-            }
-          : {}),
+        ...Object.fromEntries(
+          brandingAssetFiles.flatMap((key) => {
+            const file = product.branding[key];
+            return file ? [[key, resolve(catalogDirectory, file)]] : [];
+          }),
+        ),
       },
     })),
   };

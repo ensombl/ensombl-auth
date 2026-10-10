@@ -65,13 +65,14 @@ routing labels and its network. The Compose file deliberately declares neither.
 | `auth.freightcheck.io` | `/` | `zitadel-api` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/assets` | `zitadel-api` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/ui/v2/login` | `product-login-root` | 8080 | `/` | No |
+| `auth.freightcheck.io` | `/favicon.ico` | `product-login-root` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/admin/v1` | `zitadel-api` | 8080 | `/` | No |
 | `auth.freightcheck.io` | `/admin` | `zitadel-api` | 8080 | `/ui/console` | Yes |
 
 Keep more-specific paths ahead of `/`, and `/admin/v1` ahead of the `/admin` shortcut so admin
 API requests retain their path. `/ui/console` remains the native console path; `/admin` is its
-shortcut. Login V2 uses the proxy, while issuer discovery, API requests, and branding assets
-reach `zitadel-api` directly. Do not add FreightClaims routes.
+shortcut. Login V2 and the FreightCheck favicon use the proxy, while issuer discovery, API
+requests, and branding assets reach `zitadel-api` directly. Do not add FreightClaims routes.
 
 ## Recovery
 

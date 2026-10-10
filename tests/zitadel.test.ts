@@ -405,7 +405,7 @@ describe("ZitadelClient product login presentation", () => {
       .mockResolvedValueOnce(Response.json({}));
     const client = new ZitadelClient("https://auth.ensombl.io", "bootstrap-pat");
 
-    await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
+    await client.applyBranding("freightclaims-org", branding, { logo: new Uint8Array([1, 2, 3]) });
 
     expect(new URL(String(request.mock.calls[2]?.[0])).pathname).toBe(
       "/assets/v1/org/policy/label/logo",
@@ -533,7 +533,7 @@ describe("ZitadelClient product login presentation", () => {
       host: "localhost",
     });
 
-    await client.applyBranding("freightclaims-org", branding, new Uint8Array([1, 2, 3]));
+    await client.applyBranding("freightclaims-org", branding, { logo: new Uint8Array([1, 2, 3]) });
 
     expect(request).toHaveBeenCalledTimes(3);
     expect(new URL(String(request.mock.calls[2]?.[0])).toString()).toBe(

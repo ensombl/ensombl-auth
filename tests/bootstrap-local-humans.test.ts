@@ -246,9 +246,8 @@ describe("local bootstrap profile", () => {
     expect(client.applyBranding).toHaveBeenCalledWith(
       "ensombl-organization-id",
       catalog.products[0]?.branding,
-      undefined,
+      { logo: undefined, icon: undefined, logoDark: undefined, iconDark: undefined },
       true,
-      undefined,
     );
     expect(Object.keys(runtime.products)).toEqual(["freightcheck"]);
     expect(runtime.issuer).toBe("http://localhost:26041");

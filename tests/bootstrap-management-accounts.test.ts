@@ -218,6 +218,8 @@ it.each([
   const { client } = mockClient();
   Object.assign(client, {
     addProjectRole: vi.fn(),
+    ensureAllowedLanguages: vi.fn(),
+    ensureHostedLoginTranslation: vi.fn(),
     ensurePrivacyPolicy: vi.fn(),
     ensureAuthorization: vi.fn(),
     createHumanUser: vi.fn(),
@@ -242,12 +244,26 @@ it.each([
     product.privacy_policy,
     true,
   );
+  expect(client.ensureAllowedLanguages).toHaveBeenCalledWith(["en"]);
+  expect(client.ensureHostedLoginTranslation).toHaveBeenCalledWith(
+    "en",
+    catalog.hosted_login?.translations.en,
+  );
+  expect(client.ensureHostedLoginTranslation).toHaveBeenCalledWith(
+    "en",
+    catalog.hosted_login?.translations.en,
+    "freightcheck-organization-id",
+  );
   expect(client.applyBranding).toHaveBeenCalledWith(
     "freightcheck-organization-id",
     product.branding,
-    expect.any(Uint8Array),
+    {
+      logo: expect.any(Uint8Array),
+      icon: expect.any(Uint8Array),
+      logoDark: expect.any(Uint8Array),
+      iconDark: expect.any(Uint8Array),
+    },
     true,
-    expect.any(Uint8Array),
   );
   for (const application of product.applications) {
     expect(client.ensureAdministrator).toHaveBeenCalledWith({

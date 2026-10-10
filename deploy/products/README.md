@@ -3,10 +3,17 @@
 `products.json` is the hosted catalog and `products.local.json` is the disposable local catalog.
 Both contain only FreightCheck.
 
+The optional top-level `hosted_login` configures Login V2: `allowed_languages` limits the instance's
+languages, and `translations` overrides chosen keys of ZITADEL's Login V2 locale files
+(`apps/login/locales/<locale>.json` in the ZITADEL release). Texts are set on the instance and on
+each product organization, because pages tied to an organization ignore the instance texts. Login V2
+caches both for up to an hour, and a container restart keeps that cache; recreate `zitadel-login`
+to see a change immediately.
+
 Each product declares:
 
 - its product-owner organization, native hosted-login policy, colors, theme, and optional
-  base64-encoded logo asset;
+  base64-encoded logo and icon assets, with separate dark-mode variants;
 - optionally `login_policy.default_redirect_uri`: where ZITADEL sends a user who finishes a flow it
   did not start from an OIDC request (activating an invitation), instead of its Console. It must be
   under one of the product's applications; the local catalog's value follows the local runtime

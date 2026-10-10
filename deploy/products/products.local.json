@@ -9,6 +9,28 @@
     "from_address": "noreply@notifications.ensombl.io",
     "default_from_name": "FreightCheck"
   },
+  "hosted_login": {
+    "allowed_languages": ["en"],
+    "translations": {
+      "en": {
+        "common": {
+          "title": "FreightCheck"
+        },
+        "loginname": {
+          "title": "Sign in to FreightCheck",
+          "description": "Welcome back! Enter your email to continue."
+        },
+        "register": {
+          "description": "Create your FreightCheck account."
+        },
+        "device": {
+          "request": {
+            "disclaimer": "By clicking Allow, you allow {appName} and FreightCheck to use your information in accordance with their respective terms of service and privacy policies. You can revoke this access at any time."
+          }
+        }
+      }
+    }
+  },
   "products": [
     {
       "id": "freightcheck",
@@ -34,7 +56,9 @@
         "font_color_dark": "#FAFAFA",
         "logo_base64_file": "assets/freightcheck-logo.png.base64",
         "hide_login_name_suffix": true,
-        "icon_base64_file": "assets/freightcheck-logo.png.base64"
+        "icon_base64_file": "assets/freightcheck-logo.png.base64",
+        "logo_dark_base64_file": "assets/freightcheck-logo.png.base64",
+        "icon_dark_base64_file": "assets/freightcheck-logo.png.base64"
       },
       "roles": [
         {

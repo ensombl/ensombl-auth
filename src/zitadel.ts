@@ -1,5 +1,6 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { Product } from "./catalog.js";
+import { isDeepStrictEqual } from "node:util";
+import type { Product, Translations } from "./catalog.js";
 
 interface Organization {
   readonly id: string;
@@ -113,6 +114,20 @@ interface RequestOptions {
   readonly allowNoChanges?: boolean;
   readonly allowAlreadyExists?: boolean;
 }
+
+export interface BrandingAssets {
+  readonly logo?: Uint8Array | undefined;
+  readonly icon?: Uint8Array | undefined;
+  readonly logoDark?: Uint8Array | undefined;
+  readonly iconDark?: Uint8Array | undefined;
+}
+
+const brandingAssetTypes = [
+  { key: "logo", urlField: "logoUrl", path: "logo" },
+  { key: "icon", urlField: "iconUrl", path: "icon" },
+  { key: "logoDark", urlField: "logoUrlDark", path: "logo/dark" },
+  { key: "iconDark", urlField: "iconUrlDark", path: "icon/dark" },
+] as const;
 
 interface OidcApplicationConfiguration {
   readonly baseUrl: string;
@@ -258,9 +273,8 @@ export class ZitadelClient {
   async applyBranding(
     organizationId: string,
     branding: Product["branding"],
-    logo?: Uint8Array,
+    assets: BrandingAssets = {},
     instance = false,
-    icon?: Uint8Array,
   ): Promise<void> {
     const headers = instance ? {} : { "x-zitadel-orgid": organizationId };
     const prefix = instance ? "/admin/v1" : "/management/v1";
@@ -304,27 +318,16 @@ export class ZitadelClient {
       });
       needsActivation = true;
     }
-    if (logo) {
-      const activeLogoUrl =
-        typeof active.policy?.logoUrl === "string" ? active.policy.logoUrl : undefined;
-      const previewLogoUrl =
-        typeof preview.policy?.logoUrl === "string" ? preview.policy.logoUrl : undefined;
-      if (!(await this.#assetMatches(previewLogoUrl, logo, headers))) {
-        await this.#uploadOrganizationLogo(logo, headers, instance);
+    for (const { key, urlField, path } of brandingAssetTypes) {
+      const asset = assets[key];
+      if (!asset) continue;
+      const activeUrl = active.policy?.[urlField];
+      const previewUrl = preview.policy?.[urlField];
+      const previewAssetUrl = typeof previewUrl === "string" ? previewUrl : undefined;
+      if (!(await this.#assetMatches(previewAssetUrl, asset, headers))) {
+        await this.#uploadLabelAsset(asset, headers, instance, path);
         needsActivation = true;
-      } else if (activeLogoUrl !== previewLogoUrl) {
-        needsActivation = true;
-      }
-    }
-    if (icon) {
-      const activeIconUrl =
-        typeof active.policy?.iconUrl === "string" ? active.policy.iconUrl : undefined;
-      const previewIconUrl =
-        typeof preview.policy?.iconUrl === "string" ? preview.policy.iconUrl : undefined;
-      if (!(await this.#assetMatches(previewIconUrl, icon, headers))) {
-        await this.#uploadOrganizationLogo(icon, headers, instance, "icon");
-        needsActivation = true;
-      } else if (activeIconUrl !== previewIconUrl) {
+      } else if (activeUrl !== previewUrl) {
         needsActivation = true;
       }
     }
@@ -364,6 +367,43 @@ export class ZitadelClient {
       headers,
       body,
       allowNoChanges: true,
+    });
+  }
+
+  async ensureAllowedLanguages(languages: readonly string[]): Promise<void> {
+    const current = await this.#request<{ allowedLanguages?: string[] }>("/admin/v1/restrictions", {
+      method: "GET",
+    });
+    if (isDeepStrictEqual([...(current.allowedLanguages ?? [])].sort(), [...languages].sort()))
+      return;
+    await this.#request("/admin/v1/restrictions", {
+      method: "PUT",
+      body: { allowedLanguages: { list: languages } },
+      allowNoChanges: true,
+    });
+  }
+
+  // Replaces the Login V2 text overrides for one locale on the instance, or on an organization
+  // when organizationId is given.
+  async ensureHostedLoginTranslation(
+    locale: string,
+    translations: Translations,
+    organizationId?: string,
+  ): Promise<void> {
+    const level = organizationId ? { organizationId } : { instance: true };
+    const query = new URLSearchParams({
+      ...(organizationId ? { organizationId } : { instance: "true" }),
+      locale,
+      ignoreInheritance: "true",
+    });
+    const current = await this.#request<{ translations?: Translations }>(
+      `/v2/settings/hosted_login_translation?${query}`,
+      { method: "GET" },
+    );
+    if (isDeepStrictEqual(current.translations ?? {}, translations)) return;
+    await this.#request("/v2/settings/hosted_login_translation", {
+      method: "PUT",
+      body: { ...level, locale, translations },
     });
   }
 
@@ -980,17 +1020,15 @@ export class ZitadelClient {
     return Buffer.from(await response.arrayBuffer()).equals(Buffer.from(expected));
   }
 
-  async #uploadOrganizationLogo(
-    logo: Uint8Array,
+  async #uploadLabelAsset(
+    asset: Uint8Array,
     headers: Readonly<Record<string, string>>,
-    instance = false,
-    kind: "logo" | "icon" = "logo",
+    instance: boolean,
+    assetPath: string,
   ): Promise<void> {
     const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(logo)], { type: "image/png" }), "logo.png");
-    const path = instance
-      ? `/assets/v1/instance/policy/label/${kind}`
-      : `/assets/v1/org/policy/label/${kind}`;
+    form.append("file", new Blob([new Uint8Array(asset)], { type: "image/png" }), "asset.png");
+    const path = `/assets/v1/${instance ? "instance" : "org"}/policy/label/${assetPath}`;
     const response = await fetch(`${this.#baseUrl}${path}`, {
       method: "POST",
       headers: {

@@ -71,8 +71,10 @@ disabled so ZITADEL honors those per-application hosts; the Management Console i
 to the canonical host.
 
 FreightCheck enables username/password login, password recovery, and self-registration.
-Its purple palette, light/dark colors, logo, icon, and privacy/help links apply to both the
-instance and product organization in hosted and local setup. Applications never collect
+Its purple palette, light/dark colors, light/dark logo and icon, and privacy/help links apply to
+both the instance and product organization in hosted and local setup. Login V2 is English only, and
+the catalog replaces the stock texts that name ZITADEL or name no product. The hosted login proxy
+serves the FreightCheck icon at `/favicon.ico`. Applications never collect
 credentials themselves; FreightCheck retains application-level invitation and membership consent.
 
 ZITADEL system notifications use `FreightCheck <noreply@notifications.ensombl.io>` through Resend SMTP
