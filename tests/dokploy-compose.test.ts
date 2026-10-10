@@ -40,4 +40,19 @@ describe("Dokploy Compose ownership", () => {
     expect(productLoginProxy).toContain("location /ui/v2/login {");
     expect(productLoginProxy).not.toContain("return 308 /ui/v2/login/;");
   });
+
+  it("serves the catalog's FreightCheck icon as the favicon", () => {
+    const favicon = readFileSync(new URL("../deploy/dokploy/favicon.png", import.meta.url));
+    const icon = Buffer.from(
+      readFileSync(
+        new URL("../deploy/products/assets/freightcheck-logo.png.base64", import.meta.url),
+        "utf8",
+      ).replaceAll(/\s+/gu, ""),
+      "base64",
+    );
+    expect(favicon.equals(icon)).toBe(true);
+    expect(hostedCompose).toContain("./favicon.png:/etc/nginx/favicon.png:ro");
+    expect(productLoginProxy).toContain("location = /favicon.ico {");
+    expect(productLoginProxy).toContain("alias /etc/nginx/favicon.png;");
+  });
 });

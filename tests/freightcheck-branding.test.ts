@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { afterEach, expect, it, vi } from "vitest";
-import { loadCatalog } from "../src/catalog.js";
+import { catalogSchema, loadCatalog } from "../src/catalog.js";
 import { ZitadelClient } from "../src/zitadel.js";
 
 afterEach(() => vi.restoreAllMocks());
@@ -28,9 +29,8 @@ it("activates instance branding and uploads the logo and icon through instance e
   await client.applyBranding(
     "freightcheck",
     product.branding,
-    new Uint8Array([1, 2, 3]),
+    { logo: new Uint8Array([1, 2, 3]), icon: new Uint8Array([1, 2, 3]) },
     true,
-    new Uint8Array([1, 2, 3]),
   );
   const urls = fetcher.mock.calls.map(([url]) => String(url));
   expect(urls).toContain("https://auth.freightcheck.io/admin/v1/policies/label/_activate");
@@ -84,10 +84,129 @@ it.each([
   });
   const client = new ZitadelClient(catalog.issuer, "token");
   await expect(
-    client.applyBranding("freightcheck", branding, undefined, instance, icon),
+    client.applyBranding("freightcheck", branding, { icon }, instance),
   ).rejects.toThrow();
-  await client.applyBranding("freightcheck", branding, undefined, instance, icon);
-  await client.applyBranding("freightcheck", branding, undefined, instance, icon);
+  await client.applyBranding("freightcheck", branding, { icon }, instance);
+  await client.applyBranding("freightcheck", branding, { icon }, instance);
   expect(attempts).toBe(2);
   expect(fetcher.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(2);
+});
+
+it("names FreightCheck instead of ZITADEL on the English-only login pages", async () => {
+  for (const fileName of ["products.json", "products.local.json"]) {
+    const catalog = await loadCatalog(`deploy/products/${fileName}`);
+    const branding = catalog.products[0]?.branding;
+    expect(branding?.logo_dark_base64_file).toContain("freightcheck-logo");
+    expect(branding?.icon_dark_base64_file).toContain("freightcheck-logo");
+    expect(catalog.hosted_login?.allowed_languages).toEqual(["en"]);
+    const texts = JSON.stringify(catalog.hosted_login?.translations);
+    expect(texts).not.toMatch(/zitadel/i);
+    expect(catalog.hosted_login?.translations.en).toMatchObject({
+      loginname: { title: "Sign in to FreightCheck" },
+      register: { description: "Create your FreightCheck account." },
+    });
+  }
+});
+
+it("rejects translations for a language the login does not offer", () => {
+  const catalog = JSON.parse(readFileSync("deploy/products/products.json", "utf8"));
+  catalog.hosted_login.translations.de = { common: { title: "FreightCheck" } };
+  expect(catalogSchema.safeParse(catalog).success).toBe(false);
+});
+
+it.each([
+  [true, "/assets/v1/instance/policy/label"],
+  [false, "/assets/v1/org/policy/label"],
+])("uploads dark-mode logo and icon (instance=%s)", async (instance, assetPrefix) => {
+  const catalog = await loadCatalog("deploy/products/products.json");
+  const branding = catalog.products[0]?.branding;
+  if (!branding) throw new Error("Missing FreightCheck");
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({}));
+  const client = new ZitadelClient(catalog.issuer, "token");
+  const asset = new Uint8Array([1, 2, 3]);
+  await client.applyBranding(
+    "freightcheck",
+    branding,
+    { logoDark: asset, iconDark: asset },
+    instance,
+  );
+  const uploads = fetcher.mock.calls
+    .filter(([, init]) => init?.body instanceof FormData)
+    .map(([url]) => new URL(String(url)).pathname);
+  expect(uploads).toEqual([`${assetPrefix}/logo/dark`, `${assetPrefix}/icon/dark`]);
+});
+
+it("keeps a dark-mode logo that already matches", async () => {
+  const catalog = await loadCatalog("deploy/products/products.json");
+  const branding = catalog.products[0]?.branding;
+  if (!branding) throw new Error("Missing FreightCheck");
+  const asset = new Uint8Array([1, 2, 3]);
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+    const path = new URL(String(url)).pathname;
+    if (path === "/assets/dark-logo") return new Response(asset);
+    return Response.json({ policy: { logoUrlDark: "/assets/dark-logo" } });
+  });
+  const client = new ZitadelClient(catalog.issuer, "token");
+  await client.applyBranding("freightcheck", branding, { logoDark: asset }, true);
+  expect(fetcher.mock.calls.some(([, init]) => init?.body instanceof FormData)).toBe(false);
+});
+
+it("restricts the instance languages only when they differ", async () => {
+  let allowed = ["en", "de"];
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    if (init?.method === "PUT") {
+      allowed = JSON.parse(String(init.body)).allowedLanguages.list;
+      return Response.json({});
+    }
+    return Response.json({ allowedLanguages: allowed });
+  });
+  const client = new ZitadelClient("https://auth.freightcheck.io", "token");
+  await client.ensureAllowedLanguages(["en"]);
+  await client.ensureAllowedLanguages(["en"]);
+  const puts = fetcher.mock.calls.filter(([, init]) => init?.method === "PUT");
+  expect(puts).toHaveLength(1);
+  expect(String(puts[0]?.[0])).toBe("https://auth.freightcheck.io/admin/v1/restrictions");
+  expect(allowed).toEqual(["en"]);
+});
+
+it("sets instance login texts only when they differ", async () => {
+  const translations = { register: { description: "Create your FreightCheck account." } };
+  let stored = {};
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (url, init) => {
+    if (init?.method === "PUT") {
+      stored = JSON.parse(String(init.body)).translations;
+      return Response.json({});
+    }
+    const query = new URL(String(url)).searchParams;
+    expect(query.get("instance")).toBe("true");
+    expect(query.get("locale")).toBe("en");
+    expect(query.get("ignoreInheritance")).toBe("true");
+    return Response.json({ translations: stored });
+  });
+  const client = new ZitadelClient("https://auth.freightcheck.io", "token");
+  await client.ensureHostedLoginTranslation("en", translations);
+  await client.ensureHostedLoginTranslation("en", translations);
+  const puts = fetcher.mock.calls.filter(([, init]) => init?.method === "PUT");
+  expect(puts).toHaveLength(1);
+  expect(JSON.parse(String(puts[0]?.[1]?.body))).toEqual({
+    instance: true,
+    locale: "en",
+    translations,
+  });
+});
+
+it("sets organization login texts at the organization level", async () => {
+  const fetcher = vi
+    .spyOn(globalThis, "fetch")
+    .mockImplementation(async () => Response.json({ translations: {} }));
+  const client = new ZitadelClient("https://auth.freightcheck.io", "token");
+  await client.ensureHostedLoginTranslation("en", { common: { title: "FreightCheck" } }, "org-id");
+  const [getUrl] = fetcher.mock.calls[0] ?? [];
+  const query = new URL(String(getUrl)).searchParams;
+  expect(query.get("organizationId")).toBe("org-id");
+  expect(query.has("instance")).toBe(false);
+  expect(JSON.parse(String(fetcher.mock.calls[1]?.[1]?.body))).toMatchObject({
+    organizationId: "org-id",
+    locale: "en",
+  });
 });
