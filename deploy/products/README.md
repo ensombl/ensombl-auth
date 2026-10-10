@@ -7,8 +7,8 @@ The optional top-level `hosted_login` configures Login V2: `allowed_languages` l
 languages, and `translations` overrides chosen keys of ZITADEL's Login V2 locale files
 (`apps/login/locales/<locale>.json` in the ZITADEL release). Texts are set on the instance and on
 each product organization, because pages tied to an organization ignore the instance texts. Login V2
-caches both for up to an hour, and a container restart keeps that cache; recreate `zitadel-login`
-to see a change immediately.
+caches these settings and the branding in memory for up to an hour. A Dokploy redeploy leaves
+`zitadel-login` running, so restart it to see a change immediately.
 
 Each product declares:
 
