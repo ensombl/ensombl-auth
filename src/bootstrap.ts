@@ -175,6 +175,9 @@ export async function bootstrapCatalog(
     const brandingAssets = await readBrandingAssets(product.branding);
     await client.applyBranding(ownerOrganization.id, product.branding, brandingAssets);
     await client.ensureLoginPolicy(ownerOrganization.id, product.login_policy);
+    for (const [locale, inviteEmail] of Object.entries(product.invite_email)) {
+      await client.ensureInviteEmail(ownerOrganization.id, locale, inviteEmail);
+    }
     // Login V2 reads an organization's texts on its pages, and that lookup falls back to
     // ZITADEL's defaults rather than the instance texts.
     for (const [locale, translations] of Object.entries(catalog.hosted_login?.translations ?? {})) {

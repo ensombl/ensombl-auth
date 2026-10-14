@@ -18,6 +18,9 @@ Each product declares:
   did not start from an OIDC request (activating an invitation), instead of its Console. It must be
   under one of the product's applications; the local catalog's value follows the local runtime
   profile's application port. Omitted, the organization's existing value is kept;
+- optionally `invite_email`, per locale: the organization's ZITADEL invitation email text. ZITADEL's
+  default text carries the invite code only inside the link; FreightCheck's text also shows
+  `{{.Code}}`, which the setup page displays prefilled. Omitted, ZITADEL's default text applies;
 - optional product-wide project roles; there are no defaults;
 - one OIDC BFF application per canonical `local`, `staging`, or `production` environment;
 - one management service account per application, with `ORG_USER_MANAGER` on the product

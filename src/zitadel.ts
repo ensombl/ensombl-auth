@@ -407,6 +407,33 @@ export class ZitadelClient {
     });
   }
 
+  async ensureInviteEmail(
+    organizationId: string,
+    locale: string,
+    desired: Product["invite_email"][string],
+  ): Promise<void> {
+    const headers = { "x-zitadel-orgid": organizationId };
+    const path = `/management/v1/text/message/invite_user/${encodeURIComponent(locale)}`;
+    const current = await this.#request<{ customText?: Record<string, unknown> }>(path, {
+      method: "GET",
+      headers,
+    });
+    const body = {
+      title: desired.title,
+      preHeader: desired.pre_header,
+      subject: desired.subject,
+      greeting: desired.greeting,
+      text: desired.text,
+      buttonText: desired.button_text,
+    };
+    if (
+      current.customText?.isDefault !== true &&
+      Object.entries(body).every(([key, value]) => current.customText?.[key] === value)
+    )
+      return;
+    await this.#request(path, { method: "PUT", headers, body, allowNoChanges: true });
+  }
+
   async ensureLoginPolicy(organizationId: string, desired: Product["login_policy"]): Promise<void> {
     const headers = { "x-zitadel-orgid": organizationId };
     const response = await this.#request<{
