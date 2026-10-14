@@ -83,8 +83,10 @@ through ZITADEL's Admin API so an existing instance receives the same configurat
 instance. ZITADEL sends every message, invitations included, from that sender: `email_from_name`
 in the catalog is not applied to ZITADEL mail, and the sender is an instance setting that no
 organization can override. A product that invites a user controls the wording and the link, not the
-sender: it passes `applicationName` and a `urlTemplate` with the `invite_code` request. The catalog's `invite_email` sets the organization's invitation email text, which must show `{{.Code}}` when the product's `urlTemplate` leaves the code out. Generic
-account recovery has no product context and intentionally uses the FreightCheck default.
+sender: it passes `applicationName` and a `urlTemplate` with the `invite_code` request. The
+catalog's `invite_email` sets the organization's invitation email text, so the email can show the
+code that the link already carries. Generic account recovery has no product context and
+intentionally uses the FreightCheck default.
 
 A user who finishes a flow ZITADEL did not start from an OIDC request, such as activating an
 invitation, is sent to the product organization's login-policy `defaultRedirectUri`; without one

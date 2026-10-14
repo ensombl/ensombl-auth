@@ -47,7 +47,7 @@
           "pre_header": "Your {{.ApplicationName}} invite code is {{.Code}}",
           "subject": "Invitation to {{.ApplicationName}}",
           "greeting": "Hello {{.DisplayName}},",
-          "text": "You have been invited to {{.ApplicationName}}. Your invite code is {{.Code}}. Select the button below and enter this code to set up your account. If you did not expect this invitation, you can ignore this email.",
+          "text": "You have been invited to {{.ApplicationName}}. Your invite code is {{.Code}}. Select the button below to set up your account; the setup page shows this code to confirm the invitation is yours. If you did not expect this invitation, you can ignore this email.",
           "button_text": "Accept invite"
         }
       },
