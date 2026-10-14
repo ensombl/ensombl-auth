@@ -78,6 +78,7 @@ function mockClient() {
     deleteAdministrator,
     disableInstanceLoginV2Override: vi.fn().mockResolvedValue(undefined),
     ensureAdministrator,
+    ensureInviteEmail: vi.fn().mockResolvedValue(undefined),
     ensureLoginPolicy: vi.fn().mockResolvedValue(undefined),
     ensurePrimaryOrganizationDomain: vi.fn().mockResolvedValue(undefined),
     findApplicationByName: vi.fn().mockResolvedValue({
@@ -220,6 +221,7 @@ it.each([
     addProjectRole: vi.fn(),
     ensureAllowedLanguages: vi.fn(),
     ensureHostedLoginTranslation: vi.fn(),
+    ensureInviteEmail: vi.fn(),
     ensurePrivacyPolicy: vi.fn(),
     ensureAuthorization: vi.fn(),
     createHumanUser: vi.fn(),
@@ -243,6 +245,11 @@ it.each([
     "freightcheck-organization-id",
     product.privacy_policy,
     true,
+  );
+  expect(client.ensureInviteEmail).toHaveBeenCalledWith(
+    "freightcheck-organization-id",
+    "en",
+    expect.objectContaining({ text: expect.stringContaining("{{.Code}}") }),
   );
   expect(client.ensureAllowedLanguages).toHaveBeenCalledWith(["en"]);
   expect(client.ensureHostedLoginTranslation).toHaveBeenCalledWith(

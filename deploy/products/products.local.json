@@ -41,6 +41,16 @@
         "name": "FreightCheck",
         "domain": "freightcheck.localhost"
       },
+      "invite_email": {
+        "en": {
+          "title": "Invitation to {{.ApplicationName}}",
+          "pre_header": "Your {{.ApplicationName}} invite code is {{.Code}}",
+          "subject": "Invitation to {{.ApplicationName}}",
+          "greeting": "Hello {{.DisplayName}},",
+          "text": "You have been invited to {{.ApplicationName}}. Your invite code is {{.Code}}. Select the button below and enter this code to set up your account. If you did not expect this invitation, you can ignore this email.",
+          "button_text": "Accept invite"
+        }
+      },
       "login_policy": {
         "allow_self_registration": true,
         "default_redirect_uri": "http://localhost:5173/auth/login?returnTo=%2Finvitations"

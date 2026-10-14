@@ -49,6 +49,17 @@ const hostedLoginSchema = z.object({
   translations: z.record(z.string().regex(/^[a-z]{2}$/), translationsSchema).default({}),
 });
 
+// ZITADEL's "InviteUser" email for one locale. `{{.Code}}` is the invite code; the default text
+// leaves it out and only carries it inside the link.
+const inviteEmailSchema = z.object({
+  title: z.string().min(1),
+  pre_header: z.string().min(1),
+  subject: z.string().min(1),
+  greeting: z.string().min(1),
+  text: z.string().min(1),
+  button_text: z.string().min(1),
+});
+
 const loginPolicySchema = z.object({
   allow_username_password: z.boolean().default(true),
   allow_self_registration: z.boolean().default(false),
@@ -131,6 +142,7 @@ const productSchema = z.object({
   privacy_policy: z
     .object({ tos_link: z.url(), privacy_link: z.url(), help_link: z.url() })
     .optional(),
+  invite_email: z.record(z.string().regex(/^[a-z]{2}$/), inviteEmailSchema).default({}),
   login_policy: loginPolicySchema.default(defaultLoginPolicy),
   // Also grants the product's management service accounts ORG_OWNER_VIEWER (read
   // only) on the instance organization (see docs/roles-and-permissions.md).

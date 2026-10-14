@@ -210,3 +210,32 @@ it("sets organization login texts at the organization level", async () => {
     locale: "en",
   });
 });
+
+it("sets the organization invite email only when it differs", async () => {
+  const inviteEmail = {
+    title: "Invitation to {{.ApplicationName}}",
+    pre_header: "Your invite code is {{.Code}}",
+    subject: "Invitation to {{.ApplicationName}}",
+    greeting: "Hello {{.DisplayName}},",
+    text: "Your invite code is {{.Code}}.",
+    button_text: "Accept invite",
+  };
+  let stored: Record<string, unknown> = { isDefault: true, title: "Invitation" };
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
+    expect(new Headers(init?.headers).get("x-zitadel-orgid")).toBe("org-id");
+    if (init?.method === "PUT") {
+      stored = JSON.parse(String(init.body));
+      return Response.json({});
+    }
+    return Response.json({ customText: stored });
+  });
+  const client = new ZitadelClient("https://auth.freightcheck.io", "token");
+  await client.ensureInviteEmail("org-id", "en", inviteEmail);
+  await client.ensureInviteEmail("org-id", "en", inviteEmail);
+  const puts = fetcher.mock.calls.filter(([, init]) => init?.method === "PUT");
+  expect(puts).toHaveLength(1);
+  expect(String(puts[0]?.[0])).toBe(
+    "https://auth.freightcheck.io/management/v1/text/message/invite_user/en",
+  );
+  expect(stored).toMatchObject({ preHeader: inviteEmail.pre_header, text: inviteEmail.text });
+});
